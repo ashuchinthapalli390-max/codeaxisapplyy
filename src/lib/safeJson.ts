@@ -10,7 +10,7 @@ export function safeParse<T>(jsonString: string | null | undefined, fallback: T)
   }
 }
 
-export function jsonResponse(data: any, status = 200) {
+export function jsonResponse(data: unknown, status = 200) {
   // Always return valid application/json body content, never an empty/plain response
   return NextResponse.json(data, {
     status,

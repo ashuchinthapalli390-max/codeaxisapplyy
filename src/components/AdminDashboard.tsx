@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Modal from "@/components/ui/Modal";
 import Button3D from "@/components/ui/Button3D";
 import Select from "@/components/ui/Select";
@@ -11,7 +11,7 @@ import { exportToCsv } from "@/lib/csv";
 import { exportToJson } from "@/lib/jsonExport";
 import { 
   Search, Filter, Download, Trash2, Edit3, Clipboard, 
-  ExternalLink, FileText, CheckCircle, RefreshCw, LogOut, Info 
+  ExternalLink, FileText, CheckCircle, RefreshCw, LogOut, Info, RotateCcw
 } from "lucide-react";
 
 interface AdminDashboardProps {
@@ -23,13 +23,34 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
   const [applications, setApplications] = useState<ApplicationData[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   
+  // Tabs and Pagination
+  const [viewTab, setViewTab] = useState<"active" | "trash">("active");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+
   // Filters
   const [autoStatusFilter, setAutoStatusFilter] = useState("");
   const [manualStatusFilter, setManualStatusFilter] = useState("");
-  const [duplicateFilter, setDuplicateFilter] = useState("");
   const [scoreRange, setScoreRange] = useState("");
+  const [duplicateFilter, setDuplicateFilter] = useState("");
   const [dateFilter, setDateFilter] = useState(""); // all | today
+
+  // Stats Counters
+  const [stats, setStats] = useState({
+    totalApplications: 0,
+    trashCount: 0,
+    todayApplications: 0,
+    autoSelected: 0,
+    strongShortlist: 0,
+    pendingReview: 0,
+    lowPriority: 0,
+    rejected: 0,
+    duplicateWarnings: 0,
+    highestScore: 0
+  });
 
   // Selected applicant details
   const [selectedApp, setSelectedApp] = useState<ApplicationData | null>(null);
@@ -38,11 +59,36 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
   const [adminNotes, setAdminNotes] = useState("");
   const [updating, setUpdating] = useState(false);
 
-  // Load applications
-  const fetchApplications = async () => {
+  // Debounce search query to optimize server load
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 400);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setCurrentPage(1);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [debouncedSearch, autoStatusFilter, manualStatusFilter, scoreRange, duplicateFilter, dateFilter, viewTab]);
+
+  // Load applications server-side
+  const fetchApplications = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/applications", {
+      const queryParams = new URLSearchParams({
+        page: currentPage.toString(),
+        limit: "50",
+        search: debouncedSearch.trim(),
+        autoStatus: autoStatusFilter || "all",
+        manualStatus: manualStatusFilter || "all",
+        is_deleted: viewTab === "trash" ? "true" : "false"
+      });
+
+      const response = await fetch(`/api/admin/applications?${queryParams.toString()}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -50,18 +96,26 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
       });
       const result = await response.json();
       if (result.success && result.data) {
-        setApplications(result.data);
+        setApplications(result.data.applications || []);
+        setTotalPages(result.data.totalPages || 1);
+        setTotalCount(result.data.total || 0);
+        if (result.data.stats) {
+          setStats(result.data.stats);
+        }
       }
     } catch (err) {
       console.error("Error fetching applications:", err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, debouncedSearch, autoStatusFilter, manualStatusFilter, viewTab, token]);
 
   useEffect(() => {
-    fetchApplications();
-  }, [token]);
+    const timer = setTimeout(() => {
+      fetchApplications();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchApplications]);
 
   // Handle updates
   const handleUpdateStatusAndNotes = async () => {
@@ -82,16 +136,9 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
       });
       const result = await response.json();
       if (result.success) {
-        // Update local state
-        setApplications((prev) =>
-          prev.map((app) =>
-            app.id === selectedApp.id
-              ? { ...app, manual_status: manualStatus as any, admin_notes: adminNotes }
-              : app
-          )
-        );
         setIsDetailsOpen(false);
         setSelectedApp(null);
+        fetchApplications(); // refresh list & stats
       } else {
         alert(result.error || "Update failed.");
       }
@@ -103,9 +150,9 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
     }
   };
 
-  // Handle deletions
+  // Handle soft deletions
   const handleDeleteApp = async (id: number) => {
-    if (!confirm("Are you sure you want to permanently delete this application? This action cannot be undone.")) return;
+    if (!confirm("Are you sure you want to move this application to Trash?")) return;
     try {
       const response = await fetch("/api/admin/delete", {
         method: "POST",
@@ -117,9 +164,9 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
       });
       const result = await response.json();
       if (result.success) {
-        setApplications((prev) => prev.filter((app) => app.id !== id));
         setIsDetailsOpen(false);
         setSelectedApp(null);
+        fetchApplications(); // refresh list & stats
       } else {
         alert(result.error || "Deletion failed.");
       }
@@ -129,22 +176,31 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
     }
   };
 
-  // Metrics counters
-  const totalCount = applications.length;
-  const autoSelectedCount = applications.filter((a) => a.auto_status === "Auto Selected").length;
-  const strongShortlistCount = applications.filter((a) => a.auto_status === "Strong Shortlist").length;
-  const pendingReviewCount = applications.filter((a) => a.auto_status === "Pending Review").length;
-  const lowPriorityCount = applications.filter((a) => a.auto_status === "Low Priority Review").length;
-  const rejectedCount = applications.filter((a) => a.manual_status === "Rejected").length;
-  const duplicateWarningsCount = applications.filter((a) => a.duplicate_warning).length;
-  
-  const todayAppsCount = applications.filter((a) => {
-    if (!a.created_at) return false;
-    const todayStr = new Date().toDateString();
-    return new Date(a.created_at).toDateString() === todayStr;
-  }).length;
-
-  const highestScore = applications.reduce((max, app) => Math.max(max, app.total_score || 0), 0);
+  // Handle restoration of soft-deleted entries
+  const handleRestoreApp = async (id: number) => {
+    if (!confirm("Are you sure you want to restore this application?")) return;
+    try {
+      const response = await fetch("/api/admin/restore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ id }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        setIsDetailsOpen(false);
+        setSelectedApp(null);
+        fetchApplications(); // refresh list & stats
+      } else {
+        alert(result.error || "Restoration failed.");
+      }
+    } catch (err) {
+      console.error("Error restoring application:", err);
+      alert("Restoration failed. Try again.");
+    }
+  };
 
   // Copy helper
   const copyToClipboard = (text: string, label: string) => {
@@ -152,9 +208,42 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
     alert(`${label} copied to clipboard!`);
   };
 
+  // Fetch all filtered records helper for batch exports
+  const fetchAllMatchingForExport = async (): Promise<ApplicationData[]> => {
+    try {
+      const queryParams = new URLSearchParams({
+        page: "1",
+        limit: "10000", // fetch all matching without pagination limit
+        search: debouncedSearch.trim(),
+        autoStatus: autoStatusFilter || "all",
+        manualStatus: manualStatusFilter || "all",
+        is_deleted: viewTab === "trash" ? "true" : "false"
+      });
+
+      const response = await fetch(`/api/admin/applications?${queryParams.toString()}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const result = await response.json();
+      if (result.success && result.data?.applications) {
+        return result.data.applications;
+      }
+    } catch (err) {
+      console.error("Error compiling export:", err);
+    }
+    return [];
+  };
+
   // Export CSV
-  const handleExportCsv = () => {
-    const csvContent = exportToCsv(filteredApps);
+  const handleExportCsv = async () => {
+    const list = await fetchAllMatchingForExport();
+    if (list.length === 0) {
+      alert("No matching records found to export.");
+      return;
+    }
+    const csvContent = exportToCsv(list);
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -166,8 +255,13 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
   };
 
   // Export JSON
-  const handleExportJson = () => {
-    const jsonContent = exportToJson(filteredApps);
+  const handleExportJson = async () => {
+    const list = await fetchAllMatchingForExport();
+    if (list.length === 0) {
+      alert("No matching records found to export.");
+      return;
+    }
+    const jsonContent = exportToJson(list);
     const blob = new Blob([jsonContent], { type: "application/json;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -179,18 +273,19 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
   };
 
   // Export selected/all PDFs
-  const handleDownloadAllReceipts = () => {
-    if (filteredApps.length === 0) {
+  const handleDownloadAllReceipts = async () => {
+    const list = await fetchAllMatchingForExport();
+    if (list.length === 0) {
       alert("No applicants found to generate PDFs.");
       return;
     }
-    if (filteredApps.length > 10 && !confirm(`Generate ${filteredApps.length} PDF receipts? Your browser will trigger multiple downloads.`)) {
+    if (list.length > 15 && !confirm(`Generate ${list.length} PDF receipts? Your browser will trigger multiple downloads.`)) {
       return;
     }
-    filteredApps.forEach((app, idx) => {
+    list.forEach((app, idx) => {
       setTimeout(() => {
         generateReceiptPdf(app);
-      }, idx * 600); // Debounce to prevent browser crash
+      }, idx * 650); // Debounce to prevent browser crash
     });
   };
 
@@ -202,36 +297,8 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
     setIsDetailsOpen(true);
   };
 
-  // Apply filters & search queries
-  const filteredApps = applications.filter((app) => {
-    // Search matching
-    const searchLower = search.toLowerCase();
-    const matchesSearch =
-      !search ||
-      app.full_name.toLowerCase().includes(searchLower) ||
-      app.email.toLowerCase().includes(searchLower) ||
-      app.phone_number.includes(searchLower) ||
-      (app.whatsapp_number && app.whatsapp_number.includes(searchLower)) ||
-      (app.discord_username && app.discord_username.toLowerCase().includes(searchLower)) ||
-      app.roll_number.toLowerCase().includes(searchLower) ||
-      app.college_name.toLowerCase().includes(searchLower);
-
-    // Filters
-    const matchesAutoStatus = !autoStatusFilter || app.auto_status === autoStatusFilter;
-    const matchesManualStatus = !manualStatusFilter || app.manual_status === manualStatusFilter;
-    const matchesDuplicate =
-      !duplicateFilter ||
-      (duplicateFilter === "Yes" && app.duplicate_warning) ||
-      (duplicateFilter === "No" && !app.duplicate_warning);
-
-    // Date
-    let matchesDate = true;
-    if (dateFilter === "today" && app.created_at) {
-      const todayStr = new Date().toDateString();
-      matchesDate = new Date(app.created_at).toDateString() === todayStr;
-    }
-
-    // Score Range
+  // Score filtering helper (since score matching is simpler on frontend)
+  const scoreFilteredApps = applications.filter((app) => {
     let matchesScore = true;
     const score = app.total_score || 0;
     if (scoreRange === "85-100") matchesScore = score >= 85;
@@ -239,19 +306,29 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
     else if (scoreRange === "55-69") matchesScore = score >= 55 && score < 70;
     else if (scoreRange === "0-54") matchesScore = score < 55;
 
-    return matchesSearch && matchesAutoStatus && matchesManualStatus && matchesDuplicate && matchesDate && matchesScore;
+    let matchesDuplicate = true;
+    if (duplicateFilter === "Yes" && !app.duplicate_warning) matchesDuplicate = false;
+    if (duplicateFilter === "No" && app.duplicate_warning) matchesDuplicate = false;
+
+    let matchesDate = true;
+    if (dateFilter === "today" && app.created_at) {
+      const todayStr = new Date().toDateString();
+      matchesDate = new Date(app.created_at).toDateString() === todayStr;
+    }
+
+    return matchesScore && matchesDuplicate && matchesDate;
   });
 
   return (
-    <div className="min-h-screen bg-[#02050e] text-slate-100 p-4 font-mono pb-20">
+    <div className="min-h-screen bg-[#02040a] text-slate-100 p-4 font-mono pb-20 select-none">
       
       {/* Dashboard Header */}
-      <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between border-b border-cyan-950 pb-4 mb-6 space-y-3 md:space-y-0">
+      <div className="w-full max-w-6xl mx-auto flex flex-col md:flex-row md:items-center md:justify-between border-b border-cyan-950/60 pb-4 mb-6 space-y-3 md:space-y-0">
         <div>
           <h1 className="text-lg font-bold tracking-wider text-cyan-400 flex items-center space-x-2">
             <span>CODEAXIS APPLICANT ADMINISTRATIVE COCKPIT</span>
           </h1>
-          <span className="text-[10px] text-slate-500">AUTHORIZED ACCESS ONLY</span>
+          <span className="text-[10px] text-slate-500">AUTHORIZED DB ACCESS ZONE</span>
         </div>
         <div className="flex items-center space-x-2">
           <Button3D variant="secondary" size="sm" onClick={fetchApplications} disabled={loading} className="py-2.5">
@@ -265,25 +342,48 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
         </div>
       </div>
 
-      {/* Metrics Cards Grid */}
+      {/* 3D Metrics Cards Grid */}
       <div className="w-full max-w-6xl mx-auto grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3 mb-6">
-        
         {[
-          { label: "TOTAL", val: totalCount, color: "text-white border-cyan-950" },
-          { label: "AUTO_SEL", val: autoSelectedCount, color: "text-emerald-400 border-emerald-950/60 bg-emerald-950/5" },
-          { label: "STRONG_SL", val: strongShortlistCount, color: "text-cyan-400 border-cyan-950 bg-cyan-950/5" },
-          { label: "PENDING_RV", val: pendingReviewCount, color: "text-amber-400 border-amber-950/60 bg-amber-950/5" },
-          { label: "LOW_PRI", val: lowPriorityCount, color: "text-slate-400 border-slate-900 bg-slate-950/10" },
-          { label: "REJECTED", val: rejectedCount, color: "text-red-400 border-red-950/60 bg-red-950/5" },
-          { label: "DUPL_WARN", val: duplicateWarningsCount, color: duplicateWarningsCount > 0 ? "text-rose-500 border-rose-950/80 bg-rose-950/10 shadow-[0_0_10px_rgba(244,63,94,0.1)]" : "text-slate-500 border-slate-950" },
-          { label: "TODAY", val: todayAppsCount, color: "text-blue-400 border-blue-950 bg-blue-950/5" },
-          { label: "HIGH_SCR", val: highestScore, color: "text-cyan-300 border-cyan-850/50" },
+          { label: "ACTIVE", val: stats.totalApplications, color: "text-white border-cyan-950/60" },
+          { label: "AUTO_SEL", val: stats.autoSelected, color: "text-emerald-400 border-emerald-950/60 bg-emerald-950/5" },
+          { label: "STRONG_SL", val: stats.strongShortlist, color: "text-cyan-400 border-cyan-950/60 bg-cyan-950/5" },
+          { label: "PENDING_RV", val: stats.pendingReview, color: "text-amber-400 border-amber-950/60 bg-amber-950/5" },
+          { label: "LOW_PRI", val: stats.lowPriority, color: "text-slate-400 border-slate-900 bg-slate-950/10" },
+          { label: "REJECTED", val: stats.rejected, color: "text-red-400 border-red-950/60 bg-red-950/5" },
+          { label: "DUPL_WARN", val: stats.duplicateWarnings, color: stats.duplicateWarnings > 0 ? "text-rose-500 border-rose-950/80 bg-rose-950/10 shadow-[0_0_10px_rgba(244,63,94,0.1)]" : "text-slate-550 border-slate-950" },
+          { label: "TRASH", val: stats.trashCount, color: stats.trashCount > 0 ? "text-rose-400 border-rose-950 bg-rose-950/10" : "text-slate-550 border-slate-950" },
+          { label: "HIGH_SCR", val: stats.highestScore, color: "text-cyan-300 border-cyan-850/50" },
         ].map((card, i) => (
-          <div key={i} className={`p-3 border rounded-2xl flex flex-col justify-between cyber-glass bg-slate-950/20 text-center ${card.color}`}>
-            <span className="text-[8px] text-slate-500 tracking-wider font-semibold uppercase">{card.label}</span>
-            <span className="text-lg font-bold mt-1">{card.val}</span>
+          <div key={i} className={`p-3.5 stat-card-3d flex flex-col justify-between text-center ${card.color}`}>
+            <span className="text-[8.5px] text-slate-500 tracking-wider font-semibold uppercase">{card.label}</span>
+            <span className="text-xl font-black mt-1.5">{card.val}</span>
           </div>
         ))}
+      </div>
+
+      {/* View Tabs */}
+      <div className="w-full max-w-6xl mx-auto flex space-x-2 mb-4">
+        <button
+          onClick={() => setViewTab("active")}
+          className={`flex-1 py-3 px-4 rounded-xl border font-mono font-bold tracking-wider text-xs transition-all duration-300 cursor-pointer ${
+            viewTab === "active"
+              ? "bg-cyan-950/40 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.15)]"
+              : "bg-slate-950/50 border-cyan-950/40 text-slate-400 hover:text-slate-350 hover:border-cyan-500/25"
+          }`}
+        >
+          ACTIVE APPLICANTS ({stats.totalApplications})
+        </button>
+        <button
+          onClick={() => setViewTab("trash")}
+          className={`flex-1 py-3 px-4 rounded-xl border font-mono font-bold tracking-wider text-xs transition-all duration-300 cursor-pointer ${
+            viewTab === "trash"
+              ? "bg-rose-950/30 border-rose-500 text-white shadow-[0_0_15px_rgba(244,63,94,0.12)]"
+              : "bg-slate-950/50 border-cyan-950/40 text-slate-400 hover:text-slate-350 hover:border-cyan-500/25"
+          }`}
+        >
+          TRASH BIN ({stats.trashCount})
+        </button>
       </div>
 
       {/* Search & Filters */}
@@ -293,8 +393,8 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
         <div className="relative">
           <input
             type="text"
-            className="w-full bg-slate-950/80 border border-cyan-950 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition-all duration-300"
-            placeholder="Search applicants by Name, Email, Phone, College, Roll Number..."
+            className="w-full bg-slate-950/80 border border-cyan-950 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-slate-650 focus:outline-none focus:border-cyan-500/50 transition-all duration-300"
+            placeholder="Search applicants by Name, Email, Phone, College, Roll Number, Reference ID..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -380,16 +480,16 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
         {/* Global Exports Bar */}
         <div className="flex flex-wrap gap-2 pt-2 border-t border-cyan-950/40">
           <Button3D variant="secondary" size="sm" onClick={handleExportCsv} className="py-2 px-3">
-            <Download className="w-3 h-3" />
-            <span>EXPORT CSV ({filteredApps.length})</span>
+            <Download className="w-3.5 h-3.5" />
+            <span>EXPORT CSV ({totalCount})</span>
           </Button3D>
           <Button3D variant="secondary" size="sm" onClick={handleExportJson} className="py-2 px-3">
-            <Download className="w-3 h-3" />
-            <span>EXPORT JSON ({filteredApps.length})</span>
+            <Download className="w-3.5 h-3.5" />
+            <span>EXPORT JSON ({totalCount})</span>
           </Button3D>
           <Button3D variant="secondary" size="sm" onClick={handleDownloadAllReceipts} className="py-2 px-3">
-            <Download className="w-3 h-3" />
-            <span>DOWNLOAD ALL PDFs</span>
+            <Download className="w-3.5 h-3.5" />
+            <span>DOWNLOAD MATCHING PDFs</span>
           </Button3D>
         </div>
 
@@ -400,11 +500,11 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
         {loading ? (
           <div className="cyber-glass rounded-3xl p-12 text-center text-cyan-500">
             <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-3" />
-            <span>DECRYPTING DB APPLICATIONS...</span>
+            <span>DECRYPTING SERVER APPLICATION RECORDS...</span>
           </div>
-        ) : filteredApps.length === 0 ? (
+        ) : scoreFilteredApps.length === 0 ? (
           <div className="cyber-glass rounded-3xl p-12 text-center text-slate-500">
-            <Info className="w-8 h-8 mx-auto mb-3 text-slate-650" />
+            <Info className="w-8 h-8 mx-auto mb-3 text-slate-600" />
             <span>NO APPLICATIONS MATCH THE CURRENT CRITERIA</span>
           </div>
         ) : (
@@ -413,7 +513,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
             <div className="hidden md:block overflow-x-auto cyber-glass rounded-3xl">
               <table className="w-full text-left border-collapse text-[11px]">
                 <thead>
-                  <tr className="bg-slate-950/80 border-b border-cyan-950/60 text-cyan-400">
+                  <tr className="bg-slate-950/90 border-b border-cyan-950/60 text-cyan-400">
                     <th className="p-4 font-bold tracking-wider">REF ID</th>
                     <th className="p-4 font-bold tracking-wider">FULL NAME</th>
                     <th className="p-4 font-bold tracking-wider">COLLEGE / BRANCH</th>
@@ -425,7 +525,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-cyan-950/30">
-                  {filteredApps.map((app) => {
+                  {scoreFilteredApps.map((app) => {
                     const isDupe = app.duplicate_warning;
                     return (
                       <tr 
@@ -437,11 +537,11 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                       >
                         <td className="p-4 font-bold text-white">{app.reference_id}</td>
                         <td className="p-4">
-                          <div className="font-semibold text-slate-200">{app.full_name}</div>
+                          <div className="font-semibold text-slate-200 text-xs">{app.full_name}</div>
                           <div className="text-[9px] text-slate-500">{app.email}</div>
                         </td>
                         <td className="p-4">
-                          <div className="max-w-[200px] truncate text-slate-300">{app.college_name}</div>
+                          <div className="max-w-[200px] truncate text-slate-350">{app.college_name}</div>
                           <div className="text-[9px] text-slate-500">{app.course} - {app.branch}</div>
                         </td>
                         <td className="p-4 text-center font-bold text-cyan-300">{app.total_score}</td>
@@ -485,13 +585,23 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
-                            <button
-                              onClick={() => handleDeleteApp(app.id!)}
-                              className="p-1.5 border border-cyan-950 text-red-400 hover:border-red-500/30 rounded-lg cursor-pointer"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            {app.is_deleted ? (
+                              <button
+                                onClick={() => handleRestoreApp(app.id!)}
+                                className="p-1.5 border border-cyan-950 text-emerald-400 hover:border-emerald-500/30 rounded-lg cursor-pointer"
+                                title="Restore Application"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleDeleteApp(app.id!)}
+                                className="p-1.5 border border-cyan-950 text-red-400 hover:border-red-500/30 rounded-lg cursor-pointer"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -503,7 +613,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
 
             {/* Mobile View Card Grid (Optimized for 360px-412px screens) */}
             <div className="block md:hidden space-y-3">
-              {filteredApps.map((app) => {
+              {scoreFilteredApps.map((app) => {
                 const isDupe = app.duplicate_warning;
                 return (
                   <div
@@ -515,9 +625,9 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                   >
                     {/* Header: Ref ID & Duplicate Warn */}
                     <div className="flex justify-between items-center border-b border-cyan-950/40 pb-2">
-                      <span className="font-bold text-white">{app.reference_id}</span>
+                      <span className="font-bold text-white text-xs">{app.reference_id}</span>
                       <div className="flex items-center space-x-2">
-                        {isDupe && <span className="text-[10px] text-rose-500 font-bold">DUPLICATE ⚠</span>}
+                        {isDupe && <span className="text-[10px] text-rose-500 font-bold">DUPE ⚠</span>}
                         <span className="text-[10px] text-slate-500 font-mono">
                           {app.created_at ? new Date(app.created_at).toLocaleDateString() : ""}
                         </span>
@@ -527,7 +637,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                     {/* Candidate Identity */}
                     <div>
                       <div className="text-white font-bold text-xs">{app.full_name}</div>
-                      <div className="text-slate-550 text-[10px] truncate">{app.email}</div>
+                      <div className="text-slate-500 text-[10px] truncate">{app.email}</div>
                       <div className="text-slate-400 mt-1">{app.college_name}</div>
                       <div className="text-slate-500 text-[10px]">{app.course} - {app.branch}</div>
                     </div>
@@ -535,7 +645,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                     {/* Scores & Badges */}
                     <div className="flex items-center justify-between pt-1">
                       <div>
-                        <span className="text-slate-550 mr-1 text-[10px]">Score:</span>
+                        <span className="text-slate-500 mr-1 text-[10px]">Score:</span>
                         <span className="text-cyan-300 font-bold">{app.total_score}</span>
                       </div>
                       
@@ -565,6 +675,29 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                 );
               })}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between mt-6 bg-slate-950/40 border border-cyan-950/60 p-3 rounded-2xl">
+                <button
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 border border-cyan-950 text-cyan-400 hover:border-cyan-500/30 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed font-mono text-[10px] cursor-pointer"
+                >
+                  &larr; PREVIOUS
+                </button>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  PAGE {currentPage} OF {totalPages} ({totalCount} MATCHES)
+                </span>
+                <button
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 border border-cyan-950 text-cyan-400 hover:border-cyan-500/30 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed font-mono text-[10px] cursor-pointer"
+                >
+                  NEXT &rarr;
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -576,7 +709,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
           setIsDetailsOpen(false);
           setSelectedApp(null);
         }}
-        title={selectedApp ? `Applicant: ${selectedApp.reference_id}` : "Applicant Profile"}
+        title={selectedApp ? `Applicant Profile: ${selectedApp.reference_id}` : "Applicant Profile"}
       >
         {selectedApp && (
           <div className="space-y-6 text-left font-mono text-[11px] pb-6">
@@ -612,14 +745,25 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                   <Download className="w-3.5 h-3.5" />
                   <span>PDF</span>
                 </Button3D>
-                <Button3D
-                  variant="danger"
-                  size="sm"
-                  onClick={() => handleDeleteApp(selectedApp.id!)}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>DELETE</span>
-                </Button3D>
+                {selectedApp.is_deleted ? (
+                  <Button3D
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleRestoreApp(selectedApp.id!)}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>RESTORE</span>
+                  </Button3D>
+                ) : (
+                  <Button3D
+                    variant="danger"
+                    size="sm"
+                    onClick={() => handleDeleteApp(selectedApp.id!)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>DELETE</span>
+                  </Button3D>
+                )}
               </div>
             </div>
 
@@ -647,39 +791,56 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                 <div>Written Qual: <span className="text-white font-bold">{selectedApp.written_quality_score} / 10</span></div>
               </div>
 
-              {/* Status Update Fields */}
-              <div className="space-y-3">
-                <Select
-                  label="Update Manual Status"
-                  name="manual_status"
-                  value={manualStatus}
-                  onChange={(e) => setManualStatus(e.target.value)}
-                  options={[
-                    { value: "Pending", label: "Pending Review" },
-                    { value: "Selected", label: "Selected (Auto Selected)" },
-                    { value: "Shortlisted", label: "Shortlisted" },
-                    { value: "Rejected", label: "Rejected" },
-                    { value: "Duplicate", label: "Duplicate Entry" },
-                  ]}
-                />
-                
-                <Textarea
-                  label="Administrative Notes"
-                  name="admin_notes"
-                  value={adminNotes}
-                  onChange={(e) => setAdminNotes(e.target.value)}
-                  placeholder="Type updates or candidate audit info..."
-                />
+              {selectedApp.is_deleted ? (
+                <div className="p-4 border border-rose-950/60 rounded-2xl bg-rose-950/10 space-y-3 text-center">
+                  <div className="text-[10px] text-rose-400 font-bold uppercase tracking-wider">RECORD IN TRASH BIN</div>
+                  <p className="text-[10px] text-slate-350 leading-relaxed">
+                    This applicant details are currently soft-deleted. No status modifications can be saved until this record is restored.
+                  </p>
+                  <Button3D
+                    variant="primary"
+                    onClick={() => handleRestoreApp(selectedApp.id!)}
+                    className="w-full py-2.5 text-[11px]"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>RESTORE ENTRY NOW</span>
+                  </Button3D>
+                </div>
+              ) : (
+                /* Status Update Fields */
+                <div className="space-y-3">
+                  <Select
+                    label="Update Manual Status"
+                    name="manual_status"
+                    value={manualStatus}
+                    onChange={(e) => setManualStatus(e.target.value)}
+                    options={[
+                      { value: "Pending", label: "Pending Review" },
+                      { value: "Selected", label: "Selected (Auto Selected)" },
+                      { value: "Shortlisted", label: "Shortlisted" },
+                      { value: "Rejected", label: "Rejected" },
+                      { value: "Duplicate", label: "Duplicate Entry" },
+                    ]}
+                  />
+                  
+                  <Textarea
+                    label="Administrative Notes"
+                    name="admin_notes"
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    placeholder="Type updates or candidate audit info..."
+                  />
 
-                <Button3D
-                  variant="primary"
-                  onClick={handleUpdateStatusAndNotes}
-                  disabled={updating}
-                  className="w-full py-2.5 text-[11px]"
-                >
-                  {updating ? "UPDATING CONSOLE..." : "SAVE CONSOLE STATUS"}
-                </Button3D>
-              </div>
+                  <Button3D
+                    variant="primary"
+                    onClick={handleUpdateStatusAndNotes}
+                    disabled={updating}
+                    className="w-full py-2.5 text-[11px]"
+                  >
+                    {updating ? "UPDATING CONSOLE..." : "SAVE CONSOLE STATUS"}
+                  </Button3D>
+                </div>
+              )}
             </div>
 
             {/* 2. Identity Info */}
@@ -741,7 +902,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
                   </div>
                 )}
                 {!selectedApp.github_link && !selectedApp.portfolio_link && !selectedApp.linkedin_link && (
-                  <div className="text-slate-500">No external developer links provided.</div>
+                  <div className="text-slate-550">No external developer links provided.</div>
                 )}
               </div>
             </div>
@@ -825,7 +986,7 @@ export default function AdminDashboard({ token, onLogout }: AdminDashboardProps)
             </div>
 
             {/* 8. Submitted dates */}
-            <div className="text-[9px] text-slate-550 border-t border-cyan-950/40 pt-3">
+            <div className="text-[9px] text-slate-600 border-t border-cyan-950/40 pt-3">
               RECORD_CREATED_AT: {selectedApp.created_at ? new Date(selectedApp.created_at).toISOString() : "N/A"}<br />
               RECORD_UPDATED_AT: {selectedApp.updated_at ? new Date(selectedApp.updated_at).toISOString() : "N/A"}
             </div>

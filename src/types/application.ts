@@ -105,8 +105,11 @@ export interface ApplicationData {
   duplicate_warning?: boolean;
   duplicate_reason?: string;
 
+  is_deleted?: number;
+  deleted_at?: string;
+
   created_at?: string;
   updated_at?: string;
 }
 
-export type ApplicationStage = "intro" | "entry" | "application" | "success" | "admin-gate" | "admin-dashboard";
+export type ApplicationStage = "startGate" | "intro" | "preApplication" | "application" | "success" | "admin-gate" | "admin-dashboard";

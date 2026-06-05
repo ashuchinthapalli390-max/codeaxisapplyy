@@ -1,36 +1,95 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CodeXa Apply
 
-## Getting Started
+CodeXa Agency free developer internship application portal built with Next.js, React, TypeScript, Tailwind CSS, MySQL, `mysql2/promise`, and jsPDF.
 
-First, run the development server:
+## Environment Variables
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Create `.env.local` for local development:
+
+```env
+DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE_NAME"
+ADMIN_PASSKEY="Ashu×Luger"
+ADMIN_SESSION_SECRET="replace-with-random-long-secret"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Do not use `NEXT_PUBLIC_DATABASE_URL`. Database access must stay server-side only.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Vercel Setup
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+In Vercel:
 
-## Learn More
+1. Open your project.
+2. Go to `Settings` -> `Environment Variables`.
+3. Add these variables for `Production`, `Preview`, and `Development`:
 
-To learn more about Next.js, take a look at the following resources:
+```env
+DATABASE_URL=mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME
+ADMIN_PASSKEY=Ashu×Luger
+ADMIN_SESSION_SECRET=any-long-random-secret-here
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+4. Go to `Deployments` -> latest deployment -> `Redeploy`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+If the database password has special characters, URL encode them:
 
-## Deploy on Vercel
+```text
+@ = %40
+# = %23
+& = %26
+% = %25
+/ = %2F
+: = %3A
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Example:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```text
+Ashu@123# -> Ashu%40123%23
+```
+
+## Database
+
+Import the schema before accepting applications:
+
+```bash
+mysql -u USER -p DATABASE_NAME < database/schema.sql
+```
+
+Application records are saved permanently in MySQL through `DATABASE_URL`. The app does not fake-save submitted records, use JSON-file storage, or store admin records in localStorage.
+
+## Missing Database Behavior
+
+If `DATABASE_URL` is missing:
+
+- Homepage opens.
+- Start gate, intro, pre-application screen, and application form open.
+- Submit/admin database APIs return JSON errors.
+- Applicant submit shows: `Database connection is not configured yet. Please contact CodeXa support.`
+- Form data stays on screen and autosave draft remains available.
+
+## Local Development
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`.
+
+## Build
+
+```bash
+npm run build
+```
+
+On Windows/OneDrive, `.next` can occasionally be locked by a running dev server. Stop `next dev`, delete the generated `.next` folder, then run the build again.
+
+## Troubleshooting
+
+`DATABASE_URL is missing`: add `DATABASE_URL` in Vercel Environment Variables and redeploy.
+
+`Unexpected end of JSON input`: APIs should return JSON, and the submit form safely handles empty/non-JSON responses. Check Vercel function logs for the original server error.
+
+`Data disappeared`: submitted/admin records require a real MySQL database. Browser localStorage is only for incomplete applicant drafts.
+
+`Admin shows database error`: configure `DATABASE_URL`, import `database/schema.sql`, then redeploy.

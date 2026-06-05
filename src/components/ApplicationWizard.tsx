@@ -10,6 +10,7 @@ import Button3D from "@/components/ui/Button3D";
 import { ApplicationData } from "@/types/application";
 import { validateStep } from "@/lib/validation";
 import { saveDraft } from "@/lib/autosave";
+import { playButtonClick, playSuccessSound } from "@/lib/audio";
 
 interface ApplicationWizardProps {
   initialData?: Partial<ApplicationData>;
@@ -344,13 +345,36 @@ const CODING_TOPICS = [
   },
 ];
 
+function getSafeStep(step: number) {
+  if (!Number.isFinite(step)) return 1;
+  return Math.min(9, Math.max(1, Math.trunc(step)));
+}
+
+async function readJsonResponse(response: Response) {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    throw new Error("Server returned an empty response.");
+  }
+
+  try {
+    return JSON.parse(text) as {
+      success?: boolean;
+      data?: { reference_id?: string };
+      error?: string;
+    };
+  } catch {
+    throw new Error("Server returned a non-JSON response.");
+  }
+}
+
 export default function ApplicationWizard({
   initialData = {},
   initialStep = 1,
   onSuccess,
   onBackToEntry,
 }: ApplicationWizardProps) {
-  const [step, setStep] = useState(initialStep);
+  const [step, setStep] = useState(() => getSafeStep(initialStep));
   const [formData, setFormData] = useState<ApplicationData>({
     ...INITIAL_FORM,
     ...initialData,
@@ -380,7 +404,7 @@ export default function ApplicationWizard({
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
   ) => {
     const { name, value, type } = e.target;
-    let finalValue: any = value;
+    let finalValue: string | boolean = value;
 
     if (type === "checkbox") {
       finalValue = (e.target as HTMLInputElement).checked;
@@ -417,6 +441,7 @@ export default function ApplicationWizard({
   };
 
   const handleNext = () => {
+    playButtonClick();
     const stepErrors = validateStep(step, formData);
     if (Object.keys(stepErrors).length > 0) {
       setErrors(stepErrors);
@@ -434,6 +459,7 @@ export default function ApplicationWizard({
   };
 
   const handleBack = () => {
+    playButtonClick();
     setErrors({});
     if (step === 1) {
       onBackToEntry();
@@ -444,6 +470,7 @@ export default function ApplicationWizard({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    playButtonClick();
 
     const stepErrors = validateStep(9, formData);
     if (Object.keys(stepErrors).length > 0) {
@@ -463,16 +490,19 @@ export default function ApplicationWizard({
         body: JSON.stringify(formData),
       });
 
-      const result = await response.json();
+      const result = await readJsonResponse(response);
 
       if (result.success && result.data?.reference_id) {
+        playSuccessSound();
         onSuccess(result.data.reference_id, {
           ...formData,
           reference_id: result.data.reference_id,
           created_at: new Date().toISOString(),
         });
       } else {
-        setSubmitError(result.error || "Submission failed. Your progress is saved. Please try again.");
+        setSubmitError(
+          result.error || "Submission failed. Your progress is saved. Please try again."
+        );
       }
     } catch (err) {
       console.error("Submission failed:", err);
@@ -484,31 +514,56 @@ export default function ApplicationWizard({
 
   return (
     <div ref={containerRef} className="flex flex-col justify-center min-h-screen px-4 py-8">
-      {/* Container - mobile locked width */}
-      <div className="w-full max-w-md mx-auto cyber-glass rounded-3xl p-5 md:p-6 flex flex-col relative overflow-hidden">
+      
+      {/* Container - mobile locked width with 3D border glow */}
+      <div className="w-full max-w-md mx-auto glass-container-3d p-5 md:p-6 flex flex-col relative overflow-hidden">
         
         {/* Decorative elements */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-cyan-500" />
-        <div className="absolute top-3 left-4 text-[9px] font-mono text-cyan-500/40">STEP {step} / 9</div>
-        <div className="absolute top-3 right-4 text-[9px] font-mono text-cyan-500/40">SECURE_LINK</div>
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0066ff] via-[#00f0ff] to-[#bd00ff]" />
+        <div className="absolute top-3.5 left-4 text-[9px] font-mono text-cyan-400/60">SYSTEM STAGE: {step} / 9</div>
+        
+        {/* Step Circular Progress Ring Telemetry */}
+        <div className="absolute top-2 right-4 flex items-center space-x-2">
+          <span className="text-[9px] font-mono text-[#bd00ff]/60">SYNCING</span>
+          <svg className="w-6 h-6 transform -rotate-90">
+            <circle
+              cx="12"
+              cy="12"
+              r="8"
+              className="stroke-slate-950 fill-none"
+              strokeWidth="1.5"
+            />
+            <circle
+              cx="12"
+              cy="12"
+              r="8"
+              className="stroke-[#00f0ff] fill-none transition-all duration-300"
+              strokeWidth="1.5"
+              strokeDasharray="50.26"
+              strokeDashoffset={50.26 - (step / 9) * 50.26}
+              style={{ filter: "drop-shadow(0 0 3px #00f0ff)" }}
+            />
+          </svg>
+        </div>
 
         {/* Progress bar */}
         <div className="w-full mt-6 mb-6">
-          <div className="w-full h-1 bg-slate-900 border border-cyan-950/40 rounded-full overflow-hidden">
+          <div className="w-full h-1 bg-slate-950 border border-cyan-950/60 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300 shadow-[0_0_8px_#06b6d4]"
+              className="h-full bg-gradient-to-r from-[#0066ff] via-[#00f0ff] to-[#bd00ff] rounded-full transition-all duration-300 shadow-[0_0_8px_#00f0ff]"
               style={{ width: `${(step / 9) * 100}%` }}
             />
           </div>
         </div>
 
         {/* Step Content Area */}
-        <div className="flex-grow mb-20">
+        <div className="flex-grow mb-20 text-left">
           
           {/* STEP 1: Identity Module */}
           {step === 1 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4 flex items-center">
+                <span className="w-1.5 h-3 bg-[#00f0ff] rounded-sm mr-2 inline-block"></span>
                 Step 1: Identity Scan
               </h3>
               <Input
@@ -556,7 +611,7 @@ export default function ApplicationWizard({
                 value={formData.whatsapp_number}
                 onChange={handleChange}
                 error={errors.whatsapp_number}
-                placeholder="WhatsApp number (if different)"
+                placeholder="WhatsApp number (optional)"
                 optional
               />
               <Input
@@ -565,7 +620,7 @@ export default function ApplicationWizard({
                 value={formData.discord_username}
                 onChange={handleChange}
                 error={errors.discord_username}
-                placeholder="username#0000 or username"
+                placeholder="username (optional)"
                 optional
               />
               <Input
@@ -583,7 +638,8 @@ export default function ApplicationWizard({
           {/* STEP 2: Academic Module */}
           {step === 2 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4 flex items-center">
+                <span className="w-1.5 h-3 bg-[#bd00ff] rounded-sm mr-2 inline-block"></span>
                 Step 2: Academic Verification
               </h3>
               <Input
@@ -662,7 +718,8 @@ export default function ApplicationWizard({
           {/* STEP 3: Developer Presence */}
           {step === 3 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-2">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-2 flex items-center">
+                <span className="w-1.5 h-3 bg-[#0066ff] rounded-sm mr-2 inline-block"></span>
                 Step 3: Developer Presence
               </h3>
               <p className="text-[10px] text-slate-400 mb-4 font-mono leading-relaxed">
@@ -698,7 +755,8 @@ export default function ApplicationWizard({
           {/* STEP 4: Readiness Scan */}
           {step === 4 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide flex items-center">
+                <span className="w-1.5 h-3 bg-[#10b981] rounded-sm mr-2 inline-block"></span>
                 Step 4: Readiness Scan
               </h3>
               
@@ -766,7 +824,8 @@ export default function ApplicationWizard({
           {/* STEP 5: Intent Mapping */}
           {step === 5 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4 flex items-center">
+                <span className="w-1.5 h-3 bg-[#ffd700] rounded-sm mr-2 inline-block"></span>
                 Step 5: Intent Mapping
               </h3>
               
@@ -819,14 +878,15 @@ export default function ApplicationWizard({
           {/* STEP 6: Mindset Assessment (Vertical cards) */}
           {step === 6 && (
             <div className="space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide flex items-center">
+                <span className="w-1.5 h-3 bg-[#00f0ff] rounded-sm mr-2 inline-block"></span>
                 Step 6: Mindset Assessment
               </h3>
               <p className="text-[10px] text-slate-400 font-mono leading-relaxed mb-2">
-                Evaluate scenarios carefully. Note: Correct/best answers are NOT shown to candidates.
+                Evaluate scenarios carefully. Selected options will highlight with a neon cyber glow.
               </p>
 
-              {MINDSET_QUESTIONS.map((item, qIdx) => (
+              {MINDSET_QUESTIONS.map((item) => (
                 <div 
                   key={item.key} 
                   className={`p-4 rounded-2xl border ${
@@ -859,7 +919,8 @@ export default function ApplicationWizard({
           {/* STEP 7: Basic Coding Awareness (Conditional follow-ups) */}
           {step === 7 && (
             <div className="space-y-5">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide flex items-center">
+                <span className="w-1.5 h-3 bg-[#bd00ff] rounded-sm mr-2 inline-block"></span>
                 Step 7: Coding Awareness
               </h3>
               <p className="text-[10px] text-slate-400 font-mono leading-relaxed mb-2">
@@ -910,8 +971,8 @@ export default function ApplicationWizard({
                     {/* Conditional Follow-up MCQs */}
                     {showFollowups && (
                       <div className="space-y-4 border-t border-cyan-950/60 pt-4 mt-2">
-                        <div className="text-[9px] font-mono text-cyan-500/70 tracking-wider">
-                          CONDITIONAL MODULES ACTIVATED
+                        <div className="text-[9px] font-mono text-[#bd00ff] font-bold tracking-wider">
+                          CONDITIONAL CHALLENGE ACTIVATED
                         </div>
 
                         {/* Q1 */}
@@ -966,7 +1027,8 @@ export default function ApplicationWizard({
           {/* STEP 8: Thought Process Essay Questions */}
           {step === 8 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4 flex items-center">
+                <span className="w-1.5 h-3 bg-[#0066ff] rounded-sm mr-2 inline-block"></span>
                 Step 8: Thought Process
               </h3>
               
@@ -1025,7 +1087,8 @@ export default function ApplicationWizard({
           {/* STEP 9: Final Confirmation & Submit */}
           {step === 9 && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4">
+              <h3 className="text-sm font-bold text-white uppercase font-mono tracking-wide mb-4 flex items-center">
+                <span className="w-1.5 h-3 bg-[#10b981] rounded-sm mr-2 inline-block"></span>
                 Step 9: Final Confirmation
               </h3>
               
@@ -1087,7 +1150,7 @@ export default function ApplicationWizard({
         </div>
 
         {/* Sticky bottom navigation */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-cyan-950/60 bg-slate-950/85 backdrop-blur-md flex items-center justify-between space-x-3">
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-cyan-950/45 bg-slate-950/90 backdrop-blur-md flex items-center justify-between space-x-3">
           <Button3D
             type="button"
             variant="secondary"
@@ -1113,7 +1176,7 @@ export default function ApplicationWizard({
               variant="primary"
               onClick={handleSubmit}
               disabled={isSubmitting}
-              className="flex-grow-[2]"
+              className="flex-grow-[2] shadow-[0_0_15px_rgba(0,240,255,0.2)]"
             >
               {isSubmitting ? "SUBMITTING..." : "SUBMIT APPLICATION"}
             </Button3D>

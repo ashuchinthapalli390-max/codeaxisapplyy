@@ -10,7 +10,7 @@ interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "typ
 
 export default function Checkbox({ label, error, className = "", id, checked, onChange, ...props }: CheckboxProps) {
   return (
-    <div className="w-full mb-4 text-left">
+    <div className={`w-full mb-4 text-left ${className}`}>
       <label 
         htmlFor={id}
         className="flex items-start space-x-3 cursor-pointer select-none font-mono"

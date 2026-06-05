@@ -14,10 +14,8 @@ export default function OptionCard({ letter, text, selected, onClick }: OptionCa
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left p-4 rounded-xl border font-mono transition-all duration-300 transform active:scale-[0.99] flex items-center space-x-3 cursor-pointer ${
-        selected
-          ? "bg-cyan-950/40 border-cyan-400 text-white shadow-[0_0_15px_rgba(6,182,212,0.2)]"
-          : "bg-slate-950/70 border-cyan-950/70 hover:border-cyan-500/30 text-slate-350 hover:bg-slate-950/90"
+      className={`w-full text-left p-4 rounded-xl font-mono option-3d-card transition-all duration-300 transform active:scale-[0.99] flex items-center space-x-3 cursor-pointer ${
+        selected ? "selected" : ""
       }`}
     >
       {/* Option Letter Indicator */}
@@ -32,7 +30,7 @@ export default function OptionCard({ letter, text, selected, onClick }: OptionCa
       </span>
       
       {/* Option Text */}
-      <span className="text-[11px] leading-relaxed flex-1">{text}</span>
+      <span className="text-[11px] leading-relaxed flex-1 text-slate-200 font-semibold">{text}</span>
     </button>
   );
 }

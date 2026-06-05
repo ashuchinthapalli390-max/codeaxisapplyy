@@ -20,7 +20,7 @@ export function exportToCsv(applications: ApplicationData[]): string {
     "Created At",
   ];
 
-  const escapeCsv = (str: any) => {
+  const escapeCsv = (str: unknown) => {
     if (str === null || str === undefined) return "";
     const cleanStr = String(str).replace(/"/g, '""');
     return cleanStr.includes(",") || cleanStr.includes("\n") || cleanStr.includes('"')

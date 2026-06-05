@@ -21,19 +21,19 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { id, manual_status, admin_notes } = body;
+    const { id } = body;
 
     if (!id) {
       return jsonResponse({ success: false, error: "Application ID is required." }, 400);
     }
 
-    // Execute update statement
-    const updateResult = await dbQuery<MutationResult>(
-      "UPDATE applications SET manual_status = ?, admin_notes = ? WHERE id = ?",
-      [manual_status, admin_notes, id]
+    // Execute restore statement
+    const restoreResult = await dbQuery<MutationResult>(
+      "UPDATE applications SET is_deleted = 0, deleted_at = NULL WHERE id = ?",
+      [id]
     );
 
-    if (updateResult.affectedRows === 0) {
+    if (restoreResult.affectedRows === 0) {
       return jsonResponse({ success: false, error: "Application record not found." }, 404);
     }
 
@@ -41,19 +41,19 @@ export async function POST(req: NextRequest) {
     await dbQuery(
       "INSERT INTO admin_audit_logs (action_type, application_id, details) VALUES (?, ?, ?)",
       [
-        "UPDATE_STATUS",
+        "RESTORE_APPLICATION",
         id,
-        `Status updated to '${manual_status}' with notes: '${admin_notes}'`,
+        `Restored soft-deleted application record ID: ${id}`,
       ]
     );
 
     return jsonResponse({
       success: true,
-      message: "Application successfully updated."
+      message: "Application successfully restored."
     });
 
   } catch (err) {
-    console.error("applications update crash:", err);
+    console.error("applications restore crash:", err);
     if (isDatabaseConfigError(err)) {
       return jsonResponse({
         success: false,
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
 
     return jsonResponse({ 
       success: false, 
-      error: err instanceof Error ? err.message : "Internal server error database update." 
+      error: err instanceof Error ? err.message : "Internal server error database restore." 
     }, 500);
   }
 }

@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import CodingBackground from "@/components/CodingBackground";
+import AudioController from "@/components/AudioController";
+import StartGate from "@/components/StartGate";
 import IntroAnimation from "@/components/IntroAnimation";
 import EntryScreen from "@/components/EntryScreen";
 import ApplicationWizard from "@/components/ApplicationWizard";
@@ -13,48 +15,56 @@ import Button3D from "@/components/ui/Button3D";
 import { ApplicationData, ApplicationStage } from "@/types/application";
 import { loadDraft, clearDraft } from "@/lib/autosave";
 
+function getSafeWizardStep(step: number) {
+  if (!Number.isFinite(step)) return 1;
+  return Math.min(9, Math.max(1, Math.trunc(step)));
+}
+
 export default function Home() {
-  const [stage, setStage] = useState<ApplicationStage>("intro");
+  const [stage, setStage] = useState<ApplicationStage>("startGate");
   const [wizardStep, setWizardStep] = useState(1);
   const [formData, setFormData] = useState<Partial<ApplicationData>>({});
   const [submittedData, setSubmittedData] = useState<ApplicationData | null>(null);
 
   // Draft recovery states
-  const [hasDraft, setHasDraft] = useState(false);
   const [draftInfo, setDraftInfo] = useState<{ step: number; updatedAt: string | null } | null>(null);
   const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
 
   const [adminToken, setAdminToken] = useState<string>("");
 
-  // Check for local storage drafts on mount / when intro finishes
+  // Check for local storage drafts on mount / when the entry screen is visible
   useEffect(() => {
-    if (stage === "entry") {
+    if (stage !== "preApplication") return;
+
+    const timer = window.setTimeout(() => {
       const draft = loadDraft();
       if (draft && draft.started && draft.step > 0) {
-        setHasDraft(true);
-        setDraftInfo({ step: draft.step, updatedAt: draft.updatedAt });
+        setDraftInfo({ step: getSafeWizardStep(draft.step), updatedAt: draft.updatedAt });
         setIsRestoreModalOpen(true);
+      } else {
+        setDraftInfo(null);
       }
-    }
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [stage]);
 
-  const handleIntroComplete = () => {
-    setStage("entry");
-  };
+  const handleIntroComplete = useCallback(() => {
+    setStage("preApplication");
+  }, []);
 
-  const handleStartApplication = () => {
-    // Standard fresh launch
+  const handleStartApplication = useCallback(() => {
     clearDraft();
     setFormData({});
     setWizardStep(1);
     setStage("application");
-  };
+  }, []);
 
   const handleContinueDraft = () => {
     const draft = loadDraft();
     if (draft) {
       setFormData(draft.data);
-      setWizardStep(draft.step);
+      setWizardStep(getSafeWizardStep(draft.step));
       setStage("application");
     }
     setIsRestoreModalOpen(false);
@@ -79,66 +89,93 @@ export default function Home() {
     setFormData({});
     setSubmittedData(null);
     setWizardStep(1);
-    setStage("entry");
+    setStage("preApplication");
   };
 
-  return (
-    <main className="min-h-screen text-slate-100 relative">
-      {/* High-fidelity Cyber Coding Terminal Ambient Background */}
-      <CodingBackground />
+  const renderStage = () => {
+    if (stage === "startGate") {
+      return <StartGate onStart={() => setStage("intro")} />;
+    }
 
-      {/* STAGE: INTRO ANIMATION */}
-      {stage === "intro" && (
-        <IntroAnimation onComplete={handleIntroComplete} />
-      )}
+    if (stage === "intro") {
+      return <IntroAnimation onComplete={handleIntroComplete} />;
+    }
 
-      {/* STAGE: ENTRY SCREEN */}
-      {stage === "entry" && (
+    if (stage === "preApplication") {
+      return (
         <EntryScreen
           onStartApplication={handleStartApplication}
           onAdminAccess={() => setStage("admin-gate")}
         />
-      )}
+      );
+    }
 
-      {/* STAGE: APPLICATION FORM WIZARD */}
-      {stage === "application" && (
+    if (stage === "application") {
+      return (
         <ApplicationWizard
           initialData={formData}
           initialStep={wizardStep}
           onSuccess={handleSubmitSuccess}
-          onBackToEntry={() => setStage("entry")}
+          onBackToEntry={() => setStage("preApplication")}
         />
-      )}
+      );
+    }
 
-      {/* STAGE: SUCCESS & PDF RECEIPT */}
-      {stage === "success" && submittedData && (
-        <ApplicantSuccess
-          data={submittedData}
-          onStartFresh={handleStartFreshSuccess}
+    if (stage === "success") {
+      if (submittedData) {
+        return (
+          <ApplicantSuccess
+            data={submittedData}
+            onStartFresh={handleStartFreshSuccess}
+          />
+        );
+      }
+      return (
+        <EntryScreen
+          onStartApplication={handleStartApplication}
+          onAdminAccess={() => setStage("admin-gate")}
         />
-      )}
+      );
+    }
 
-      {/* STAGE: ADMIN SECURITY ACCESS GATE */}
-      {stage === "admin-gate" && (
+    if (stage === "admin-gate") {
+      return (
         <AdminGate
           onSuccess={(token) => {
             setAdminToken(token);
             setStage("admin-dashboard");
           }}
-          onCancel={() => setStage("entry")}
+          onCancel={() => setStage("preApplication")}
         />
-      )}
+      );
+    }
 
-      {/* STAGE: ADMIN DASHBOARD CONTROL PANEL */}
-      {stage === "admin-dashboard" && adminToken && (
+    if (stage === "admin-dashboard" && adminToken) {
+      return (
         <AdminDashboard
           token={adminToken}
           onLogout={() => {
             setAdminToken("");
-            setStage("entry");
+            setStage("preApplication");
           }}
         />
-      )}
+      );
+    }
+
+    // Unknown or invalid stage — always show pre-application screen
+    return (
+      <EntryScreen
+        onStartApplication={handleStartApplication}
+        onAdminAccess={() => setStage("admin-gate")}
+      />
+    );
+  };
+
+  return (
+    <main className="min-h-screen text-slate-100 relative z-0">
+      <CodingBackground />
+      <AudioController />
+      <div className="relative z-10">{renderStage()}</div>
 
       {/* DRAFT RESTORATION DIALOG MODAL */}
       <Modal

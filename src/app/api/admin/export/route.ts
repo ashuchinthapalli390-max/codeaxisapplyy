@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { dbQuery } from "@/lib/db";
+import {
+  DATABASE_CONFIG_ERROR_MESSAGE,
+  dbQuery,
+  isDatabaseConfigError,
+} from "@/lib/db";
 import { exportToCsv } from "@/lib/csv";
 import { exportToJson } from "@/lib/jsonExport";
+import { jsonResponse } from "@/lib/safeJson";
+import { ApplicationData } from "@/types/application";
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,13 +16,13 @@ export async function GET(req: NextRequest) {
     const expectedToken = `CAX-AUTH-SESSION-${Buffer.from(correctKey).toString("base64")}`;
 
     if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
-      return NextResponse.json({ success: false, error: "Unauthorized access." }, { status: 401 });
+      return jsonResponse({ success: false, error: "Unauthorized access." }, 401);
     }
 
     const { searchParams } = new URL(req.url);
     const format = searchParams.get("format") || "json";
 
-    const applications = await dbQuery("SELECT * FROM applications ORDER BY created_at DESC");
+    const applications = await dbQuery<ApplicationData[]>("SELECT * FROM applications ORDER BY created_at DESC");
 
     if (format === "csv") {
       const csvData = exportToCsv(applications);
@@ -38,6 +44,16 @@ export async function GET(req: NextRequest) {
 
   } catch (err) {
     console.error("applications export API crash:", err);
-    return NextResponse.json({ success: false, error: "Internal server error during data compile." }, { status: 500 });
+    if (isDatabaseConfigError(err)) {
+      return jsonResponse({
+        success: false,
+        error: DATABASE_CONFIG_ERROR_MESSAGE
+      }, 500);
+    }
+
+    return jsonResponse({ 
+      success: false, 
+      error: err instanceof Error ? err.message : "Internal server error during data compile." 
+    }, 500);
   }
 }

@@ -1,6 +1,14 @@
 import { NextRequest } from "next/server";
-import { dbQuery } from "@/lib/db";
+import {
+  DATABASE_CONFIG_ERROR_MESSAGE,
+  dbQuery,
+  isDatabaseConfigError,
+} from "@/lib/db";
 import { jsonResponse } from "@/lib/safeJson";
+
+interface MutationResult {
+  affectedRows: number;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,9 +27,9 @@ export async function POST(req: NextRequest) {
       return jsonResponse({ success: false, error: "Application ID is required." }, 400);
     }
 
-    // Execute delete statement
-    const deleteResult = await dbQuery(
-      "DELETE FROM applications WHERE id = ?",
+    // Execute soft delete statement
+    const deleteResult = await dbQuery<MutationResult>(
+      "UPDATE applications SET is_deleted = 1, deleted_at = NOW() WHERE id = ?",
       [id]
     );
 
@@ -33,19 +41,29 @@ export async function POST(req: NextRequest) {
     await dbQuery(
       "INSERT INTO admin_audit_logs (action_type, application_id, details) VALUES (?, ?, ?)",
       [
-        "DELETE_APPLICATION",
+        "SOFT_DELETE_APPLICATION",
         id,
-        `Hard deleted application record ID: ${id}`,
+        `Soft deleted application record ID: ${id}`,
       ]
     );
 
     return jsonResponse({
       success: true,
-      message: "Application permanently deleted."
+      message: "Application moved to Trash."
     });
 
   } catch (err) {
     console.error("applications delete crash:", err);
-    return jsonResponse({ success: false, error: "Internal server error database delete." }, 500);
+    if (isDatabaseConfigError(err)) {
+      return jsonResponse({
+        success: false,
+        error: DATABASE_CONFIG_ERROR_MESSAGE
+      }, 500);
+    }
+
+    return jsonResponse({ 
+      success: false, 
+      error: err instanceof Error ? err.message : "Internal server error database delete." 
+    }, 500);
   }
 }

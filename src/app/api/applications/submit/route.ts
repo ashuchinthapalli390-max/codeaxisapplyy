@@ -1,10 +1,24 @@
 import { NextRequest } from "next/server";
-import { dbQuery } from "@/lib/db";
+import {
+  DATABASE_CONFIG_ERROR_MESSAGE,
+  dbQuery,
+  isDatabaseConfigError,
+} from "@/lib/db";
 import { validateFullApplication } from "@/lib/validation";
 import { calculateScores } from "@/lib/scoring";
-import { generateReferenceId } from "@/lib/referenceId";
 import { jsonResponse } from "@/lib/safeJson";
-import { ApplicationData } from "@/types/application";
+
+interface DuplicateRow {
+  id: number;
+  email: string;
+  phone_number: string;
+  whatsapp_number: string | null;
+  roll_number: string;
+}
+
+interface ReferenceRow {
+  reference_id: string;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,9 +40,9 @@ export async function POST(req: NextRequest) {
     // Duplicate checks
     const { email, phone_number, whatsapp_number, roll_number } = body;
     let duplicate_warning = false;
-    let duplicate_reason_parts: string[] = [];
+    const duplicate_reason_parts: string[] = [];
 
-    const dupes = await dbQuery(
+    const dupes = await dbQuery<DuplicateRow[]>(
       `SELECT id, email, phone_number, whatsapp_number, roll_number FROM applications WHERE 
        email = ? OR phone_number = ? OR (whatsapp_number IS NOT NULL AND whatsapp_number = ?) OR roll_number = ?`,
       [email, phone_number, whatsapp_number || null, roll_number]
@@ -38,7 +52,7 @@ export async function POST(req: NextRequest) {
       duplicate_warning = true;
       const matchedFields = new Set<string>();
       
-      dupes.forEach((row: any) => {
+      dupes.forEach((row) => {
         if (row.email.toLowerCase() === email.toLowerCase()) matchedFields.add("email");
         if (row.phone_number === phone_number) matchedFields.add("phone");
         if (whatsapp_number && row.whatsapp_number === whatsapp_number) matchedFields.add("whatsapp");
@@ -48,7 +62,21 @@ export async function POST(req: NextRequest) {
       duplicate_reason_parts.push(`Matches existing application fields: ${Array.from(matchedFields).join(", ")}`);
     }
 
-    const reference_id = generateReferenceId();
+    // 2. Generate sequential reference ID: CAX-2026-000001 format
+    let nextNum = 1;
+    try {
+      const lastApp = await dbQuery<ReferenceRow[]>("SELECT reference_id FROM applications ORDER BY id DESC LIMIT 1");
+      if (lastApp && lastApp.length > 0) {
+        const lastRef = lastApp[0].reference_id;
+        const match = lastRef.match(/CAX-2026-(\d+)/);
+        if (match) {
+          nextNum = parseInt(match[1], 10) + 1;
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch last reference_id, defaulting to 1:", err);
+    }
+    const reference_id = `CAX-2026-${String(nextNum).padStart(6, "0")}`;
 
     // Prepare MySQL save values
     const query = `
@@ -70,7 +98,7 @@ export async function POST(req: NextRequest) {
         agreement_free_internship, agreement_selection_quality, agreement_step_by_step, agreement_no_misuse, agreement_revenue_share,
         mindset_score, coding_awareness_score, profile_completion_score, written_quality_score, total_score,
         auto_status, manual_status, admin_notes,
-        duplicate_warning, duplicate_reason
+        duplicate_warning, duplicate_reason, form_data
       ) VALUES (
         ?, ?, ?, ?, ?, ?, ?, ?, 
         ?, ?, ?, ?, ?, ?, 
@@ -89,7 +117,7 @@ export async function POST(req: NextRequest) {
         ?, ?, ?, ?, ?, 
         ?, ?, ?, ?, ?, 
         ?, ?, ?, 
-        ?, ?
+        ?, ?, ?
       )
     `;
 
@@ -187,6 +215,7 @@ export async function POST(req: NextRequest) {
       
       duplicate_warning ? 1 : 0,
       duplicate_warning ? duplicate_reason_parts.join("; ") : null,
+      JSON.stringify(body)
     ];
 
     await dbQuery(query, params);
@@ -200,9 +229,17 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     console.error("API application submission crash:", err);
+    
+    if (isDatabaseConfigError(err)) {
+      return jsonResponse({
+        success: false,
+        error: DATABASE_CONFIG_ERROR_MESSAGE
+      }, 500);
+    }
+
     return jsonResponse({
       success: false,
-      error: "Internal server error database insert. Your details are saved locally. Please try again."
+      error: err instanceof Error ? err.message : "Internal server error database insert."
     }, 500);
   }
 }

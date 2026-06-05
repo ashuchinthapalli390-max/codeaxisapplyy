@@ -4,8 +4,8 @@
 
 -- Applications Table
 CREATE TABLE IF NOT EXISTS applications (
-  id INT AUTO_INCREMENT PRIMARY KEY,
-  reference_id VARCHAR(50) NOT NULL UNIQUE,
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  reference_id VARCHAR(91) NOT NULL UNIQUE,
 
   -- Step 1: Identity Module
   full_name VARCHAR(255) NOT NULL,
@@ -112,6 +112,16 @@ CREATE TABLE IF NOT EXISTS applications (
   duplicate_warning TINYINT(1) NOT NULL DEFAULT 0,
   duplicate_reason VARCHAR(255) NULL,
 
+  -- PDF URL
+  pdf_url VARCHAR(255) DEFAULT NULL,
+
+  -- Soft delete flags
+  is_deleted TINYINT(1) DEFAULT 0,
+  deleted_at DATETIME DEFAULT NULL,
+
+  -- JSON Raw Data Backup
+  form_data JSON DEFAULT NULL,
+
   -- Timestamps
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -125,9 +135,9 @@ CREATE TABLE IF NOT EXISTS applications (
 
 -- Admin Audit Logs
 CREATE TABLE IF NOT EXISTS admin_audit_logs (
-  id INT AUTO_INCREMENT PRIMARY KEY,
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
   action_type VARCHAR(100) NOT NULL, -- UPDATE_STATUS, DELETE_APPLICATION, etc.
-  application_id INT NULL,
+  application_id BIGINT NULL,
   details TEXT NOT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
