@@ -12,9 +12,12 @@ import Checkbox from "@/components/ui/Checkbox";
 import OptionCard from "@/components/ui/OptionCard";
 import Button3D from "@/components/ui/Button3D";
 import Modal from "@/components/ui/Modal";
+import ClipboardWarningModal from "@/components/application/ClipboardWarningModal";
+import ApplicationResetOverlay from "@/components/application/ApplicationResetOverlay";
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
+import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed } from "@/lib/integrity";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -326,11 +329,12 @@ export default function ApplicationFormPage() {
   const [draftFound, setDraftFound] = useState(false);
   const [draftRound, setDraftRound] = useState(1);
 
-  // Anti-Cheat states
+  // Anti-Cheat & 5-Strike Integrity states
   const [copyWarningModal, setCopyWarningModal] = useState<{ open: boolean; warningNum: number }>({
     open: false,
     warningNum: 1,
   });
+  const [isResetting, setIsResetting] = useState(false);
   const [tabWarningModal, setTabWarningModal] = useState(false);
 
   // Submission animation overlay
@@ -396,38 +400,53 @@ export default function ApplicationFormPage() {
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  // Copy-paste interceptor
+  // Centralized Clipboard Integrity Violation Trigger (5-Strike Policy)
+  const triggerClipboardViolation = (fieldName?: string) => {
+    playWarningTone();
+    setFormData((prev) => {
+      const count = (prev.copy_paste_warnings_count || 0) + 1;
+      if (count < MAX_CLIPBOARD_WARNINGS) {
+        setCopyWarningModal({ open: true, warningNum: count });
+      } else {
+        // 5th Strike — Trigger Full Application Reset Sequence
+        setIsResetting(true);
+      }
+      return { ...prev, copy_paste_warnings_count: count };
+    });
+  };
+
+  // Window-level Capture Listener for Paste, Copy, and Cut on Monitored Answer Fields
   useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
+    const handleClipboardAction = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) {
-        // Skip blocking URLs in Round 3 developer links
-        if (target.getAttribute("name")?.includes("link") || target.getAttribute("name")?.includes("Url")) {
+      if (!target) return;
+
+      const tagName = target.tagName;
+      if (tagName === "INPUT" || tagName === "TEXTAREA") {
+        const name = target.getAttribute("name") || "";
+        const type = target.getAttribute("type") || "";
+
+        // Explicit URL & whitelisted link fields are 100% permitted (no violation)
+        if (isFieldClipboardAllowed(name, type)) {
           return;
         }
 
+        // Protected application answer field — intercept and register violation!
         e.preventDefault();
-        playWarningTone();
-
-        setFormData((prev) => {
-          const count = (prev.copy_paste_warnings_count || 0) + 1;
-          if (count === 1) {
-            setCopyWarningModal({ open: true, warningNum: 1 });
-          } else if (count === 2) {
-            setCopyWarningModal({ open: true, warningNum: 2 });
-          } else if (count >= 3) {
-            // Reset application
-            localStorage.removeItem("codexa_application_draft");
-            setCopyWarningModal({ open: true, warningNum: 3 });
-          }
-          return { ...prev, copy_paste_warnings_count: count };
-        });
+        triggerClipboardViolation(name);
       }
     };
 
-    window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
-  }, [router]);
+    window.addEventListener("paste", handleClipboardAction, true);
+    window.addEventListener("copy", handleClipboardAction, true);
+    window.addEventListener("cut", handleClipboardAction, true);
+
+    return () => {
+      window.removeEventListener("paste", handleClipboardAction, true);
+      window.removeEventListener("copy", handleClipboardAction, true);
+      window.removeEventListener("cut", handleClipboardAction, true);
+    };
+  }, []);
 
   const scrollToTop = () => {
     formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -676,7 +695,16 @@ export default function ApplicationFormPage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-4 text-[10px] text-slate-400">
+          <div className="flex items-center gap-2.5 sm:gap-3 text-xs">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-950/40 border border-red-500/30 text-[10px] text-red-300 font-bold">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              INTEGRITY ACTIVE
+            </span>
+            {(formData.copy_paste_warnings_count || 0) > 0 && (
+              <span className="px-2.5 py-1 rounded-full bg-amber-950/70 border border-amber-500/40 text-[10px] text-amber-300 font-bold animate-pulse">
+                WARNINGS: {formData.copy_paste_warnings_count} / {MAX_CLIPBOARD_WARNINGS}
+              </span>
+            )}
             <span className="hidden sm:inline-flex items-center gap-1.5 text-emerald-400">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               AUTOSAVED
@@ -1918,7 +1946,7 @@ export default function ApplicationFormPage() {
                 <div className="flex items-center justify-between">
                   <span>Paste Warnings:</span>
                   <span className={formData.copy_paste_warnings_count > 0 ? "text-amber-400 font-bold" : "text-slate-300"}>
-                    {formData.copy_paste_warnings_count} / 3
+                    {formData.copy_paste_warnings_count} / {MAX_CLIPBOARD_WARNINGS}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -1969,45 +1997,15 @@ export default function ApplicationFormPage() {
         </div>
       </Modal>
 
-      {/* Copy-Paste Warning Modal */}
-      <Modal
-        isOpen={copyWarningModal.open}
+      {/* Dedicated 5-Strike Clipboard Warning Modal (Warnings 1 to 4) */}
+      <ClipboardWarningModal
+        open={copyWarningModal.open}
+        warningNum={copyWarningModal.warningNum}
         onClose={() => setCopyWarningModal({ open: false, warningNum: 1 })}
-        title={copyWarningModal.warningNum >= 3 ? "Application Reset" : `Paste Interceptor — Warning ${copyWarningModal.warningNum}/3`}
-      >
-        <div className="space-y-4">
-          {copyWarningModal.warningNum === 1 && (
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Copy/paste is strictly monitored in the assessment to ensure genuine, self-written responses. Please write your answers directly.
-            </p>
-          )}
-          {copyWarningModal.warningNum === 2 && (
-            <p className="text-xs text-amber-300 leading-relaxed font-bold">
-              FINAL WARNING: One more paste attempt will automatically reset your entire application and clear all saved answers.
-            </p>
-          )}
-          {copyWarningModal.warningNum >= 3 && (
-            <p className="text-xs text-red-400 leading-relaxed font-bold">
-              Application reset due to repeated paste attempts. Please review the screening integrity rules before restarting.
-            </p>
-          )}
-          <div className="pt-2">
-            <Button3D
-              type="button"
-              variant="primary"
-              onClick={() => {
-                setCopyWarningModal({ open: false, warningNum: 1 });
-                if (copyWarningModal.warningNum >= 3) {
-                  router.push("/apply/rules");
-                }
-              }}
-              className="w-full py-3 text-xs font-bold"
-            >
-              {copyWarningModal.warningNum >= 3 ? "RETURN TO RULES" : "I UNDERSTAND"}
-            </Button3D>
-          </div>
-        </div>
-      </Modal>
+      />
+
+      {/* Fullscreen 5th Violation Application Reset Overlay */}
+      <ApplicationResetOverlay active={isResetting} />
 
       {/* Tab Switch Warning Modal */}
       <Modal

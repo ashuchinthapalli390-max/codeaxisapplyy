@@ -1,0 +1,78 @@
+"use client";
+
+import React from "react";
+import { isFieldClipboardAllowed } from "@/lib/integrity";
+
+interface ApplicationTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string;
+  error?: string;
+  helperText?: string;
+  allowClipboard?: boolean;
+  onClipboardViolation?: () => void;
+}
+
+export default function ApplicationTextarea({
+  label,
+  error,
+  helperText,
+  name,
+  allowClipboard = false,
+  onClipboardViolation,
+  onCopy,
+  onCut,
+  onPaste,
+  className = "",
+  ...props
+}: ApplicationTextareaProps) {
+  const isAllowed = allowClipboard || isFieldClipboardAllowed(name, "textarea");
+
+  const handleCopy = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!isAllowed) {
+      e.preventDefault();
+      onClipboardViolation?.();
+    }
+    onCopy?.(e);
+  };
+
+  const handleCut = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!isAllowed) {
+      e.preventDefault();
+      onClipboardViolation?.();
+    }
+    onCut?.(e);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!isAllowed) {
+      e.preventDefault();
+      onClipboardViolation?.();
+    }
+    onPaste?.(e);
+  };
+
+  return (
+    <div className="space-y-1.5 font-mono text-left w-full">
+      {label && (
+        <label htmlFor={props.id || name} className="text-xs font-bold text-slate-200 block">
+          {label} {props.required && <span className="text-red-500">*</span>}
+        </label>
+      )}
+
+      <textarea
+        name={name}
+        onCopy={handleCopy}
+        onCut={handleCut}
+        onPaste={handlePaste}
+        className={`w-full px-4 py-3 bg-black/60 border rounded-xl text-slate-100 text-xs focus:outline-none transition-all placeholder:text-slate-600 leading-relaxed resize-y ${
+          error
+            ? "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+            : "border-red-950/80 focus:border-red-500 focus:shadow-[0_0_15px_rgba(239,68,68,0.25)]"
+        } ${className}`}
+        {...props}
+      />
+
+      {error && <p className="text-[11px] text-red-400 font-bold">{error}</p>}
+      {!error && helperText && <p className="text-[10px] text-slate-500">{helperText}</p>}
+    </div>
+  );
+}

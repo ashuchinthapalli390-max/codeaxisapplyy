@@ -1,18 +1,26 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import Checkbox from "@/components/ui/Checkbox";
 import Button3D from "@/components/ui/Button3D";
-import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Flame, ShieldAlert, Sparkles } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Link2, ShieldAlert, Sparkles } from "lucide-react";
 import { playButtonClick } from "@/lib/audio";
 
 export default function RulesPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [agreed, setAgreed] = useState(false);
+  const [wasReset, setWasReset] = useState(false);
+
+  useEffect(() => {
+    if (searchParams?.get("reset") === "integrity_limit") {
+      setWasReset(true);
+    }
+  }, [searchParams]);
 
   const handleBegin = () => {
     if (!agreed) return;
@@ -27,27 +35,32 @@ export default function RulesPage() {
     {
       icon: <ShieldAlert className="w-4 h-4 text-red-400" />,
       title: "Fill Information Genuinely",
-      desc: "Provide authentic personal, educational, and developer profile links. Genuine intent is our primary selection criterion.",
+      desc: "Provide authentic personal, educational, and developer responses. Genuine intent, learning attitude, and responsibility are our primary criteria.",
     },
     {
       icon: <Copy className="w-4 h-4 text-rose-400" />,
-      title: "Copy/Paste Interceptor & Integrity Protection",
-      desc: "Do not copy/paste external generated responses into the assessment. Warning 1 & Warning 2 will trigger alerts, and a 3rd paste attempt will reset the entire application.",
+      title: "Application Integrity & Clipboard Protection (5-Strike Policy)",
+      desc: "Copy, Cut, and Paste are strictly restricted in normal application, technical assessment, and interview answer fields. Warnings 1 to 4 will trigger alerts. The 5th restricted clipboard attempt will immediately reset the entire application.",
+    },
+    {
+      icon: <Link2 className="w-4 h-4 text-emerald-400" />,
+      title: "Designated URL / Link Fields Exception",
+      desc: "Clipboard operations (Copy, Cut, Paste) are fully allowed in designated link fields such as GitHub, LinkedIn, Portfolio, and Project Repository URLs without any warnings.",
     },
     {
       icon: <Eye className="w-4 h-4 text-red-500" />,
       title: "Tab Switch Monitoring",
-      desc: "Unnecessary browser tab switches are recorded as review telemetry for human evaluators. Please remain on the application portal.",
+      desc: "Switching away from the screening window is recorded as review telemetry for human evaluators. Please complete the assessment in one continuous session.",
     },
     {
       icon: <Sparkles className="w-4 h-4 text-rose-500" />,
-      title: "Technical Knowledge Is Not Compulsory",
+      title: "Technical Knowledge Is Optional",
       desc: "If you don't know a language (C, Python, Java, etc.), simply select 'I Don't Know'. You will not receive tricky questions and will NOT be penalized.",
     },
     {
       icon: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
-      title: "Autosave & Draft Recovery",
-      desc: "Your progress is saved locally after every interaction. If your connection drops, you can restore your draft seamlessly upon return.",
+      title: "Continuous Autosave & Progress Recovery",
+      desc: "Your progress is saved locally after every interaction. If your connection drops, your draft remains safely preserved.",
     },
   ];
 
@@ -67,8 +80,21 @@ export default function RulesPage() {
       <CodingBackground />
       <Navbar />
 
-      <main className="flex-grow pt-32 pb-20 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 text-left font-mono">
+      <main className="flex-grow pt-32 pb-20 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 text-left font-mono">
         
+        {/* Reset alert banner if redirected after 5th strike */}
+        {wasReset && (
+          <div className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-200 text-xs flex items-center gap-3 animate-bounce">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <span className="font-bold uppercase tracking-wider block text-white">
+                Application Progress Reset
+              </span>
+              <span>The 5-strike clipboard integrity limit was reached. Your previous responses have been cleared. You may start a fresh application below.</span>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="space-y-3 text-center sm:text-left">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/30 bg-red-950/20 text-[10px] font-bold tracking-[0.2em] text-red-400 uppercase">
@@ -79,7 +105,7 @@ export default function RulesPage() {
             Application Rules & Guidelines
           </h1>
           <p className="text-xs text-slate-300 leading-relaxed">
-            Please read these guidelines carefully before initiating your 8-round screening assessment.
+            Please read these integrity guidelines carefully before initiating your 8-round screening assessment.
           </p>
         </div>
 
@@ -114,7 +140,7 @@ export default function RulesPage() {
               onChange={(e) => setAgreed((e.target as HTMLInputElement).checked)}
               label={
                 <span className="text-xs text-white font-bold">
-                  I have read, understood, and agree to abide by all CodeXa application rules, integrity monitoring, and screening policies.
+                  I understand the 5-strike application integrity rules, agree to write original responses, and accept all screening policies.
                 </span>
               }
             />
