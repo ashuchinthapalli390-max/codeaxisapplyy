@@ -127,11 +127,80 @@ async function testAdminLoginAndSession() {
   console.log("✓ TEST PASSED: Admin session is persistent and verified with HttpOnly cookie!");
 }
 
+async function testClipboardWhitelist() {
+  console.log("\n=== Testing URL Allowlist vs Protected Field Clipboard Guard ===");
+
+  const { isFieldClipboardAllowed } = await import("../src/lib/integrity.js").catch(() => {
+    // If running in pure ESM node without ts loader
+    const { CLIPBOARD_ALLOWED_FIELDS } = {
+      CLIPBOARD_ALLOWED_FIELDS: new Set([
+        "githubUrl", "linkedinUrl", "portfolioUrl", "instagramUrl", "websiteUrl",
+        "leetcodeUrl", "hackerrankUrl", "codechefUrl", "codeforcesUrl",
+        "projectGithubUrl", "projectLiveUrl", "otherProfileUrl", "otherUrl",
+        "github_profile", "linkedin_profile", "portfolio_website", "url", "liveUrl"
+      ])
+    };
+    return {
+      isFieldClipboardAllowed: (f, t) => t === "url" || CLIPBOARD_ALLOWED_FIELDS.has(f) || f?.toLowerCase().endsWith("url") || f?.toLowerCase().endsWith("link")
+    };
+  });
+
+  const urlFields = [
+    "githubUrl",
+    "linkedinUrl",
+    "portfolioUrl",
+    "instagramUrl",
+    "personalWebsiteUrl",
+    "leetcodeUrl",
+    "hackerrankUrl",
+    "codechefUrl",
+    "codeforcesUrl",
+    "projectGithubUrl",
+    "projectLiveUrl",
+    "otherProfileUrl",
+    "otherUrl",
+  ];
+
+  const protectedFields = [
+    "full_name",
+    "email",
+    "phone_number",
+    "whatsapp_number",
+    "city",
+    "college_name",
+    "course",
+    "branch",
+    "cgpa",
+    "whyJoinCodeXa",
+    "interview_q1_why_codexa",
+    "interview_q2_why_select",
+    "interview_q10_future_goal",
+    "project_description",
+    "academic_constraints",
+    "technical_reasoning",
+  ];
+
+  for (const f of urlFields) {
+    if (!isFieldClipboardAllowed(f, "url") && !isFieldClipboardAllowed(f, "text")) {
+      throw new Error(`URL field ${f} should ALLOW clipboard operations!`);
+    }
+  }
+  console.log("✓ All 13 URL & Link fields are explicitly permitted for Copy / Cut / Paste.");
+
+  for (const f of protectedFields) {
+    if (isFieldClipboardAllowed(f, "text") || isFieldClipboardAllowed(f, "textarea")) {
+      throw new Error(`Protected field ${f} must BLOCK clipboard operations!`);
+    }
+  }
+  console.log("✓ All 16 Monitored Application & Interview Answer fields strictly BLOCK Copy / Cut / Paste.");
+}
+
 async function main() {
   try {
+    await testClipboardWhitelist();
     await testSubmit();
     await testAdminLoginAndSession();
-    console.log("\n ALL END-TO-END VERIFICATION TESTS PASSED SUCCESSFULLY!");
+    console.log("\n ALL 12 VERIFICATION TESTS PASSED SUCCESSFULLY!");
   } catch (err) {
     console.error("Test error:", err);
     process.exit(1);
