@@ -36,16 +36,16 @@ export async function POST(req: NextRequest) {
 
     const saved = await saveApplication(fullApplicationData);
 
-    // Asynchronously dispatch confirmation emails if RESEND_API_KEY is configured
+    // Asynchronously dispatch Resend confirmation email after successful database save
     try {
-      const { sendApplicantConfirmationEmail } = await import("@/lib/email");
-      await sendApplicantConfirmationEmail({
-        ...fullApplicationData,
-        id: saved.id,
-        reference_id: saved.reference_id,
+      const { sendApplicationReceivedEmail } = await import("@/lib/email/send-application-received");
+      await sendApplicationReceivedEmail({
+        name: fullApplicationData.full_name,
+        email: fullApplicationData.email,
+        referenceId: saved.reference_id,
       });
     } catch (emailErr) {
-      console.warn("Email notification skipped/failed:", emailErr);
+      console.warn("Application received email notification failed:", emailErr);
     }
 
     return NextResponse.json({

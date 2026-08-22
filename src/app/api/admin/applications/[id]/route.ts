@@ -37,6 +37,24 @@ export async function POST(
 
     if (action === "update_status" && status) {
       const ok = await updateApplicationStatus(id, status, note, adminUser || "Master Admin");
+
+      // If status is changed to "Selected", trigger automated onboarding email with private Discord/WhatsApp invites
+      if (ok && status.toLowerCase() === "selected") {
+        try {
+          const app = await getApplicationByRef(id);
+          if (app && app.email) {
+            const { sendSelectedEmail } = await import("@/lib/email/send-selected");
+            await sendSelectedEmail({
+              name: app.full_name,
+              email: app.email,
+              referenceId: app.reference_id || id,
+            });
+          }
+        } catch (selEmailErr) {
+          console.warn("Selected email notification error:", selEmailErr);
+        }
+      }
+
       return NextResponse.json({ success: ok, message: `Status updated to ${status}.` });
     }
 
