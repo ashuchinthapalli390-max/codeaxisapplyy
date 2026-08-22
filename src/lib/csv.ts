@@ -13,10 +13,9 @@ export function exportToCsv(applications: ApplicationData[]): string {
     "Branch",
     "Roll Number",
     "Total Score",
-    "Mindset Score",
-    "Coding Score",
-    "Auto Status",
-    "Manual Status",
+    "Score Band",
+    "Commitment Signal",
+    "Status",
     "Created At",
   ];
 
@@ -44,10 +43,9 @@ export function exportToCsv(applications: ApplicationData[]): string {
       app.branch,
       app.roll_number,
       app.total_score,
-      app.mindset_score,
-      app.coding_awareness_score,
-      app.auto_status,
-      app.manual_status,
+      app.score_band,
+      app.commitment_signal,
+      app.status,
       app.created_at,
     ];
     csvRows.push(values.map(escapeCsv).join(","));

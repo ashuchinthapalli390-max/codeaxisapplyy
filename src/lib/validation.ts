@@ -1,190 +1,119 @@
 import { ApplicationData } from "@/types/application";
 
-export function validateStep(step: number, data: Partial<ApplicationData>): Record<string, string> {
+export function validateRound(
+  round: number,
+  data: Partial<ApplicationData>
+): Record<string, string> {
   const errors: Record<string, string> = {};
 
-  // Email format validator
-  const isValidEmail = (email: string) => {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  };
+  if (round === 1) {
+    if (!data.full_name?.trim()) errors.full_name = "Full name is required.";
+    if (!data.date_of_birth?.trim()) errors.date_of_birth = "Date of birth is required.";
+    if (!data.email?.trim()) {
+      errors.email = "Email address is required.";
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email.trim())) {
+      errors.email = "Please enter a valid email address.";
+    }
+    if (!data.phone_number?.trim()) {
+      errors.phone_number = "Phone number is required.";
+    } else if (data.phone_number.replace(/\D/g, "").length < 10) {
+      errors.phone_number = "Please enter a valid 10-digit phone number.";
+    }
+    if (!data.city?.trim()) errors.city = "City is required.";
+    if (!data.state?.trim()) errors.state = "State is required.";
+    if (!data.country?.trim()) errors.country = "Country is required.";
+  }
 
-  // Phone number format validator
-  const isValidPhone = (phone: string) => {
-    return /^\d{10,15}$/.test(phone.replace(/[\s\-+()]/g, ""));
-  };
+  if (round === 2) {
+    if (!data.college_name?.trim()) errors.college_name = "College / Institution name is required.";
+    if (!data.university_name?.trim()) errors.university_name = "University / Board is required.";
+    if (!data.course?.trim()) errors.course = "Course / Degree is required.";
+    if (!data.branch?.trim()) errors.branch = "Branch / Specialization is required.";
+    if (!data.academic_year?.trim()) errors.academic_year = "Academic year is required.";
+    if (!data.semester?.trim()) errors.semester = "Current semester is required.";
+    if (!data.roll_number?.trim()) errors.roll_number = "Roll / Registration number is required.";
+    if (!data.expected_graduation?.trim()) errors.expected_graduation = "Expected graduation year is required.";
+  }
 
-  switch (step) {
-    case 1:
-      if (!data.full_name || !data.full_name.trim()) {
-        errors.full_name = "Full Name is required";
-      }
-      if (!data.date_of_birth) {
-        errors.date_of_birth = "Date of Birth is required";
-      }
-      if (!data.email || !data.email.trim()) {
-        errors.email = "Email Address is required";
-      } else if (!isValidEmail(data.email)) {
-        errors.email = "Please enter a valid email address";
-      }
-      if (!data.phone_number || !data.phone_number.trim()) {
-        errors.phone_number = "Phone Number is required";
-      } else if (!isValidPhone(data.phone_number)) {
-        errors.phone_number = "Please enter a valid phone number (at least 10 digits)";
-      }
-      if (!data.city_state || !data.city_state.trim()) {
-        errors.city_state = "City & State is required";
-      }
-      break;
+  if (round === 3) {
+    if (!data.coding_start_timeline?.trim()) errors.coding_start_timeline = "Please select when you started coding.";
+    if (!data.has_built_projects?.trim()) errors.has_built_projects = "Please select your project experience.";
+  }
 
-    case 2:
-      if (!data.college_name || !data.college_name.trim()) {
-        errors.college_name = "College Name is required";
-      }
-      if (!data.course || !data.course.trim()) {
-        errors.course = "Course is required";
-      }
-      if (!data.branch || !data.branch.trim()) {
-        errors.branch = "Branch is required";
-      }
-      if (!data.academic_year) {
-        errors.academic_year = "Academic Year is required";
-      }
-      if (!data.semester) {
-        errors.semester = "Semester is required";
-      }
-      if (!data.roll_number || !data.roll_number.trim()) {
-        errors.roll_number = "Roll Number is required";
-      }
-      break;
+  if (round === 4) {
+    if (!data.daily_availability?.trim()) errors.daily_availability = "Please specify your daily availability.";
+    if (!data.available_days || data.available_days.length === 0) {
+      errors.available_days = "Please select at least one available day.";
+    }
+    if (!data.preferred_timing || data.preferred_timing.length === 0) {
+      errors.preferred_timing = "Please select at least one preferred time slot.";
+    }
+    if (!data.can_attend_meetings?.trim()) errors.can_attend_meetings = "Please confirm meeting availability.";
+    if (!data.can_meet_deadlines?.trim()) errors.can_meet_deadlines = "Please confirm deadline adherence.";
+    if (!data.can_communicate_if_unavailable?.trim()) {
+      errors.can_communicate_if_unavailable = "Please confirm communication commitment.";
+    }
+    if (!data.laptop_status?.trim()) errors.laptop_status = "Please select your laptop/device status.";
+    if (!data.operating_system?.trim()) errors.operating_system = "Please select your primary OS.";
+    if (!data.ram_capacity?.trim()) errors.ram_capacity = "Please select your RAM capacity.";
+    if (!data.internet_stability?.trim()) errors.internet_stability = "Please select your internet stability.";
+    if (!data.can_run_dev_tools?.trim()) errors.can_run_dev_tools = "Please confirm if your device runs dev tools.";
+  }
 
-    case 3:
-      // Developer Presence - All fields optional. No errors.
-      break;
+  if (round === 5) {
+    if (!data.c_level?.trim()) errors.c_level = "Please select your C skill level.";
+    if (!data.python_level?.trim()) errors.python_level = "Please select your Python skill level.";
+    if (!data.java_level?.trim()) errors.java_level = "Please select your Java skill level.";
+    if (!data.html_level?.trim()) errors.html_level = "Please select your HTML skill level.";
+    if (!data.vibe_coding_level?.trim()) errors.vibe_coding_level = "Please select your Vibe Coding experience.";
+  }
 
-    case 4:
-      if (!data.coding_level) {
-        errors.coding_level = "Coding Level selection is required";
+  if (round === 6) {
+    const mindset = data.mindset_answers || {};
+    for (let i = 1; i <= 10; i++) {
+      if (!mindset[`mindset_q${i}`]) {
+        errors[`mindset_q${i}`] = `Please answer question ${i}.`;
       }
-      if (!data.device_status) {
-        errors.device_status = "Device Status selection is required";
-      }
-      if (!data.daily_availability) {
-        errors.daily_availability = "Daily Availability selection is required";
-      }
-      if (!data.module_readiness) {
-        errors.module_readiness = "Module Readiness selection is required";
-      }
-      break;
+    }
+  }
 
-    case 5:
-      if (!data.project_experience) {
-        errors.project_experience = "Project Experience selection is required";
-      }
-      if (!data.future_build_goal || !data.future_build_goal.trim()) {
-        errors.future_build_goal = "Future project goal is required";
-      }
-      if (!data.join_reason || !data.join_reason.trim()) {
-        errors.join_reason = "Reason to join CodeAxis is required";
-      }
-      if (!data.selection_reason || !data.selection_reason.trim()) {
-        errors.selection_reason = "Reason for selection is required";
-      }
-      break;
+  if (round === 7) {
+    const essays: [keyof ApplicationData, string][] = [
+      ["interview_q1_why_codexa", "Question 1: Why join CodeXa"],
+      ["interview_q2_why_select", "Question 2: Why should we select you"],
+      ["interview_q3_expectations", "Question 3: Internship expectations"],
+      ["interview_q4_strongest_skills", "Question 4: Strongest skills"],
+      ["interview_q5_weakest_area", "Question 5: Weakest area"],
+      ["interview_q6_describe_project", "Question 6: Project description"],
+      ["interview_q7_difficult_problem", "Question 7: Difficult problem solved"],
+      ["interview_q8_ai_coding_usage", "Question 8: AI coding workflow"],
+      ["interview_q9_college_balance", "Question 9: College balance strategy"],
+      ["interview_q10_future_goal", "Question 10: Future career aspiration"],
+    ];
 
-    case 6:
-      // 10 Mindset Assessment questions
-      const mindsetKeys = [
-        "mindset_q1", "mindset_q2", "mindset_q3", "mindset_q4", "mindset_q5",
-        "mindset_q6", "mindset_q7", "mindset_q8", "mindset_q9", "mindset_q10"
-      ];
-      mindsetKeys.forEach((key, idx) => {
-        const val = data[key as keyof ApplicationData];
-        if (!val) {
-          errors[key] = `Scenario ${idx + 1} selection is required`;
-        }
-      });
-      break;
+    essays.forEach(([key, label]) => {
+      const text = ((data[key] as string) || "").trim();
+      if (!text) {
+        errors[key] = `${label} is required.`;
+      } else if (text.length < 20) {
+        errors[key] = `${label} is too brief. Please write at least 20 characters (current: ${text.length}).`;
+      }
+    });
+  }
 
-    case 7:
-      // 7 Coding Awareness topics
-      const topics = [
-        { key: "python", name: "Python" },
-        { key: "java", name: "Java" },
-        { key: "js_ts", name: "JavaScript / TypeScript" },
-        { key: "webstack", name: "WebStack" },
-        { key: "vibe_coding", name: "Vibe Coding" },
-        { key: "ai_prompting", name: "AI Prompting" },
-        { key: "github_projects", name: "GitHub / Projects" }
-      ];
-
-      topics.forEach((topic) => {
-        const awarenessKey = `${topic.key}_awareness` as keyof ApplicationData;
-        const awarenessVal = data[awarenessKey];
-
-        if (!awarenessVal) {
-          errors[awarenessKey] = `Topic selection for ${topic.name} is required`;
-        } else if (awarenessVal === "Yes" || awarenessVal === "Little bit") {
-          // Require follow-up questions
-          const q1Key = `${topic.key}_q1` as keyof ApplicationData;
-          const q2Key = `${topic.key}_q2` as keyof ApplicationData;
-
-          if (!data[q1Key]) {
-            errors[q1Key] = `Follow-up Question 1 for ${topic.name} is required`;
-          }
-          if (!data[q2Key]) {
-            errors[q2Key] = `Follow-up Question 2 for ${topic.name} is required`;
-          }
-        }
-      });
-      break;
-
-    case 8:
-      if (!data.failure_experience_answer || !data.failure_experience_answer.trim()) {
-        errors.failure_experience_answer = "This written answer is required";
-      }
-      if (!data.trust_with_tools_answer || !data.trust_with_tools_answer.trim()) {
-        errors.trust_with_tools_answer = "This written answer is required";
-      }
-      if (!data.priority_answer || !data.priority_answer.trim()) {
-        errors.priority_answer = "This written answer is required";
-      }
-      if (!data.not_selected_answer || !data.not_selected_answer.trim()) {
-        errors.not_selected_answer = "This written answer is required";
-      }
-      if (!data.code_understanding_answer || !data.code_understanding_answer.trim()) {
-        errors.code_understanding_answer = "This written answer is required";
-      }
-      break;
-
-    case 9:
-      if (!data.agreement_free_internship) {
-        errors.agreement_free_internship = "Must accept free internship terms";
-      }
-      if (!data.agreement_selection_quality) {
-        errors.agreement_selection_quality = "Must accept selection parameters";
-      }
-      if (!data.agreement_step_by_step) {
-        errors.agreement_step_by_step = "Must accept training parameters";
-      }
-      if (!data.agreement_no_misuse) {
-        errors.agreement_no_misuse = "Must accept anti-misuse guidelines";
-      }
-      if (!data.agreement_revenue_share) {
-        errors.agreement_revenue_share = "Must accept revenue share terms";
-      }
-      break;
-
-    default:
-      break;
+  if (round === 8) {
+    if (!data.commitment_accurate_info) errors.commitment_accurate_info = "You must confirm information accuracy.";
+    if (!data.commitment_independent_work) errors.commitment_independent_work = "You must confirm independent assessment completion.";
+    if (!data.commitment_responsible_communication) errors.commitment_responsible_communication = "You must accept responsible communication rules.";
+    if (!data.commitment_team_rules) errors.commitment_team_rules = "You must agree to team coordination guidelines.";
+    if (!data.commitment_confidentiality) errors.commitment_confidentiality = "You must agree to project confidentiality.";
+    if (!data.commitment_assigned_duties) errors.commitment_assigned_duties = "You must commit to assigned learning duties.";
+    if (!data.commitment_no_guaranteed_employment) errors.commitment_no_guaranteed_employment = "You must acknowledge program terms.";
+    if (!data.commitment_accept_policies) errors.commitment_accept_policies = "You must accept CodeXa internship policies.";
   }
 
   return errors;
 }
 
-export function validateFullApplication(data: Partial<ApplicationData>): Record<string, string> {
-  let allErrors: Record<string, string> = {};
-  for (let step = 1; step <= 9; step++) {
-    allErrors = { ...allErrors, ...validateStep(step, data) };
-  }
-  return allErrors;
-}
+// Backward compatibility alias
+export const validateStep = validateRound;

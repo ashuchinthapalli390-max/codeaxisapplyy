@@ -24,8 +24,18 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "CodeXa Apply - Free Developer Internship Application",
-  description: "Apply for the free developer internship and start your journey with step-by-step learning, AI-assisted coding, and real project practice.",
+  title: {
+    default: "CodeXa Apply — Developer Recruitment & Internship",
+    template: "%s | CodeXa Apply",
+  },
+  description: "Official developer screening and recruitment portal for CodeXa Developer Internship 2026. 8-round screening with real agency projects.",
+  icons: {
+    icon: [
+      { url: "/logo.jpeg", type: "image/jpeg" },
+    ],
+    shortcut: "/logo.jpeg",
+    apple: "/logo.jpeg",
+  },
 };
 
 export default function RootLayout({
@@ -36,9 +46,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${orbitron.variable} ${rajdhani.variable} ${cinzel.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <head>
+        <link rel="icon" href="/logo.jpeg" type="image/jpeg" />
+        <link rel="shortcut icon" href="/logo.jpeg" type="image/jpeg" />
+        <link rel="apple-touch-icon" href="/logo.jpeg" />
+      </head>
+      <body suppressHydrationWarning className="min-h-full flex flex-col">
+        {children}
+      </body>
     </html>
   );
 }

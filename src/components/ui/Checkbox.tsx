@@ -4,42 +4,49 @@ import React, { InputHTMLAttributes } from "react";
 import { Check } from "lucide-react";
 
 interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
-  label: string;
+  label: React.ReactNode;
   error?: string;
 }
 
-export default function Checkbox({ label, error, className = "", id, checked, onChange, ...props }: CheckboxProps) {
+export default function Checkbox({
+  label,
+  error,
+  checked,
+  className = "",
+  id,
+  ...props
+}: CheckboxProps) {
+  const checkboxId = id || (props.name ? `checkbox-${props.name}` : undefined);
+
   return (
-    <div className={`w-full mb-4 text-left ${className}`}>
-      <label 
-        htmlFor={id}
-        className="flex items-start space-x-3 cursor-pointer select-none font-mono"
+    <div className="flex flex-col space-y-1 text-left">
+      <label
+        htmlFor={checkboxId}
+        className="flex items-start space-x-3 cursor-pointer group"
       >
-        <div className="relative flex items-center mt-0.5">
+        <div className="relative flex items-center justify-center mt-0.5 shrink-0">
           <input
+            id={checkboxId}
             type="checkbox"
-            id={id}
             checked={checked}
-            onChange={onChange}
-            className="sr-only"
+            className="peer sr-only"
             {...props}
           />
-          {/* Custom Checkbox Frame */}
           <div
-            className={`w-5 h-5 rounded-md border flex items-center justify-center transition-all duration-300 ${
+            className={`w-5 h-5 rounded-lg border transition-all duration-200 flex items-center justify-center ${
               checked
-                ? "bg-cyan-500/20 border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.3)] text-cyan-400"
-                : "bg-slate-950 border-cyan-950/80 hover:border-cyan-500/40 text-transparent"
-            }`}
+                ? "bg-gradient-to-r from-red-600 to-rose-600 border-red-400 shadow-[0_0_12px_rgba(239,68,68,0.5)]"
+                : "bg-[#05050a] border-red-950/80 group-hover:border-red-500/50"
+            } ${error ? "border-red-500" : ""}`}
           >
-            <Check className="w-3.5 h-3.5 stroke-[3px]" />
+            {checked && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
           </div>
         </div>
-        
-        {/* Label Text */}
-        <span className="text-[11px] leading-relaxed text-slate-300">{label}</span>
+        <div className="text-xs font-mono text-slate-300 leading-relaxed group-hover:text-white select-none">
+          {label}
+        </div>
       </label>
-      {error && <span className="block text-[10px] font-mono text-red-400 mt-1.5 font-semibold pl-8">&gt; {error}</span>}
+      {error && <span className="text-[10px] font-mono text-red-400 font-bold ml-8">{error}</span>}
     </div>
   );
 }
