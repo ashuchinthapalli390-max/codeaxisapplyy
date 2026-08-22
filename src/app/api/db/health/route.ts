@@ -1,49 +1,42 @@
 import { NextResponse } from "next/server";
-import mysql from "mysql2/promise";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
 
 export async function GET() {
-  const databaseUrl = process.env.DATABASE_URL?.trim();
+  const supabase = getSupabaseAdmin();
+  const supabaseOk = isSupabaseConfigured();
 
-  if (!databaseUrl) {
-    return NextResponse.json(
-      {
-        success: false,
-        configured: false,
-        error: "DATABASE_URL is missing"
-      },
-      { status: 500 }
-    );
-  }
+  if (supabaseOk && supabase) {
+    try {
+      const { data, error } = await supabase.from("applications").select("id").limit(1);
+      if (error && error.code !== "PGRST116" && !error.message.includes("does not exist")) {
+        return NextResponse.json({
+          success: false,
+          provider: "supabase",
+          configured: true,
+          error: error.message,
+        }, { status: 500 });
+      }
 
-  let connection;
-  try {
-    connection = await mysql.createConnection({
-      uri: databaseUrl,
-      connectTimeout: 5000 // 5 seconds timeout
-    });
-
-    await connection.query("SELECT 1");
-    await connection.end();
-
-    return NextResponse.json({
-      success: true,
-      configured: true,
-      message: "Database connected"
-    });
-  } catch (err) {
-    console.error("Health check database connection failed:", err);
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (_) {}
-    }
-    return NextResponse.json(
-      {
-        success: false,
+      return NextResponse.json({
+        success: true,
+        provider: "supabase",
         configured: true,
-        error: err instanceof Error ? `Database connection failed: ${err.message}` : "Database connection failed"
-      },
-      { status: 500 }
-    );
+        message: "Supabase PostgreSQL connected successfully.",
+      });
+    } catch (err: any) {
+      return NextResponse.json({
+        success: false,
+        provider: "supabase",
+        configured: true,
+        error: err?.message || "Supabase connection check failed",
+      }, { status: 500 });
+    }
   }
+
+  return NextResponse.json({
+    success: true,
+    provider: "local_cache",
+    configured: true,
+    message: "Local persistent fallback store active.",
+  });
 }

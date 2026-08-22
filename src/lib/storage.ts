@@ -750,6 +750,47 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
   });
 
   saveStoreSync(store);
+
+  // Synchronize with Supabase if configured
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const githubUrl = application.developer_links?.find((l) => l.platform === "GitHub")?.url;
+      const linkedinUrl = application.developer_links?.find((l) => l.platform === "LinkedIn")?.url;
+      const portfolioUrl = application.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url;
+
+      const { error } = await supabase.from("applications").upsert({
+        reference_id: refId,
+        full_name: application.full_name,
+        email: application.email,
+        phone_number: application.phone_number,
+        whatsapp_number: application.whatsapp_number,
+        city: application.city,
+        state: application.state,
+        college_name: application.college_name,
+        degree: application.course,
+        branch: application.branch,
+        graduation_year: application.expected_graduation,
+        current_year_semester: `${application.academic_year || ""} ${application.semester || ""}`.trim(),
+        cgpa_percentage: application.cgpa || application.percentage,
+        github_profile: githubUrl,
+        linkedin_profile: linkedinUrl,
+        portfolio_website: portfolioUrl,
+        total_score: application.total_score,
+        score_band: application.score_band,
+        status: application.status,
+        raw_submission: application,
+      }, { onConflict: "reference_id" });
+
+      if (error) {
+        console.warn("[Supabase Insert Warning]:", error.message);
+      }
+    }
+  } catch (supabaseErr) {
+    console.warn("[Supabase Sync Warning]:", supabaseErr);
+  }
+
   return { id: nextId, reference_id: refId };
 }
 
