@@ -10,18 +10,35 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
   }
 
   const cleanKey = enteredKey.trim();
-  const storedHash = process.env.ADMIN_KEY_HASH?.trim();
+  let storedHash = (process.env.ADMIN_KEY_HASH || "").trim().replace(/^["']|["']$/g, "").trim();
+  const saltEnv = (process.env.ADMIN_KEY_SALT || "").trim().replace(/^["']|["']$/g, "").trim();
+  const fallbackKey = (process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY || "CODEXA-ADMIN-2026").trim().replace(/^["']|["']$/g, "");
 
-  if (storedHash && storedHash.startsWith("scrypt$")) {
-    const parts = storedHash.split("$");
+  // 1. Check if ADMIN_KEY_SALT and ADMIN_KEY_HASH are stored separately
+  if (saltEnv && storedHash && !storedHash.includes("scrypt")) {
+    try {
+      const enteredBuffer = scryptSync(cleanKey, saltEnv, 64);
+      const expectedBuffer = Buffer.from(storedHash, "hex");
+      if (enteredBuffer.length === expectedBuffer.length && timingSafeEqual(enteredBuffer, expectedBuffer)) {
+        return true;
+      }
+    } catch (err) {
+      console.error("[Master Key Verify] Separate salt scrypt error:", err);
+    }
+  }
+
+  // 2. Check colon-delimited format (scrypt:salt:hash)
+  if (storedHash.startsWith("scrypt:") || storedHash.startsWith("scrypt$")) {
+    const delimiter = storedHash.includes(":") ? ":" : "$";
+    const parts = storedHash.split(delimiter);
     if (parts.length === 3) {
-      const [, salt, expectedHex] = parts;
+      const salt = parts[1];
+      const expectedHex = parts[2];
       try {
         const enteredBuffer = scryptSync(cleanKey, salt, 64);
         const expectedBuffer = Buffer.from(expectedHex, "hex");
-
-        if (enteredBuffer.length === expectedBuffer.length) {
-          return timingSafeEqual(enteredBuffer, expectedBuffer);
+        if (enteredBuffer.length === expectedBuffer.length && timingSafeEqual(enteredBuffer, expectedBuffer)) {
+          return true;
         }
       } catch (err) {
         console.error("[Master Key Verify] Scrypt comparison error:", err);
@@ -29,8 +46,7 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
     }
   }
 
-  // Backward compatibility fallback during initial setup/development
-  const fallbackKey = process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY || "CODEXA-ADMIN-2026";
+  // 3. Backward compatibility fallback during initial setup/development
   if (fallbackKey && cleanKey === fallbackKey) {
     return true;
   }

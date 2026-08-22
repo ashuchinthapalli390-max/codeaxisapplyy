@@ -17,7 +17,7 @@ import ApplicationResetOverlay from "@/components/application/ApplicationResetOv
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
-import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed } from "@/lib/integrity";
+import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, clearApplicationDraft } from "@/lib/integrity";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -619,10 +619,18 @@ export default function ApplicationFormPage() {
 
   const handleSubmitFinalApplication = async () => {
     playButtonClick();
-    const roundErrors = validateRound(8, formData);
-    if (Object.keys(roundErrors).length > 0) {
-      setErrors(roundErrors);
+
+    // Import and validate all 8 screening rounds
+    const { validateAllRounds } = await import("@/lib/validation");
+    const validation = validateAllRounds(formData);
+
+    if (!validation.isValid) {
+      setErrors(validation.errors);
       playWarningTone();
+      if (validation.firstInvalidRound && validation.firstInvalidRound !== 8) {
+        setCurrentRound(validation.firstInvalidRound);
+        scrollToTop();
+      }
       return;
     }
 
@@ -630,36 +638,46 @@ export default function ApplicationFormPage() {
     setSubmissionStep(1);
 
     // Cinematic step-by-step submission progression
-    setTimeout(() => setSubmissionStep(2), 700);
-    setTimeout(() => setSubmissionStep(3), 1400);
-    setTimeout(() => setSubmissionStep(4), 2100);
+    const t1 = setTimeout(() => setSubmissionStep(2), 600);
+    const t2 = setTimeout(() => setSubmissionStep(3), 1200);
+    const t3 = setTimeout(() => setSubmissionStep(4), 1800);
 
     try {
       const res = await fetch("/api/applications/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          integrity_meta: {
+            clipboardWarnings: formData.copy_paste_warnings_count || 0,
+            tabSwitchCount: formData.tab_switch_count || 0,
+            submittedAt: new Date().toISOString(),
+          },
+        }),
       });
 
       const json = await res.json();
       if (json.success && json.data?.reference_id) {
+        setSubmissionStep(5);
+        playSuccessSound();
+        // Clear local draft ONLY after verified database submission success
+        clearApplicationDraft();
         setTimeout(() => {
-          setSubmissionStep(5);
-          playSuccessSound();
-          if (typeof window !== "undefined") {
-            localStorage.removeItem("codexa_application_draft");
-          }
-          setTimeout(() => {
-            router.push(`/apply/success/${json.data.reference_id}`);
-          }, 800);
-        }, 2800);
+          router.replace(`/apply/success/${json.data.reference_id}`);
+        }, 700);
       } else {
+        clearTimeout(t1);
+        clearTimeout(t2);
+        clearTimeout(t3);
         setIsSubmitting(false);
         alert(json.error || "Submission failed. Please check your responses and try again.");
       }
     } catch {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
       setIsSubmitting(false);
-      alert("Network error occurred during submission. Your draft is safely saved.");
+      alert("Network error occurred during submission. Your draft is safely saved. Please click Submit again.");
     }
   };
 

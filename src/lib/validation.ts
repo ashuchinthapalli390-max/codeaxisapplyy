@@ -115,5 +115,30 @@ export function validateRound(
   return errors;
 }
 
+export function validateAllRounds(data: Partial<ApplicationData>): {
+  isValid: boolean;
+  firstInvalidRound?: number;
+  errors: Record<string, string>;
+} {
+  let firstInvalidRound: number | undefined;
+  let allErrors: Record<string, string> = {};
+
+  for (let r = 1; r <= 8; r++) {
+    const roundErrors = validateRound(r, data);
+    if (Object.keys(roundErrors).length > 0) {
+      if (!firstInvalidRound) {
+        firstInvalidRound = r;
+      }
+      allErrors = { ...allErrors, ...roundErrors };
+    }
+  }
+
+  return {
+    isValid: Object.keys(allErrors).length === 0,
+    firstInvalidRound,
+    errors: allErrors,
+  };
+}
+
 // Backward compatibility alias
 export const validateStep = validateRound;

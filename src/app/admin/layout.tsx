@@ -39,15 +39,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       .then((res) => {
         if (res.ok) {
           setIsAuthenticated(true);
+          if (pathname === "/admin/login" || pathname === "/admin") {
+            router.replace("/admin/dashboard");
+          }
         } else {
           setIsAuthenticated(false);
         }
       })
       .catch(() => setIsAuthenticated(false));
-  }, [pathname]);
+  }, [pathname, router]);
 
   // If on login route explicitly or not yet authenticated, render ONLY the Master Key Terminal Screen
-  if (pathname === "/admin/login" || isAuthenticated === false) {
+  if (pathname === "/admin/login" || pathname === "/admin" || isAuthenticated === false) {
+    if (isAuthenticated === true) {
+      return null; // Will redirect via useEffect
+    }
     return (
       <div className="min-h-screen bg-[#02040a] text-slate-100 relative font-mono selection:bg-red-600 selection:text-white">
         <AdminLoginPage />

@@ -710,8 +710,8 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
   const store = ensureStore();
   const nextId = store.applications.length > 0 ? Math.max(...store.applications.map((a) => a.id || 0)) + 1 : 1;
   const year = new Date().getFullYear();
-  const pad = String(nextId).padStart(6, "0");
-  const refId = data.reference_id || `CAX-${year}-${pad}`;
+  const randomSuffix = Math.floor(100000 + Math.random() * 900000);
+  const refId = data.reference_id || `CAX-${year}-${randomSuffix}`;
 
   const application: ApplicationData = {
     ...data,

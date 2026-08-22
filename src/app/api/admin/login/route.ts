@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import crypto from "crypto";
-import { createAdminSession, addAuditLog } from "@/lib/storage";
+import { addAuditLog } from "@/lib/storage";
 import { verifyAdminMasterKey, createRateLimitIdentifier } from "@/lib/admin/verify-master-key";
+import { createSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
 
 // Privacy-preserving in-memory rate limiting map
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
@@ -15,7 +15,7 @@ function getClientIp(req: NextRequest): string {
 export async function POST(req: NextRequest) {
   try {
     const ip = getClientIp(req);
-    const userAgent = req.headers.get("user-agent") || "Unknown Browser";
+    const userAgent = req.headers.get("user-agent") || "Web Browser";
     const identifierHash = createRateLimitIdentifier(ip, userAgent);
     const now = Date.now();
 
@@ -60,36 +60,26 @@ export async function POST(req: NextRequest) {
     // Successful login: reset attempts
     loginAttempts.delete(identifierHash);
 
-    // Generate random secure session token
-    const rawSessionToken = crypto.randomBytes(32).toString("base64url");
-    const sessionCookieName = process.env.ADMIN_SESSION_COOKIE || "codexa_admin_session";
-    const sessionDays = Number(process.env.ADMIN_SESSION_DAYS || 30);
-
-    await createAdminSession({
-      id: `sess-${Date.now()}`,
-      token: rawSessionToken,
-      deviceInfo: userAgent.slice(0, 80),
-      ipAddress: ip,
-      lastActive: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    });
+    // Create 30-day persistent session in Supabase & local cache
+    const { rawToken, expiresAt, maxAge } = await createSession(ip, userAgent);
 
     await addAuditLog("LOGIN", `Admin authenticated successfully from ${userAgent.slice(0, 40)}`);
 
     const response = NextResponse.json({
       success: true,
-      token: rawSessionToken,
       message: "Admin authentication authorized.",
+      expiresAt: expiresAt.toISOString(),
     });
 
-    // Set secure HttpOnly, SameSite=Strict cookie
+    // Set 30-day persistent HttpOnly cookie
     response.cookies.set({
-      name: sessionCookieName,
-      value: rawSessionToken,
+      name: SESSION_COOKIE_NAME,
+      value: rawToken,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 60 * 60 * 24 * sessionDays,
+      sameSite: "lax",
+      maxAge,
+      expires: expiresAt,
       path: "/",
     });
 
