@@ -11,8 +11,8 @@ import {
 } from "@/lib/storage";
 
 export const SESSION_COOKIE_NAME = process.env.ADMIN_SESSION_COOKIE || "codexa_admin_session";
-export const SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 30);
-export const SESSION_MAX_AGE_SECONDS = SESSION_DAYS * 24 * 60 * 60; // 30 days in seconds
+export const SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 3650);
+export const SESSION_MAX_AGE_SECONDS = SESSION_DAYS * 24 * 60 * 60; // 3650 days (10 years) in seconds
 
 export interface AdminSessionRecord {
   id: string;

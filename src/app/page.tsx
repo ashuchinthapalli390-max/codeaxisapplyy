@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import IntroAnimation from "@/components/IntroAnimation";
 import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import { TeamMember, InternshipRound } from "@/types/admin";
+import { learningModules, applicationRounds } from "@/config/card-assets";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -254,96 +256,6 @@ agency.launchRecruitmentBatch("2026-AUG");`,
 
     return () => clearInterval(interval);
   }, [activeCodeTab]);
-
-  const roundsList = [
-    {
-      num: "01",
-      title: "Personal Information",
-      desc: "Identity, contact links, location, and non-scoring personal hobbies.",
-      tag: "Verification",
-      image: "/assets/image-assests/logo.jpeg",
-    },
-    {
-      num: "02",
-      title: "Education & Academics",
-      desc: "College name, branch, semester, roll number, and graduation timeline.",
-      tag: "Academics",
-      image: "/assets/image-assests/2455caf42d9db24ff7c635a591f45ccb.jpg",
-    },
-    {
-      num: "03",
-      title: "Developer Profile & Projects",
-      desc: "GitHub, portfolio, coding start timeline, and dynamic project cards.",
-      tag: "Portfolio",
-      image: "/assets/image-assests/c75cd2195cdd6bd78b98b1888ddbf739.jpg",
-    },
-    {
-      num: "04",
-      title: "Availability & Hardware",
-      desc: "Daily hours commitment, days, laptop status, OS, and RAM specifications.",
-      tag: "Commitment",
-      image: "/assets/image-assests/cd6b99faa3b32d7b80a2012050eb76e0.jpg",
-    },
-    {
-      num: "05",
-      title: "Technical Awareness",
-      desc: "5 categories: C, Python, Java, HTML, Vibe Coding. Adaptive questions based on claimed level.",
-      tag: "Adaptive Test",
-      image: "/assets/gif-assests/d24f62aa1d4ab988fe9d65ed3ec9bc0f.gif",
-    },
-    {
-      num: "06",
-      title: "Mindset & Work Habits",
-      desc: "10 scenario MCQs assessing ownership, teamwork, failure handling, and honesty.",
-      tag: "Ethics & Habits",
-      image: "/assets/image-assests/ceb0a9e38c4590f8fb6f411f0f6aa2a5.jpg",
-    },
-    {
-      num: "07",
-      title: "Thought-Process Interview",
-      desc: "10 essay questions evaluating problem solving, AI workflow, and long-term vision.",
-      tag: "Written Depth",
-      image: "/assets/gif-assests/6de84346589395b4f74367e1ef002fa6.gif",
-    },
-    {
-      num: "08",
-      title: "Review & Commitment",
-      desc: "Complete round-by-round summary with instant EDIT shortcuts and signed agreements.",
-      tag: "Final Pledge",
-      image: "/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg",
-    },
-  ];
-
-  const overviewCards = [
-    {
-      icon: <Rocket className="w-5 h-5 text-red-400" />,
-      title: "Foundations & Vibe Coding",
-      desc: "Git repository workflows, VS Code AI assistant setup, and modern TypeScript component patterns.",
-      image: "/assets/image-assests/2455caf42d9db24ff7c635a591f45ccb.jpg",
-      tag: "Module 01",
-    },
-    {
-      icon: <Code2 className="w-5 h-5 text-rose-400" />,
-      title: "Full-Stack Web Engineering",
-      desc: "Next.js App Router architecture, responsive UI systems, server actions, and component state.",
-      image: "/assets/image-assests/4e56a053e3ee0019b13c19c5b3f614fe.jpg",
-      tag: "Module 02",
-    },
-    {
-      icon: <Database className="w-5 h-5 text-red-500" />,
-      title: "Databases & Security Architecture",
-      desc: "Relational schemas, MySQL connection pooling, secure session gatekeepers, and rate limiting.",
-      image: "/assets/image-assests/799b3d022c7ccb22066d08673b0ec685.jpg",
-      tag: "Module 03",
-    },
-    {
-      icon: <Globe className="w-5 h-5 text-rose-500" />,
-      title: "Production Deployment & Ship",
-      desc: "CI/CD automated deployment, automated email dispatchers, performance auditing, and launch.",
-      image: "/assets/image-assests/9f15564ad2221f371987883d61241f4b.jpg",
-      tag: "Module 04",
-    },
-  ];
 
   const whoCanApply = [
     "College students from any academic year or branch",
@@ -665,36 +577,43 @@ agency.launchRecruitmentBatch("2026-AUG");`,
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {overviewCards.map((card, idx) => (
+            {learningModules.map((mod) => (
               <div
-                key={idx}
-                className="tilt-card red-glass rounded-3xl overflow-hidden border border-red-950/80 hover:border-red-500/60 flex flex-col justify-between group transition-all"
+                key={mod.id}
+                className="tilt-card red-glass rounded-3xl overflow-hidden border border-red-950/80 hover:border-red-500/60 flex flex-col justify-between group transition-all font-mono"
               >
-                <div className="relative h-40 w-full overflow-hidden bg-black/80">
-                  <img
-                    src={card.image}
-                    alt={card.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                <div className="relative aspect-[16/9] w-full overflow-hidden bg-black/80">
+                  <Image
+                    src={mod.image}
+                    alt={mod.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                    className="object-cover group-hover:scale-105 transition-transform duration-700"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b14] via-[#0b0b14]/40 to-transparent" />
-                  <div className="absolute top-3 left-3 p-2 rounded-xl bg-black/80 border border-red-500/40 backdrop-blur-md">
-                    {card.icon}
-                  </div>
-                  <span className="absolute top-3 right-3 text-[9px] px-2 py-0.5 rounded bg-red-950/90 text-red-300 font-mono font-bold border border-red-500/40 uppercase">
-                    {card.tag}
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0b0b14] via-[#0b0b14]/30 to-transparent" />
+                  <span className="absolute top-3 left-3 text-[9px] px-2.5 py-0.5 rounded-full bg-black/80 text-red-300 font-bold border border-red-500/40 uppercase backdrop-blur-md">
+                    {mod.moduleCode}
+                  </span>
+                  <span className="absolute top-3 right-3 text-[9px] px-2 py-0.5 rounded bg-red-950/90 text-red-300 font-bold border border-red-500/40 uppercase">
+                    {mod.duration}
                   </span>
                 </div>
 
-                <div className="p-5 space-y-2.5">
-                  <h3 className="text-sm font-bold font-mono text-white group-hover:text-red-400 transition-colors">
-                    {card.title}
-                  </h3>
-                  <p className="text-xs text-slate-400 font-mono leading-relaxed">{card.desc}</p>
-                </div>
+                <div className="p-5 space-y-2.5 flex-grow flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <span className="text-[9px] text-red-400 font-bold uppercase tracking-wider block">
+                      {mod.subtitle}
+                    </span>
+                    <h3 className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">
+                      {mod.title}
+                    </h3>
+                    <p className="text-xs text-slate-400 leading-relaxed line-clamp-3">{mod.description}</p>
+                  </div>
 
-                <div className="px-5 pb-5 pt-2 border-t border-red-950/60 text-[9px] font-mono font-bold text-red-400 tracking-wider uppercase flex items-center justify-between">
-                  <span>WEEK 0{idx * 2 + 1} &mdash; 0{idx * 2 + 2}</span>
-                  <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                  <div className="pt-3 border-t border-red-950/60 text-[9px] font-bold text-red-400 tracking-wider uppercase flex items-center justify-between">
+                    <span>{mod.duration}</span>
+                    <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+                  </div>
                 </div>
               </div>
             ))}
@@ -1014,9 +933,9 @@ agency.launchRecruitmentBatch("2026-AUG");`,
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {roundsList.map((r, idx) => (
+            {applicationRounds.map((r, idx) => (
               <div
-                key={r.num}
+                key={r.round}
                 onClick={() => setActiveRoundIndex(idx)}
                 className={`rounded-2xl border font-mono overflow-hidden cursor-pointer transition-all duration-300 group flex flex-col justify-between ${
                   activeRoundIndex === idx
@@ -1024,28 +943,35 @@ agency.launchRecruitmentBatch("2026-AUG");`,
                     : "bg-[#05050c]/80 border-red-950/70 hover:border-red-500/40 text-slate-300"
                 }`}
               >
-                <div className="h-28 w-full overflow-hidden relative bg-black">
-                  <img
+                <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
+                  <Image
                     src={r.image}
                     alt={r.title}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                    fill
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 25vw"
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
                   <div className="absolute top-2 left-2 flex items-center justify-between w-[calc(100%-16px)]">
                     <span className="text-xs font-black text-white px-2 py-0.5 rounded bg-black/80 border border-red-500/40 font-mono">
-                      ROUND {r.num}
+                      {r.roundCode}
                     </span>
-                    <span className="text-[9px] px-2 py-0.5 rounded bg-red-950/90 text-red-300 border border-red-500/40">
-                      {r.tag}
-                    </span>
+                    {r.adaptive && (
+                      <span className="text-[9px] px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800 font-bold">
+                        Adaptive
+                      </span>
+                    )}
                   </div>
                 </div>
 
-                <div className="p-4 space-y-1.5 flex-grow">
-                  <h3 className="text-sm font-bold text-white group-hover:text-red-400 transition-colors">
-                    {r.title}
-                  </h3>
-                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{r.desc}</p>
+                <div className="p-4 space-y-1.5 flex-grow flex flex-col justify-between">
+                  <div>
+                    <span className="text-[9px] text-red-400 font-bold uppercase block">{r.subtitle}</span>
+                    <h3 className="text-sm font-bold text-white group-hover:text-red-400 transition-colors mt-0.5">
+                      {r.title}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed line-clamp-2">{r.description}</p>
                 </div>
               </div>
             ))}

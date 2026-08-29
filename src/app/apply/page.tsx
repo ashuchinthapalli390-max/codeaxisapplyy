@@ -5,21 +5,12 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, CheckCircle2, Clock, FileText, Lock, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { playButtonClick } from "@/lib/audio";
+import { applicationRounds } from "@/config/card-assets";
 
 export default function ApplyEntryPage() {
-  const roundHighlights = [
-    { num: "01", name: "Personal Information", time: "2 min", desc: "Contact details, location, and non-scoring personal hobbies", image: "/assets/image-assests/logo.jpeg" },
-    { num: "02", name: "Academic Verification", time: "2 min", desc: "College, course, branch, roll number, and graduation year", image: "/assets/image-assests/2455caf42d9db24ff7c635a591f45ccb.jpg" },
-    { num: "03", name: "Developer Profile", time: "3 min", desc: "Coding start timeline, GitHub/LinkedIn links, and project cards", image: "/assets/image-assests/c75cd2195cdd6bd78b98b1888ddbf739.jpg" },
-    { num: "04", name: "Availability & Hardware", time: "2 min", desc: "Daily hours, available days, and device specifications", image: "/assets/image-assests/cd6b99faa3b32d7b80a2012050eb76e0.jpg" },
-    { num: "05", name: "Technical Awareness", time: "3 min", desc: "Adaptive questions for C, Python, Java, HTML, and Vibe Coding", image: "/assets/gif-assests/d24f62aa1d4ab988fe9d65ed3ec9bc0f.gif" },
-    { num: "06", name: "Mindset Evaluation", time: "3 min", desc: "10 scenario MCQs testing teamwork, ownership, and honesty", image: "/assets/image-assests/ceb0a9e38c4590f8fb6f411f0f6aa2a5.jpg" },
-    { num: "07", name: "Thought-Process Interview", time: "5 min", desc: "10 essay questions reflecting your building ambitions", image: "/assets/gif-assests/6de84346589395b4f74367e1ef002fa6.gif" },
-    { num: "08", name: "Review & Commitment", time: "1 min", desc: "Summary verification and final policy acceptance", image: "/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg" },
-  ];
-
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 relative flex flex-col justify-between selection:bg-red-600 selection:text-white">
       
@@ -36,7 +27,7 @@ export default function ApplyEntryPage() {
       <CodingBackground />
       <Navbar />
 
-      <main className="flex-grow pt-32 pb-20 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 text-left font-mono">
+      <main className="flex-grow pt-32 pb-20 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-12 text-left font-mono">
         
         {/* Header */}
         <div className="space-y-4 text-center sm:text-left">
@@ -73,7 +64,7 @@ export default function ApplyEntryPage() {
               <span>Beginner Friendly</span>
             </div>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              No penalty for selecting &ldquo;I Don&rsquo;t Know&rdquo;. Honesty and mindset are valued highest.
+              No penalty for selecting &ldquo;I Don&apos;t Know&rdquo;. Honesty and mindset are valued highest.
             </p>
           </div>
 
@@ -88,28 +79,46 @@ export default function ApplyEntryPage() {
           </div>
         </div>
 
-        {/* 8 Rounds List */}
+        {/* 8 Rounds List with Real Assets */}
         <div className="red-glass rounded-3xl p-6 sm:p-8 border border-red-500/30 space-y-5">
           <h2 className="text-sm sm:text-base font-bold text-white uppercase tracking-wider border-b border-red-950/80 pb-3 flex items-center justify-between">
             <span>Screening Structure Overview</span>
             <span className="text-xs text-red-400 font-normal">8 Rounds Total</span>
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {roundHighlights.map((r) => (
-              <div key={r.num} className="p-3.5 rounded-2xl bg-black/70 border border-red-950/80 hover:border-red-500/40 transition-all space-y-2 flex gap-3 items-center group">
-                <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 border border-red-500/30 bg-black">
-                  <img src={r.image} alt={r.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
-                </div>
-                <div className="space-y-1 flex-grow">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white group-hover:text-red-400 transition-colors">
-                      <span className="text-red-500 mr-1">R{r.num}:</span>
-                      {r.name}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {applicationRounds.map((r) => (
+              <div
+                key={r.round}
+                className="tilt-card rounded-2xl overflow-hidden bg-black/70 border border-red-950/80 hover:border-red-500/50 transition-all flex flex-col justify-between group"
+              >
+                <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
+                  <Image
+                    src={r.image}
+                    alt={r.title}
+                    fill
+                    sizes="(max-width: 768px) 100vw, 25vw"
+                    className="object-cover group-hover:scale-105 transition-transform duration-500"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+                  <span className="absolute top-2 left-2 text-[10px] font-black text-white px-2 py-0.5 rounded bg-black/80 border border-red-500/40">
+                    {r.roundCode}
+                  </span>
+                  {r.adaptive && (
+                    <span className="absolute top-2 right-2 text-[9px] px-2 py-0.5 rounded bg-red-950 text-red-300 border border-red-800">
+                      Adaptive
                     </span>
-                    <span className="text-[9px] text-slate-500">{r.time}</span>
+                  )}
+                </div>
+
+                <div className="p-3.5 space-y-1.5 flex-grow flex flex-col justify-between">
+                  <div>
+                    <span className="text-[9px] text-red-400 font-bold uppercase block">{r.subtitle}</span>
+                    <h3 className="text-xs font-bold text-white group-hover:text-red-400 transition-colors mt-0.5">
+                      {r.title}
+                    </h3>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-1">{r.desc}</p>
+                  <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">{r.description}</p>
                 </div>
               </div>
             ))}

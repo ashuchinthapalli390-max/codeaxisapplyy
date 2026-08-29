@@ -34,9 +34,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     // Verify session server-side via session validation endpoint
     fetch("/api/admin/verify-session")
       .then((res) => {
+        if (!isMounted) return;
         if (res.ok) {
           setIsAuthenticated(true);
           if (pathname === "/admin/login" || pathname === "/admin") {
@@ -46,7 +48,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           setIsAuthenticated(false);
         }
       })
-      .catch(() => setIsAuthenticated(false));
+      .catch(() => {
+        if (!isMounted) return;
+        setIsAuthenticated((prev) => (prev === true ? true : false));
+      });
+    return () => {
+      isMounted = false;
+    };
   }, [pathname, router]);
 
   // If on login route explicitly or not yet authenticated, render ONLY the Master Key Terminal Screen
