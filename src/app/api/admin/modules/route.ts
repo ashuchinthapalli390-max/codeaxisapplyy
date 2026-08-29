@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSiteModules, saveSiteModule, addAuditLog } from "@/lib/storage";
-import { validateSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { SiteModule } from "@/types/admin";
 import { revalidateTag } from "next/cache";
 
@@ -8,22 +8,18 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const modules = await getSiteModules(true);
     return NextResponse.json({ success: true, data: modules });
   } catch (err) {
-    console.error("[Admin Modules Fetch Error]:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch modules." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     // 1. Verify Admin Session
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const sessionCheck = await validateSession(token);
-    if (!sessionCheck.isValid) {
-      return NextResponse.json({ success: false, error: "Unauthorized admin access." }, { status: 401 });
-    }
+    await requireAdmin(req);
 
     const body = (await req.json()) as SiteModule;
     if (!body || !body.title?.trim()) {
@@ -45,7 +41,6 @@ export async function POST(req: NextRequest) {
       data: saved,
     });
   } catch (err) {
-    console.error("[Admin Modules Save Error]:", err);
-    return NextResponse.json({ success: false, error: "Failed to save module." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

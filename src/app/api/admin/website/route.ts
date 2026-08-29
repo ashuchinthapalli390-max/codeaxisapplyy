@@ -8,7 +8,7 @@ import {
   saveFaq,
   deleteFaq,
 } from "@/lib/storage";
-import { validateSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,7 @@ function formatIndiaTimestamp(dateStr?: string, timeStr?: string, defaultTime = 
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const { searchParams } = new URL(req.url);
     const type = searchParams.get("type");
 
@@ -47,22 +48,13 @@ export async function GET(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Website CMS fetch error:", err);
-    return NextResponse.json(
-      { success: false, error: "Failed to fetch website settings." },
-      { status: 500 }
-    );
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const sessionCheck = await validateSession(token);
-    if (!sessionCheck.isValid) {
-      return NextResponse.json({ success: false, error: "Unauthorized admin access." }, { status: 401 });
-    }
-
+    await requireAdmin(req);
     const body = await req.json();
 
     if (body.type === "faq") {
@@ -138,10 +130,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Website CMS save error:", err);
-    return NextResponse.json(
-      { success: false, error: "Failed to save website settings." },
-      { status: 500 }
-    );
+    return handleAdminAuthError(err);
   }
 }

@@ -15,7 +15,7 @@ export default function AdminEmailsPage() {
   const [activeView, setActiveView] = useState<"templates" | "logs">("templates");
 
   useEffect(() => {
-    fetch("/api/admin/emails")
+    fetch("/api/admin/emails", { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data) {
@@ -24,7 +24,7 @@ export default function AdminEmailsPage() {
         }
       });
 
-    fetch("/api/admin/emails?view=logs")
+    fetch("/api/admin/emails?view=logs", { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data) setLogs(json.data);
@@ -39,6 +39,7 @@ export default function AdminEmailsPage() {
     try {
       const res = await fetch("/api/admin/emails", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(selectedTmpl),
       });

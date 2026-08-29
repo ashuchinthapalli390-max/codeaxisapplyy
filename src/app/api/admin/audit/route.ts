@@ -1,12 +1,15 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getAuditLogs } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const logs = await getAuditLogs();
     return NextResponse.json({ success: true, data: logs });
   } catch (err) {
-    console.error("Audit log error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch audit records." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

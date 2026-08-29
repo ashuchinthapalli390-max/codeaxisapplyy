@@ -18,6 +18,7 @@ export default function AdminExportsPage() {
     try {
       const res = await fetch("/api/admin/exports", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ format, status: statusFilter !== "ALL" ? statusFilter : undefined }),
       });

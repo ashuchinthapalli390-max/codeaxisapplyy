@@ -1,48 +1,63 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateSession, SESSION_COOKIE_NAME, SESSION_MAX_AGE_SECONDS } from "@/lib/admin/session";
+import {
+  getAdminSession,
+  ADMIN_SESSION_COOKIE,
+  SESSION_MAX_AGE_SECONDS,
+} from "@/lib/admin/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    if (!token) {
-      return NextResponse.json({ authenticated: false }, { status: 401 });
-    }
+    const authResult = await getAdminSession(req);
 
-    const result = await validateSession(token);
-    if (!result.isValid) {
-      const res = NextResponse.json({ authenticated: false }, { status: 401 });
+    if (authResult.status === "unauthenticated") {
+      const res = NextResponse.json({ authenticated: false, code: "ADMIN_UNAUTHORIZED" }, { status: 401 });
+      // Only delete cookie if confirmed unauthenticated/revoked
       res.cookies.delete({
-        name: SESSION_COOKIE_NAME,
+        name: ADMIN_SESSION_COOKIE,
         path: "/",
       });
       return res;
     }
 
+    if (authResult.status === "temporary_error") {
+      // Return 200 with temporaryError flag to prevent client layout from logging out
+      return NextResponse.json({
+        authenticated: true,
+        temporaryError: true,
+        message: "Session verification service temporarily unavailable.",
+      });
+    }
+
     const response = NextResponse.json({
       authenticated: true,
-      expiresAt: result.session?.expires_at,
+      expiresAt: authResult.session?.expires_at,
     });
 
     // If sliding renewal is triggered, refresh cookie headers
-    if (result.needsRefresh) {
-      const now = new Date();
-      const newExpiry = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
-      response.cookies.set({
-        name: SESSION_COOKIE_NAME,
-        value: token,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        maxAge: SESSION_MAX_AGE_SECONDS,
-        expires: newExpiry,
-        path: "/",
-      });
+    if (authResult.needsRefresh) {
+      const token = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+      if (token) {
+        const now = new Date();
+        const newExpiry = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
+        response.cookies.set({
+          name: ADMIN_SESSION_COOKIE,
+          value: token,
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: SESSION_MAX_AGE_SECONDS,
+          expires: newExpiry,
+          path: "/",
+        });
+      }
     }
 
     return response;
   } catch (err) {
-    console.error("Session verification error:", err);
-    // On unexpected internal error, do NOT logout admin. Fallback to valid session status
+    console.error("[Session Verification Unexpected Error]:", err);
+    // On unexpected error, do NOT logout admin.
     return NextResponse.json({ authenticated: true, temporaryError: true });
   }
 }

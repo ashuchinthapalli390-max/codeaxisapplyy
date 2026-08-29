@@ -105,7 +105,7 @@ export default function AdminTeamPage() {
   const fetchTeam = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/team?archived=true");
+      const res = await fetch("/api/admin/team?archived=true", { credentials: "include" });
       const json = await res.json();
       if (json.success && json.data) {
         setTeam(json.data);
@@ -210,6 +210,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(editingMember),
       });
@@ -249,6 +250,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch(`/api/admin/team/${editingMember.id}/photo`, {
         method: "POST",
+        credentials: "include",
         body: formData,
       });
       const json = await res.json();
@@ -275,6 +277,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updated),
       });
@@ -292,6 +295,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "duplicate", id }),
       });
@@ -314,6 +318,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "delete", id, hardDelete }),
       });
@@ -332,6 +337,7 @@ export default function AdminTeamPage() {
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "restore", id }),
       });
@@ -360,6 +366,7 @@ export default function AdminTeamPage() {
     try {
       await fetch("/api/admin/team", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "reorder", orderedIds }),
       });

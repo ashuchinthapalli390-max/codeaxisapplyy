@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
+  requireAdmin,
+  handleAdminAuthError,
   revokeSessionByToken,
   revokeOtherSessions,
   revokeAllSessions,
-  SESSION_COOKIE_NAME,
+  ADMIN_SESSION_COOKIE,
 } from "@/lib/admin/session";
 import { getAdminSessions, addAuditLog } from "@/lib/storage";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -11,7 +13,8 @@ import { createHash } from "node:crypto";
 
 export async function GET(req: NextRequest) {
   try {
-    const currentToken = req.cookies.get(SESSION_COOKIE_NAME)?.value || "";
+    await requireAdmin(req);
+    const currentToken = req.cookies.get(ADMIN_SESSION_COOKIE)?.value || "";
     const currentTokenHash = currentToken ? createHash("sha256").update(currentToken).digest("hex") : "";
 
     // Try reading from Supabase
@@ -50,22 +53,22 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: sessions });
   } catch (err) {
-    console.error("Sessions fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch active sessions." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const body = (await req.json()) as { action: string; token?: string; sessionId?: string };
-    const currentToken = req.cookies.get(SESSION_COOKIE_NAME)?.value || "";
+    const currentToken = req.cookies.get(ADMIN_SESSION_COOKIE)?.value || "";
 
     if (body.action === "revoke_all") {
       await revokeAllSessions();
       await addAuditLog("SESSION_REVOKED", "Revoked all admin sessions globally.");
       const response = NextResponse.json({ success: true, message: "All sessions revoked." });
       response.cookies.delete({
-        name: SESSION_COOKIE_NAME,
+        name: ADMIN_SESSION_COOKIE,
         path: "/",
       });
       return response;
@@ -85,7 +88,7 @@ export async function POST(req: NextRequest) {
       const response = NextResponse.json({ success: true, message: "Session revoked." });
       if (body.token === currentToken) {
         response.cookies.delete({
-          name: SESSION_COOKIE_NAME,
+          name: ADMIN_SESSION_COOKIE,
           path: "/",
         });
       }
@@ -94,7 +97,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: false, error: "Invalid action." }, { status: 400 });
   } catch (err) {
-    console.error("Session action error:", err);
-    return NextResponse.json({ success: false, error: "Failed to modify sessions." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

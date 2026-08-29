@@ -37,7 +37,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     let isMounted = true;
 
     // Verify session with server
-    fetch("/api/admin/verify-session")
+    fetch("/api/admin/verify-session", { credentials: "include" })
       .then(async (res) => {
         if (!isMounted) return;
         if (res.ok) {
@@ -98,7 +98,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const handleLogout = async () => {
     playButtonClick();
     try {
-      await fetch("/api/admin/logout", { method: "POST" });
+      await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
     } catch {
       // ignore
     }

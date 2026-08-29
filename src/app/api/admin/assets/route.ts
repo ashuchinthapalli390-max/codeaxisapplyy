@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSiteAssets, saveSiteAsset, deleteSiteAsset, addAuditLog } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { SiteAsset } from "@/types/admin";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const assets = await getSiteAssets();
     return NextResponse.json({ success: true, data: assets });
   } catch (err) {
-    console.error("Fetch site assets error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch assets." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const body = (await req.json()) as SiteAsset & { action?: string };
 
     if (body.action === "delete" && body.id) {
@@ -43,7 +47,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: asset });
   } catch (err) {
-    console.error("Save site asset error:", err);
-    return NextResponse.json({ success: false, error: "Failed to save asset." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

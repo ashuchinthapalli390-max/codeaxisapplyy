@@ -6,12 +6,16 @@ import {
   deleteApplication,
   restoreApplication,
 } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin(req);
     const { id } = await params;
     const application = await getApplicationByRef(id);
 
@@ -21,8 +25,7 @@ export async function GET(
 
     return NextResponse.json({ success: true, data: application });
   } catch (err) {
-    console.error("Get application detail error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch candidate record." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
@@ -31,6 +34,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin(req);
     const { id } = await params;
     const body = await req.json();
     const { action, status, note, adminUser } = body;
@@ -70,8 +74,7 @@ export async function POST(
 
     return NextResponse.json({ success: false, error: "Invalid action specified." }, { status: 400 });
   } catch (err) {
-    console.error("Application action error:", err);
-    return NextResponse.json({ success: false, error: "Failed to execute candidate action." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
@@ -80,11 +83,11 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    await requireAdmin(req);
     const { id } = await params;
     const ok = await deleteApplication(id);
     return NextResponse.json({ success: ok, message: "Application archived / soft-deleted." });
   } catch (err) {
-    console.error("Delete application error:", err);
-    return NextResponse.json({ success: false, error: "Failed to delete application." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

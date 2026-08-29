@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getEmailTemplates, saveEmailTemplate, getEmailLogs } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const { searchParams } = new URL(req.url);
     const view = searchParams.get("view");
 
@@ -14,13 +18,13 @@ export async function GET(req: NextRequest) {
     const templates = await getEmailTemplates();
     return NextResponse.json({ success: true, data: templates });
   } catch (err) {
-    console.error("Email fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch email data." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const body = await req.json();
     if (!body.id || !body.subject) {
       return NextResponse.json({ success: false, error: "Template ID and subject are required." }, { status: 400 });
@@ -29,7 +33,6 @@ export async function POST(req: NextRequest) {
     await saveEmailTemplate(body);
     return NextResponse.json({ success: true, message: "Email template saved successfully." });
   } catch (err) {
-    console.error("Save email template error:", err);
-    return NextResponse.json({ success: false, error: "Failed to save template." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

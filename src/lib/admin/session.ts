@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   createAdminSession as saveFallbackSession,
@@ -10,9 +11,27 @@ import {
   revokeAllAdminSessions as revokeAllFallbackSessions,
 } from "@/lib/storage";
 
-export const SESSION_COOKIE_NAME = process.env.ADMIN_SESSION_COOKIE || "codexa_admin_session";
+// Canonical cookie name across the entire application
+export const ADMIN_SESSION_COOKIE = process.env.ADMIN_SESSION_COOKIE || "codexa_admin_session";
+export const SESSION_COOKIE_NAME = ADMIN_SESSION_COOKIE; // alias for backwards compatibility
 export const SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 3650);
-export const SESSION_MAX_AGE_SECONDS = SESSION_DAYS * 24 * 60 * 60; // 3650 days (10 years) in seconds
+export const SESSION_MAX_AGE_SECONDS = SESSION_DAYS * 24 * 60 * 60; // 10 years (3650 days) in seconds
+
+export class UnauthorizedAdminError extends Error {
+  constructor(message = "Unauthorized admin access.") {
+    super(message);
+    this.name = "UnauthorizedAdminError";
+  }
+}
+
+export class AdminServiceUnavailableError extends Error {
+  constructor(message = "Admin session verification is temporarily unavailable.") {
+    super(message);
+    this.name = "AdminServiceUnavailableError";
+  }
+}
+
+export type AdminAuthStatus = "authenticated" | "unauthenticated" | "temporary_error";
 
 export interface AdminSessionRecord {
   id: string;
@@ -26,6 +45,14 @@ export interface AdminSessionRecord {
   expires_at: string;
   revoked_at?: string | null;
   is_current?: boolean;
+}
+
+export interface AdminSessionResult {
+  status: AdminAuthStatus;
+  isValid: boolean;
+  reason?: string;
+  session?: AdminSessionRecord;
+  needsRefresh?: boolean;
 }
 
 /**
@@ -42,7 +69,8 @@ export async function createSession(
   const sessionId = `sess-${Date.now()}-${randomBytes(4).toString("hex")}`;
   const deviceLabel = userAgent.slice(0, 80);
 
-  // 1. Save to Supabase admin_sessions table if configured
+  // 1. Save to Supabase admin_sessions table
+  let supabaseSuccess = false;
   try {
     const supabase = getSupabaseAdmin();
     if (supabase) {
@@ -51,12 +79,16 @@ export async function createSession(
         token_hash: tokenHash,
         device_label: deviceLabel,
         user_agent: userAgent,
+        ip_address: ipAddress,
         created_at: now.toISOString(),
         last_seen_at: now.toISOString(),
         expires_at: expiresAt.toISOString(),
       });
 
-      if (error) {
+      if (!error) {
+        supabaseSuccess = true;
+        console.log("[ADMIN_AUTH] login success (saved to Supabase admin_sessions)");
+      } else {
         console.warn("[Session Supabase Insert Warning]:", error.message);
       }
     }
@@ -74,6 +106,9 @@ export async function createSession(
       lastActive: now.toISOString(),
       createdAt: now.toISOString(),
     });
+    if (!supabaseSuccess) {
+      console.log("[ADMIN_AUTH] login success (saved to local fallback store)");
+    }
   } catch (fallbackErr) {
     console.warn("[Session Local Fallback Warning]:", fallbackErr);
   }
@@ -87,22 +122,25 @@ export async function createSession(
 
 /**
  * Validates a raw session token against Supabase and local cache.
- * Implements sliding session renewal if lifetime has less than 7 days remaining.
+ * Returns clear status: "authenticated" | "unauthenticated" | "temporary_error"
  */
-export async function validateSession(rawToken?: string | null): Promise<{
-  isValid: boolean;
-  needsRefresh?: boolean;
-  session?: AdminSessionRecord;
-}> {
+export async function validateSessionToken(rawToken?: string | null): Promise<AdminSessionResult> {
   if (!rawToken || typeof rawToken !== "string" || !rawToken.trim()) {
-    return { isValid: false };
+    console.log("[ADMIN_AUTH] missing cookie");
+    return {
+      status: "unauthenticated",
+      isValid: false,
+      reason: "missing_cookie",
+    };
   }
 
+  console.log("[ADMIN_AUTH] cookie present");
   const cleanToken = rawToken.trim();
   const tokenHash = createHash("sha256").update(cleanToken).digest("hex");
   const now = new Date();
 
-  // 1. Check Supabase first
+  // 1. Check Supabase
+  let dbEncounteredError = false;
   try {
     const supabase = getSupabaseAdmin();
     if (supabase) {
@@ -110,12 +148,31 @@ export async function validateSession(rawToken?: string | null): Promise<{
         .from("admin_sessions")
         .select("*")
         .eq("token_hash", tokenHash)
-        .is("revoked_at", null)
-        .gt("expires_at", now.toISOString())
         .maybeSingle();
 
-      if (data && !error) {
-        // Update last_seen_at
+      if (error) {
+        dbEncounteredError = true;
+        console.warn("[ADMIN_AUTH] database unavailable:", error.message);
+      } else if (data) {
+        if (data.revoked_at) {
+          console.log("[ADMIN_AUTH] revoked");
+          return {
+            status: "unauthenticated",
+            isValid: false,
+            reason: "session_revoked",
+          };
+        }
+
+        if (new Date(data.expires_at).getTime() <= now.getTime()) {
+          console.log("[ADMIN_AUTH] session expired");
+          return {
+            status: "unauthenticated",
+            isValid: false,
+            reason: "session_expired",
+          };
+        }
+
+        // Update last_seen_at asynchronously
         try {
           await supabase
             .from("admin_sessions")
@@ -125,27 +182,31 @@ export async function validateSession(rawToken?: string | null): Promise<{
           // ignore background update error
         }
 
-        // Check sliding expiration (if less than 7 days remaining, flag for refresh)
         const expiryDate = new Date(data.expires_at);
         const daysRemaining = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
         const needsRefresh = daysRemaining < 7;
 
+        console.log("[ADMIN_AUTH] session found (Supabase verified)");
         return {
+          status: "authenticated",
           isValid: true,
-          needsRefresh,
           session: data,
+          needsRefresh,
         };
       }
     }
   } catch (supabaseErr) {
-    console.warn("[Session Supabase Validation Warning]:", supabaseErr);
+    dbEncounteredError = true;
+    console.warn("[ADMIN_AUTH] database unavailable (exception):", supabaseErr);
   }
 
   // 2. Check local fallback store
   try {
     const isValidLocal = await verifyFallbackSession(cleanToken);
     if (isValidLocal) {
+      console.log("[ADMIN_AUTH] session found (Local fallback verified)");
       return {
+        status: "authenticated",
         isValid: true,
         needsRefresh: false,
         session: {
@@ -160,25 +221,114 @@ export async function validateSession(rawToken?: string | null): Promise<{
     console.warn("[Session Local Fallback Validation Error]:", fallbackErr);
   }
 
-  return { isValid: false };
+  // 3. If DB had a real connection error and local check was not matched:
+  if (dbEncounteredError) {
+    return {
+      status: "temporary_error",
+      isValid: false,
+      reason: "database_error",
+    };
+  }
+
+  console.log("[ADMIN_AUTH] session not found");
+  return {
+    status: "unauthenticated",
+    isValid: false,
+    reason: "session_not_found",
+  };
 }
 
 /**
- * Server-side helper to read and validate session from request cookies.
+ * Backwards compatibility helper for existing code.
  */
-export async function getAdminSession(): Promise<{ isValid: boolean; session?: AdminSessionRecord }> {
+export async function validateSession(rawToken?: string | null): Promise<{
+  isValid: boolean;
+  needsRefresh?: boolean;
+  session?: AdminSessionRecord;
+  temporaryError?: boolean;
+}> {
+  const result = await validateSessionToken(rawToken);
+  return {
+    isValid: result.status === "authenticated",
+    needsRefresh: result.needsRefresh,
+    session: result.session,
+    temporaryError: result.status === "temporary_error",
+  };
+}
+
+/**
+ * Server-side helper to read and validate session from request cookies or NextRequest.
+ */
+export async function getAdminSession(req?: NextRequest): Promise<AdminSessionResult> {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-    const result = await validateSession(token);
-    return {
-      isValid: result.isValid,
-      session: result.session,
-    };
+    let token: string | undefined;
+    if (req) {
+      token = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
+    } else {
+      const cookieStore = await cookies();
+      token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+    }
+    return await validateSessionToken(token);
   } catch (err) {
     console.error("[getAdminSession Error]:", err);
-    return { isValid: false };
+    return {
+      status: "temporary_error",
+      isValid: false,
+      reason: "session_verification_failed",
+    };
   }
+}
+
+/**
+ * Enforces admin authentication for protected API routes and server actions.
+ * Throws UnauthorizedAdminError (401) or AdminServiceUnavailableError (503).
+ */
+export async function requireAdmin(req?: NextRequest): Promise<AdminSessionRecord> {
+  const result = await getAdminSession(req);
+  if (result.status === "authenticated" && result.session) {
+    return result.session;
+  }
+  if (result.status === "temporary_error") {
+    throw new AdminServiceUnavailableError();
+  }
+  throw new UnauthorizedAdminError(result.reason || "Unauthorized admin access.");
+}
+
+/**
+ * Standard error response handler for protected admin API routes.
+ */
+export function handleAdminAuthError(error: unknown): NextResponse {
+  if (error instanceof UnauthorizedAdminError) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "ADMIN_UNAUTHORIZED",
+        error: "Unauthorized admin access.",
+      },
+      { status: 401 }
+    );
+  }
+
+  if (error instanceof AdminServiceUnavailableError) {
+    return NextResponse.json(
+      {
+        success: false,
+        code: "ADMIN_SESSION_TEMPORARILY_UNAVAILABLE",
+        error: "Admin session verification is temporarily unavailable. Please retry in a few moments.",
+      },
+      { status: 503 }
+    );
+  }
+
+  console.error("[Admin API Unhandled Error]:", error);
+  return NextResponse.json(
+    {
+      success: false,
+      code: "SERVER_ERROR",
+      error: error instanceof Error ? error.message : "Internal server error.",
+    },
+    { status: 500 }
+  );
 }
 
 /**

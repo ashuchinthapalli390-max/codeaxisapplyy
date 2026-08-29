@@ -29,6 +29,7 @@ export default function AdminLoginPage() {
     try {
       const res = await fetch("/api/admin/login", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ accessKey: accessKey.trim() }),
       });
@@ -37,7 +38,8 @@ export default function AdminLoginPage() {
 
       if (json.success) {
         playSuccessSound();
-        router.push("/admin/dashboard");
+        router.replace("/admin/dashboard");
+        router.refresh();
       } else {
         setErrorMsg(json.error || "Authentication failed. Invalid master key.");
         playWarningTone();

@@ -43,8 +43,8 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/admin/analytics").then((r) => r.json()),
-      fetch("/api/admin/applications?limit=6").then((r) => r.json()),
+      fetch("/api/admin/analytics", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/admin/applications?limit=6", { credentials: "include" }).then((r) => r.json()),
     ])
       .then(([analyticsRes, appsRes]) => {
         if (analyticsRes.success) setStats(analyticsRes.data);

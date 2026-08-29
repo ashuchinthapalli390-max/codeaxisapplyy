@@ -7,7 +7,7 @@ export default function AdminAnalyticsPage() {
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/admin/analytics")
+    fetch("/api/admin/analytics", { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
         if (json.success) setData(json.data);

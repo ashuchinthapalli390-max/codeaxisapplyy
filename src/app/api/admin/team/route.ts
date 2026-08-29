@@ -8,7 +8,7 @@ import {
   reorderTeamMembers,
   addAuditLog,
 } from "@/lib/storage";
-import { validateSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { TeamMember } from "@/types/admin";
 
 export async function GET(req: NextRequest) {
@@ -16,6 +16,10 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const includeArchived = searchParams.get("archived") === "true";
     const publicOnly = searchParams.get("public") === "true";
+
+    if (!publicOnly) {
+      await requireAdmin(req);
+    }
 
     const allMembers = await getTeamMembers(includeArchived);
 
@@ -26,19 +30,14 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: allMembers });
   } catch (err) {
-    console.error("Team fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch team data." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     // Verify admin authentication
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const sessionCheck = await validateSession(token);
-    if (!sessionCheck.isValid) {
-      return NextResponse.json({ success: false, error: "Unauthorized admin access." }, { status: 401 });
-    }
+    await requireAdmin(req);
 
     const body = await req.json();
 
@@ -145,7 +144,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true, data: member });
   } catch (err) {
-    console.error("Save team error:", err);
-    return NextResponse.json({ success: false, error: "Failed to update team member." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getWebsiteSettings, saveWebsiteSettings } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const settings = await getWebsiteSettings();
     return NextResponse.json({ success: true, data: settings });
   } catch (err) {
-    console.error("Settings fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch settings." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const body = await req.json();
     await saveWebsiteSettings(body);
     return NextResponse.json({ success: true, message: "Settings updated successfully." });
   } catch (err) {
-    console.error("Save settings error:", err);
-    return NextResponse.json({ success: false, error: "Failed to save settings." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

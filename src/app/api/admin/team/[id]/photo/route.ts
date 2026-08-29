@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { validateSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { getTeamMemberById, saveTeamMember, addAuditLog } from "@/lib/storage";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { randomBytes } from "node:crypto";
@@ -17,11 +17,7 @@ export async function POST(
     const { id } = await context.params;
 
     // 1. Verify Admin Session
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    const sessionValidation = await validateSession(token);
-    if (!sessionValidation.isValid) {
-      return NextResponse.json({ success: false, error: "Unauthorized admin access." }, { status: 401 });
-    }
+    await requireAdmin(req);
 
     const member = await getTeamMemberById(id);
     if (!member) {
@@ -155,7 +151,6 @@ export async function POST(
       member,
     });
   } catch (err) {
-    console.error("Team photo upload error:", err);
-    return NextResponse.json({ success: false, error: "Internal server error during image upload." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

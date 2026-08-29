@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getApplications } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const { applications } = await getApplications({ limit: 10000 });
 
     const total = applications.length;
@@ -46,7 +50,6 @@ export async function GET() {
       },
     });
   } catch (err) {
-    console.error("Analytics fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to generate analytics." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

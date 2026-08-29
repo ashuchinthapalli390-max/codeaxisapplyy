@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApplications, addAuditLog } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
+
+export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const { format, status, scoreBand } = (await req.json()) as {
       format: "csv" | "json";
       status?: string;
@@ -63,7 +67,6 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("Export error:", err);
-    return NextResponse.json({ success: false, error: "Failed to generate export." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

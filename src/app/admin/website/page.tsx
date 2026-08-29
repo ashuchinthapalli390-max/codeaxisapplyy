@@ -36,7 +36,7 @@ export default function AdminWebsitePage() {
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/website")
+    fetch("/api/admin/website", { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
         if (json.success && json.data) {
@@ -65,6 +65,7 @@ export default function AdminWebsitePage() {
     try {
       const res = await fetch("/api/admin/website", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings, round }),
       });

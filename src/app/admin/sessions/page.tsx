@@ -14,7 +14,7 @@ export default function AdminSessionsPage() {
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/sessions");
+      const res = await fetch("/api/admin/sessions", { credentials: "include" });
       const json = await res.json();
       if (json.success) setSessions(json.data);
     } catch (err) {
@@ -33,6 +33,7 @@ export default function AdminSessionsPage() {
     try {
       const res = await fetch("/api/admin/sessions", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revoke", token }),
       });
@@ -51,6 +52,7 @@ export default function AdminSessionsPage() {
     try {
       const res = await fetch("/api/admin/sessions", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revoke_others" }),
       });
@@ -70,6 +72,7 @@ export default function AdminSessionsPage() {
     try {
       const res = await fetch("/api/admin/sessions", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "revoke_all" }),
       });

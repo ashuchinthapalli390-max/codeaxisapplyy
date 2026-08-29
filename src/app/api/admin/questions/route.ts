@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getQuestionBank, saveQuestion } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { QuestionBankItem } from "@/types/admin";
 
-export async function GET() {
+export const dynamic = "force-dynamic";
+
+export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const questions = await getQuestionBank();
     return NextResponse.json({ success: true, data: questions });
   } catch (err) {
-    console.error("Questions fetch error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch question bank." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const body = (await req.json()) as QuestionBankItem;
     if (!body.question || !body.category) {
       return NextResponse.json({ success: false, error: "Question text and category are required." }, { status: 400 });
@@ -34,7 +38,6 @@ export async function POST(req: NextRequest) {
     await saveQuestion(q);
     return NextResponse.json({ success: true, data: q });
   } catch (err) {
-    console.error("Save question error:", err);
-    return NextResponse.json({ success: false, error: "Failed to save question." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

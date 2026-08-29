@@ -44,7 +44,7 @@ export default function AdminApplicationsPage() {
       if (commitmentFilter !== "ALL") params.set("commitment", commitmentFilter);
       params.set("limit", "200");
 
-      const res = await fetch(`/api/admin/applications?${params.toString()}`);
+      const res = await fetch(`/api/admin/applications?${params.toString()}`, { credentials: "include" });
       const json = await res.json();
       if (json.success) {
         setApplications(json.data);
@@ -83,6 +83,7 @@ export default function AdminApplicationsPage() {
     try {
       const res = await fetch(`/api/admin/applications/${refId}`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update_status", status: newStatus }),
       });
@@ -101,6 +102,7 @@ export default function AdminApplicationsPage() {
     playButtonClick();
     const res = await fetch("/api/admin/exports", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ format: "csv", status: statusFilter !== "ALL" ? statusFilter : undefined }),
     });
@@ -116,6 +118,7 @@ export default function AdminApplicationsPage() {
     playButtonClick();
     const res = await fetch("/api/admin/exports", {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ format: "json" }),
     });

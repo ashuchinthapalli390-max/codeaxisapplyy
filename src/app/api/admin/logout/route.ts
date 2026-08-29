@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revokeSessionByToken, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { revokeSessionByToken, ADMIN_SESSION_COOKIE } from "@/lib/admin/session";
 import { addAuditLog } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   try {
-    const cookie = req.cookies.get(SESSION_COOKIE_NAME);
+    const cookie = req.cookies.get(ADMIN_SESSION_COOKIE);
     if (cookie?.value) {
       await revokeSessionByToken(cookie.value);
       await addAuditLog("LOGIN", "Admin logged out and session revoked.");
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json({ success: true, message: "Logged out successfully." });
     response.cookies.delete({
-      name: SESSION_COOKIE_NAME,
+      name: ADMIN_SESSION_COOKIE,
       path: "/",
     });
     return response;

@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApplications } from "@/lib/storage";
+import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    await requireAdmin(req);
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || undefined;
     const status = searchParams.get("status") || undefined;
@@ -28,7 +32,6 @@ export async function GET(req: NextRequest) {
       total: result.total,
     });
   } catch (err) {
-    console.error("Admin fetch applications error:", err);
-    return NextResponse.json({ success: false, error: "Failed to fetch applications." }, { status: 500 });
+    return handleAdminAuthError(err);
   }
 }

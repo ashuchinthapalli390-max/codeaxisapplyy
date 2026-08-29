@@ -57,7 +57,7 @@ export default function CandidateDetailPage() {
   const fetchCandidate = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/applications/${encodeURIComponent(refId)}`);
+      const res = await fetch(`/api/admin/applications/${encodeURIComponent(refId)}`, { credentials: "include" });
       const json = await res.json();
       if (json.success && json.data) {
         setCandidate(json.data);
@@ -79,6 +79,7 @@ export default function CandidateDetailPage() {
     try {
       const res = await fetch(`/api/admin/applications/${refId}`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "update_status", status: newStatus }),
       });
@@ -102,6 +103,7 @@ export default function CandidateDetailPage() {
     try {
       const res = await fetch(`/api/admin/applications/${refId}`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "add_note", note: noteInput.trim() }),
       });
