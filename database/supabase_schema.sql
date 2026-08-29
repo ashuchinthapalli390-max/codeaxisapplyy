@@ -212,3 +212,96 @@ CREATE TABLE IF NOT EXISTS voice_guides (
 );
 
 CREATE INDEX IF NOT EXISTS idx_voice_guides_hash ON voice_guides(content_hash);
+
+-- 6. TEAM PROFILES TABLE (Dynamic Leadership & Team CMS)
+CREATE TABLE IF NOT EXISTS team_profiles (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  display_name VARCHAR(255),
+  designation VARCHAR(255) NOT NULL,
+  secondary_designation VARCHAR(255),
+  role_type VARCHAR(100) NOT NULL DEFAULT 'Core Team',
+  department VARCHAR(255),
+  tagline TEXT,
+  short_bio TEXT,
+  full_bio TEXT,
+  professional_summary TEXT,
+  quote TEXT,
+  email VARCHAR(255),
+  secondary_email VARCHAR(255),
+  phone VARCHAR(100),
+  whatsapp VARCHAR(100),
+  location VARCHAR(255),
+  preferred_contact VARCHAR(100),
+  github_url TEXT,
+  linkedin_url TEXT,
+  instagram_url TEXT,
+  portfolio_url TEXT,
+  website_url TEXT,
+  youtube_url TEXT,
+  twitter_url TEXT,
+  discord_username VARCHAR(100),
+  other_links JSONB DEFAULT '[]'::jsonb,
+  profile_image_url TEXT,
+  profile_storage_path TEXT,
+  profile_object_position_x NUMERIC DEFAULT 50,
+  profile_object_position_y NUMERIC DEFAULT 50,
+  profile_scale NUMERIC DEFAULT 1,
+  background_asset_url TEXT,
+  background_type VARCHAR(100) DEFAULT 'none',
+  responsibilities JSONB DEFAULT '[]'::jsonb,
+  skills JSONB DEFAULT '[]'::jsonb,
+  display_order INTEGER DEFAULT 0,
+  is_visible BOOLEAN DEFAULT TRUE,
+  is_featured BOOLEAN DEFAULT FALSE,
+  is_archived BOOLEAN DEFAULT FALSE,
+  show_phone BOOLEAN DEFAULT TRUE,
+  show_email BOOLEAN DEFAULT TRUE,
+  show_whatsapp BOOLEAN DEFAULT TRUE,
+  show_socials BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_profiles_order ON team_profiles(display_order ASC);
+CREATE INDEX IF NOT EXISTS idx_team_profiles_visible ON team_profiles(is_visible);
+
+-- 7. SITE MODULES TABLE (Curriculum & Learning Modules CMS)
+CREATE TABLE IF NOT EXISTS site_modules (
+  id VARCHAR(100) PRIMARY KEY,
+  module_number INTEGER NOT NULL,
+  module_code VARCHAR(100) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  subtitle VARCHAR(255),
+  description TEXT NOT NULL,
+  week_label VARCHAR(100),
+  duration VARCHAR(100),
+  image_url TEXT NOT NULL,
+  topics JSONB DEFAULT '[]'::jsonb,
+  display_order INTEGER NOT NULL DEFAULT 1,
+  is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_site_modules_order ON site_modules(display_order ASC);
+CREATE INDEX IF NOT EXISTS idx_site_modules_visible ON site_modules(is_visible);
+
+-- 8. SITE SETTINGS TABLE (Global Website CMS & Voice Configuration)
+CREATE TABLE IF NOT EXISTS site_settings (
+  id VARCHAR(100) PRIMARY KEY DEFAULT 'default',
+  hero_heading TEXT,
+  hero_subtitle TEXT,
+  hero_description TEXT,
+  agency_name VARCHAR(255) DEFAULT 'CodeXa Agency',
+  agency_url VARCHAR(255) DEFAULT 'https://www.codxa-agency.online',
+  agency_description TEXT,
+  whatsapp_support_number VARCHAR(100),
+  founder_email VARCHAR(255),
+  voice_guide_enabled BOOLEAN DEFAULT TRUE,
+  voice_guide_settings JSONB DEFAULT '{}'::jsonb,
+  raw_settings JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+

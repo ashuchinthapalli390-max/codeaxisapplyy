@@ -1,27 +1,53 @@
 export interface TeamMember {
   id: string;
   name: string;
+  displayName?: string;
   designation: string;
-  roleType: "Founder" | "Co-Founder" | "CEO" | "Core Team" | "Mentor" | "Lead Developer" | "CTO" | "COO";
-  photoUrl: string;
+  secondaryDesignation?: string;
+  roleType: string; // "Founder" | "Co-Founder" | "CEO" | "CTO" | "COO" | "Core Team" | "Mentor" | "Lead Developer" | custom
+  department?: string;
+  tagline?: string;
   bio: string;
+  shortBio?: string;
   fullBio?: string;
+  professionalSummary?: string;
   quote?: string;
-  roles: string[];
+  photoUrl: string;
+  profileStoragePath?: string;
+  profileObjectPositionX?: number; // 0 to 100, default 50
+  profileObjectPositionY?: number; // 0 to 100, default 50
+  profileScale?: number; // 1.0 to 1.5, default 1
+  backgroundAssetUrl?: string;
+  backgroundType?: string;
+  responsibilities?: string[];
+  roles?: string[]; // Alias/compatibility with responsibilities
   skills: string[];
   email?: string;
+  secondaryEmail?: string;
   whatsapp?: string;
   phone?: string;
+  location?: string;
+  preferredContact?: string;
   githubUrl?: string;
   linkedinUrl?: string;
   instagramUrl?: string;
   websiteUrl?: string;
   portfolioUrl?: string;
-  backgroundAsset?: string;
+  youtubeUrl?: string;
+  twitterUrl?: string;
+  discordUsername?: string;
+  otherLinks?: { label: string; url: string }[];
+  showPhone?: boolean;
+  showEmail?: boolean;
+  showWhatsapp?: boolean;
+  showSocials?: boolean;
   showContact: boolean;
   isFeatured: boolean;
   isVisible?: boolean;
+  isArchived?: boolean;
   displayOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type ApplicationWindowStatus = "AUTO" | "OPEN" | "OPENING_SOON" | "CLOSED";
@@ -52,6 +78,23 @@ export interface VoiceGuideSettings {
   showTranscript: boolean;
   defaultVolume: number; // 0.0 to 1.0
   lastRegeneratedAt?: string;
+}
+
+export interface SiteModule {
+  id: string;
+  module_number: number;
+  module_code: string;
+  title: string;
+  subtitle?: string;
+  description: string;
+  week_label?: string;
+  duration?: string;
+  image_url: string;
+  topics?: string[];
+  display_order: number;
+  is_visible: boolean;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface WebsiteSettings {

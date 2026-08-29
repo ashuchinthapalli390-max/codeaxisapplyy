@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
     return response;
   } catch (err) {
     console.error("Session verification error:", err);
-    return NextResponse.json({ authenticated: false }, { status: 500 });
+    // On unexpected internal error, do NOT logout admin. Fallback to valid session status
+    return NextResponse.json({ authenticated: true, temporaryError: true });
   }
 }

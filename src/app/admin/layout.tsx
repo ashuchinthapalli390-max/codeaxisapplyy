@@ -35,27 +35,39 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     let isMounted = true;
-    // Verify session server-side via session validation endpoint
+
+    // Verify session with server
     fetch("/api/admin/verify-session")
-      .then((res) => {
+      .then(async (res) => {
         if (!isMounted) return;
         if (res.ok) {
-          setIsAuthenticated(true);
-          if (pathname === "/admin/login" || pathname === "/admin") {
-            router.replace("/admin/dashboard");
+          const data = await res.json().catch(() => ({}));
+          if (data.authenticated !== false) {
+            setIsAuthenticated(true);
+            if (pathname === "/admin/login" || pathname === "/admin") {
+              router.replace("/admin/dashboard");
+            }
+            return;
           }
-        } else {
+        }
+        
+        if (res.status === 401) {
           setIsAuthenticated(false);
+        } else {
+          // If server error or transient status, keep current state (or assume valid if previously logged in)
+          setIsAuthenticated((prev) => (prev === null ? false : prev));
         }
       })
       .catch(() => {
         if (!isMounted) return;
-        setIsAuthenticated((prev) => (prev === true ? true : false));
+        // Offline / network blip: never force-logout an already authenticated session
+        setIsAuthenticated((prev) => (prev === null ? false : prev));
       });
+
     return () => {
       isMounted = false;
     };
-  }, [pathname, router]);
+  }, [pathname === "/admin/login"]);
 
   // If on login route explicitly or not yet authenticated, render ONLY the Master Key Terminal Screen
   if (pathname === "/admin/login" || pathname === "/admin" || isAuthenticated === false) {

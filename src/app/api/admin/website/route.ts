@@ -8,6 +8,7 @@ import {
   saveFaq,
   deleteFaq,
 } from "@/lib/storage";
+import { validateSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
 import { revalidatePath, revalidateTag } from "next/cache";
 
 export const dynamic = "force-dynamic";
@@ -15,12 +16,14 @@ export const dynamic = "force-dynamic";
 /**
  * Converts date string (YYYY-MM-DD) and time string (HH:MM) to ISO string with Asia/Kolkata (+05:30) offset
  */
-function formatIndiaTimestamp(dateStr?: string, timeStr?: string, defaultTime = "00:00"): string {
+function formatIndiaTimestamp(dateStr?: string, timeStr?: string, defaultTime = "00:00:00"): string {
   if (!dateStr || !dateStr.trim()) return "";
   const cleanDate = dateStr.trim();
-  const cleanTime = (timeStr && timeStr.trim()) ? timeStr.trim() : defaultTime;
-  const timeWithSec = cleanTime.length === 5 ? `${cleanTime}:00` : cleanTime;
-  return `${cleanDate}T${timeWithSec}+05:30`;
+  let cleanTime = (timeStr && timeStr.trim()) ? timeStr.trim() : defaultTime;
+  if (cleanTime.length === 5) {
+    cleanTime = `${cleanTime}:00`;
+  }
+  return `${cleanDate}T${cleanTime}+05:30`;
 }
 
 export async function GET(req: NextRequest) {
@@ -54,6 +57,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
+    const sessionCheck = await validateSession(token);
+    if (!sessionCheck.isValid) {
+      return NextResponse.json({ success: false, error: "Unauthorized admin access." }, { status: 401 });
+    }
+
     const body = await req.json();
 
     if (body.type === "faq") {

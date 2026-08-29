@@ -8,7 +8,8 @@ import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import IntroAnimation from "@/components/IntroAnimation";
 import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
-import { TeamMember, InternshipRound } from "@/types/admin";
+import LeadershipDetailModal from "@/components/team/LeadershipDetailModal";
+import { TeamMember, InternshipRound, SiteModule } from "@/types/admin";
 import { learningModules, applicationRounds } from "@/config/card-assets";
 import {
   ArrowRight,
@@ -29,6 +30,7 @@ import {
   Lock,
   Mail,
   MessageCircle,
+  Phone,
   Play,
   Rocket,
   Search,
@@ -50,9 +52,11 @@ export default function HomePage() {
   const [faqOpenIndex, setFaqOpenIndex] = useState<number | null>(0);
   const [activeRoundIndex, setActiveRoundIndex] = useState<number>(0);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [modules, setModules] = useState<SiteModule[]>([]);
+  const [selectedLeaderModal, setSelectedLeaderModal] = useState<TeamMember | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/team")
+    fetch("/api/admin/team?public=true")
       .then((res) => res.json())
       .then((json) => {
         if (json.success && json.data) {
@@ -60,7 +64,30 @@ export default function HomePage() {
         }
       })
       .catch(() => {});
+
+    fetch("/api/modules")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data && json.data.length > 0) {
+          setModules(json.data);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const displayModules = modules.length > 0
+    ? modules.map((m) => ({
+        id: m.id,
+        moduleNumber: m.module_number,
+        moduleCode: m.module_code,
+        title: m.title,
+        subtitle: m.subtitle || `Module 0${m.module_number}`,
+        description: m.description,
+        duration: m.duration || "2 Weeks",
+        image: m.image_url,
+        topics: m.topics || [],
+      }))
+    : learningModules;
 
   // Live Application & Internship Round Configuration
   const [appConfig, setAppConfig] = useState<{
@@ -577,7 +604,7 @@ agency.launchRecruitmentBatch("2026-AUG");`,
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {learningModules.map((mod) => (
+            {displayModules.map((mod) => (
               <div
                 key={mod.id}
                 className="tilt-card red-glass rounded-3xl overflow-hidden border border-red-950/80 hover:border-red-500/60 flex flex-col justify-between group transition-all font-mono"
@@ -1006,87 +1033,53 @@ agency.launchRecruitmentBatch("2026-AUG");`,
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {((teamMembers && teamMembers.length > 0 ? teamMembers : [
-              {
-                id: "ashu-founder",
-                name: "Ashu",
-                designation: "Founder & Technical Director",
-                roleType: "Founder" as const,
-                photoUrl: "/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg",
-                bio: "Founder of CodeXa Agency. Focuses on AI agent architecture, developer tools, hosting platforms, Discord automation, 3D animated web experiences, secure application portals, and recruitment systems.",
-                quote: "I don't just write code, I build solutions that create impact.",
-                roles: ["Founder", "Technical Direction", "Product Strategy"],
-                skills: ["EDITH AI", "CODEXA IDE", "Claude Code API", "Ethical Hacking", "3D Web", "Full-Stack"],
-                email: "ashuchinthapalli3900@gmail.com",
-                whatsapp: "+91 88979 01413",
-                showContact: true,
-                isFeatured: true,
-                isVisible: true,
-                displayOrder: 1,
-              },
-              {
-                id: "deepak-cofounder",
-                name: "Deepak",
-                designation: "Co-Founder & Operations Lead",
-                roleType: "Co-Founder" as const,
-                photoUrl: "/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg",
-                bio: "Co-Founder of CodeXa Agency. Supports team coordination, applicant guidance, internship communication, community management, and student query resolution.",
-                quote: "Connecting people, supporting progress, and keeping the journey smooth.",
-                roles: ["Co-Founder", "Operations", "Student Support"],
-                skills: ["Operations", "Team Sync", "Student Support", "Program Logistics", "Communication"],
-                whatsapp: "+91 94942 45412",
-                showContact: true,
-                isFeatured: true,
-                isVisible: true,
-                displayOrder: 2,
-              },
-              {
-                id: "kishore-ceo",
-                name: "Kishore",
-                designation: "Chief Executive Officer (CEO)",
-                roleType: "CEO" as const,
-                photoUrl: "/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg",
-                bio: "CEO of CodeXa Agency. Drives business strategy, organizational partnerships, commercial scaling, growth initiatives, and project coordination.",
-                quote: "Scaling execution, driving innovation, and accelerating developer careers.",
-                roles: ["CEO", "Business Strategy", "Growth"],
-                skills: ["Business Strategy", "Growth", "Client Projects", "Administration", "Strategic Scaling"],
-                whatsapp: "+91 70758 00951",
-                showContact: true,
-                isFeatured: true,
-                isVisible: true,
-                displayOrder: 3,
-              },
-            ]))
-              .filter((m) => m.isVisible !== false)
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {teamMembers
+              .filter((m) => m.isVisible !== false && !m.isArchived)
               .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
               .map((member) => (
                 <div
                   key={member.id}
-                  className="tilt-card red-glass rounded-3xl p-6 border border-red-500/40 space-y-5 flex flex-col justify-between relative overflow-hidden group"
+                  onClick={() => {
+                    playButtonClick();
+                    setSelectedLeaderModal(member);
+                  }}
+                  className="tilt-card red-glass rounded-3xl p-6 border border-red-500/40 space-y-5 flex flex-col justify-between relative overflow-hidden group cursor-pointer hover:border-red-500 transition-all shadow-[0_10px_35px_rgba(0,0,0,0.6)]"
                 >
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 font-mono font-bold uppercase">
-                          {member.roleType}
+                      <div className="space-y-1 overflow-hidden">
+                        <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 font-mono font-bold uppercase inline-flex items-center gap-1">
+                          <Crown className="w-3 h-3 text-yellow-400" />
+                          <span>{member.roleType}</span>
                         </span>
-                        <h3 className="text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors">
-                          {member.name}
+                        <h3 className="text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors truncate">
+                          {member.displayName || member.name}
                         </h3>
-                        <div className="text-[11px] font-mono text-slate-400">{member.designation}</div>
+                        <div className="text-[11px] font-mono text-slate-400 truncate">{member.designation}</div>
                       </div>
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform">
-                        <img
-                          src={member.photoUrl || "/assets/image-assests/hero.jpeg"}
-                          alt={member.name}
-                          className="w-full h-full object-cover rounded-xl"
-                        />
+
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform relative">
+                        {member.photoUrl ? (
+                          <img
+                            src={member.photoUrl}
+                            alt={member.name}
+                            style={{
+                              objectPosition: `${member.profileObjectPositionX ?? 50}% ${member.profileObjectPositionY ?? 50}%`,
+                              transform: `scale(${member.profileScale ?? 1})`,
+                            }}
+                            className="w-full h-full object-cover rounded-xl"
+                          />
+                        ) : (
+                          <div className="w-full h-full rounded-xl bg-red-950/70 flex items-center justify-center text-lg font-black text-white">
+                            {member.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-300 font-mono leading-relaxed line-clamp-4">
-                      {member.bio}
+                    <p className="text-xs text-slate-300 font-mono leading-relaxed line-clamp-3">
+                      {member.shortBio || member.bio}
                     </p>
 
                     {member.quote && (
@@ -1096,43 +1089,81 @@ agency.launchRecruitmentBatch("2026-AUG");`,
                     )}
 
                     {member.skills && member.skills.length > 0 && (
-                      <div className="space-y-2 font-mono text-[11px]">
+                      <div className="space-y-1.5 font-mono text-[11px]">
                         <div className="text-[10px] text-red-400 font-bold uppercase">Focus Areas:</div>
                         <div className="flex flex-wrap gap-1.5">
-                          {member.skills.map((s) => (
+                          {member.skills.slice(0, 5).map((s) => (
                             <span key={s} className="px-2 py-0.5 rounded bg-black/60 text-slate-300 border border-red-950 text-[10px]">
                               {s}
                             </span>
                           ))}
+                          {member.skills.length > 5 && (
+                            <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-300 text-[9px] font-bold">
+                              +{member.skills.length - 5}
+                            </span>
+                          )}
                         </div>
                       </div>
                     )}
                   </div>
 
-                  <div className="border-t border-red-950 pt-4 flex items-center justify-between font-mono">
-                    {member.whatsapp ? (
-                      <a
-                        href={`https://wa.me/${member.whatsapp.replace(/[^0-9]/g, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={playButtonClick}
-                        className="px-4 py-2 rounded-xl bg-red-600/20 border border-red-500/40 text-red-300 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
-                      >
-                        <MessageCircle className="w-3.5 h-3.5" />
-                        <span>{member.whatsapp}</span>
-                      </a>
-                    ) : <div />}
+                  {/* Public Contact Links */}
+                  <div
+                    className="border-t border-red-950 pt-4 flex items-center justify-between font-mono"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-2">
+                      {member.showWhatsapp !== false && member.whatsapp && (
+                        <a
+                          href={`https://wa.me/${member.whatsapp.replace(/[^0-9]/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={playButtonClick}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-600/40 text-emerald-300 hover:bg-emerald-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
+                          title="Chat on WhatsApp"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">WhatsApp</span>
+                        </a>
+                      )}
 
-                    {member.email && (
-                      <a
-                        href={`mailto:${member.email}`}
-                        onClick={playButtonClick}
-                        className="p-2 rounded-xl border border-red-950 hover:border-red-500 text-slate-400 hover:text-white transition-all"
-                        title={`Email ${member.name}`}
+                      {member.showPhone !== false && member.phone && (
+                        <a
+                          href={`tel:${member.phone.replace(/[^0-9+]/g, "")}`}
+                          onClick={playButtonClick}
+                          className="px-3 py-1.5 rounded-xl bg-red-950/60 border border-red-600/40 text-red-300 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
+                          title="Call Phone"
+                        >
+                          <Phone className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Call</span>
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {member.showEmail !== false && member.email && (
+                        <a
+                          href={`mailto:${member.email}`}
+                          onClick={playButtonClick}
+                          className="p-2 rounded-xl border border-red-950 hover:border-red-500 text-slate-400 hover:text-white transition-all"
+                          title={`Email ${member.name}`}
+                        >
+                          <Mail className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          playButtonClick();
+                          setSelectedLeaderModal(member);
+                        }}
+                        className="p-2 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-red-400 hover:text-white transition-all"
+                        title="View Full Profile"
                       >
-                        <Mail className="w-4 h-4" />
-                      </a>
-                    )}
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1237,6 +1268,13 @@ agency.launchRecruitmentBatch("2026-AUG");`,
 
       {/* AI-Powered Natural Telugu Voice Guide Widget */}
       <CodeXaVoiceGuide scrollThreshold={350} />
+
+      {/* Leadership Profile Detail Modal */}
+      <LeadershipDetailModal
+        isOpen={selectedLeaderModal !== null}
+        member={selectedLeaderModal}
+        onClose={() => setSelectedLeaderModal(null)}
+      />
 
       <Footer />
     </div>

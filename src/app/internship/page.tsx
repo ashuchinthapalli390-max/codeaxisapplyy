@@ -1,16 +1,42 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowRight, CheckCircle2, Code2, Cpu, Database, GitBranch, Globe, Rocket, ShieldCheck, Terminal, Users, Zap } from "lucide-react";
+import { learningModules, LearningModuleCard } from "@/config/card-assets";
+import { SiteModule } from "@/types/admin";
 import { playButtonClick } from "@/lib/audio";
-import { learningModules } from "@/config/card-assets";
 
 export default function InternshipPage() {
+  const [modules, setModules] = useState<SiteModule[]>([]);
+
+  useEffect(() => {
+    fetch("/api/modules")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data && json.data.length > 0) {
+          setModules(json.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const displayModules: LearningModuleCard[] = modules.length > 0
+    ? modules.map((m) => ({
+        id: m.module_number,
+        moduleCode: m.module_code,
+        title: m.title,
+        subtitle: m.subtitle || `Module 0${m.module_number}`,
+        description: m.description,
+        duration: m.duration || "2 Weeks",
+        skills: m.topics || [],
+        image: m.image_url,
+      }))
+    : learningModules;
   const moduleTopicDetails: Record<number, string[]> = {
     1: [
       "Git repository workflows, branch management, and GitHub PR reviews",
@@ -70,7 +96,7 @@ export default function InternshipPage() {
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {learningModules.map((mod) => (
+            {displayModules.map((mod) => (
               <div
                 key={mod.id}
                 className="tilt-card red-glass rounded-3xl overflow-hidden border border-red-950/80 hover:border-red-500/50 flex flex-col justify-between font-mono group transition-all"
@@ -105,7 +131,7 @@ export default function InternshipPage() {
                   <div className="space-y-2 pt-2 border-t border-red-950/70">
                     <div className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Key Focus Areas:</div>
                     <ul className="space-y-1.5 text-xs text-slate-300">
-                      {(moduleTopicDetails[mod.id] || mod.skills).map((topic, idx) => (
+                      {(mod.skills && mod.skills.length > 0 ? mod.skills : (moduleTopicDetails[mod.id] || [])).map((topic, idx) => (
                         <li key={idx} className="flex items-start gap-2">
                           <CheckCircle2 className="w-3.5 h-3.5 text-red-400 shrink-0 mt-0.5" />
                           <span className="leading-snug">{topic}</span>

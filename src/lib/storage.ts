@@ -14,6 +14,7 @@ import {
   AdminAuditLog,
   AdminSession,
   SiteAsset,
+  SiteModule,
 } from "@/types/admin";
 
 export const DEFAULT_TELUGU_NARRATION =
@@ -22,6 +23,7 @@ export const DEFAULT_TELUGU_NARRATION =
 interface StoreData {
   applications: ApplicationData[];
   internshipRounds: InternshipRound[];
+  modules?: SiteModule[];
   team: TeamMember[];
   settings: WebsiteSettings;
   faqs: FaqItem[];
@@ -85,6 +87,85 @@ const DEFAULT_SETTINGS: WebsiteSettings = {
     defaultVolume: 0.9,
   },
 };
+
+const DEFAULT_MODULES: SiteModule[] = [
+  {
+    id: "module-01",
+    module_number: 1,
+    module_code: "MOD-01",
+    title: "Engineering Foundations & AI Workflows",
+    subtitle: "Module 01 // Foundations",
+    description: "Modern developer environment setup, Git version control, branch management, GitHub collaboration, and structured prompt engineering workflows.",
+    week_label: "Weeks 1–2",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-01-foundations-vibe-coding.png",
+    topics: [
+      "Git repository workflows, branch management, and GitHub PR reviews",
+      "VS Code & AI developer assistant workflow optimization",
+      "TypeScript & modern React component patterns",
+      "Prompt engineering for architectural clarity and bug diagnosis",
+    ],
+    display_order: 1,
+    is_visible: true,
+  },
+  {
+    id: "module-02",
+    module_number: 2,
+    module_code: "MOD-02",
+    title: "Full-Stack Web Engineering",
+    subtitle: "Module 02 // Full-Stack Core",
+    description: "Next.js App Router architecture, Server Components, API routes, client state management, responsive UI design, and form handling.",
+    week_label: "Weeks 3–4",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-02-fullstack-web-engineering.png",
+    topics: [
+      "Next.js App Router architecture, Server Components & Actions",
+      "REST API route handlers & scalable serverless model",
+      "Client state management and high-performance reactive UI",
+      "Error handling, input validation, and security sanitization",
+    ],
+    display_order: 2,
+    is_visible: true,
+  },
+  {
+    id: "module-03",
+    module_number: 3,
+    module_code: "MOD-03",
+    title: "Database Systems, Security & Auth",
+    subtitle: "Module 03 // Data & Security",
+    description: "PostgreSQL schema design, Supabase database integration, authentication flows, secure session management, and API protection.",
+    week_label: "Weeks 5–6",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-03-database-security.png",
+    topics: [
+      "PostgreSQL & Supabase schema design and indexing",
+      "Relational queries, connection pooling, and data integrity",
+      "HttpOnly cookie persistent authentication & session security",
+      "Rate limiting, CSRF protection, and endpoint hardening",
+    ],
+    display_order: 3,
+    is_visible: true,
+  },
+  {
+    id: "module-04",
+    module_number: 4,
+    module_code: "MOD-04",
+    title: "Production Deployment & Product Launch",
+    subtitle: "Module 04 // Production Launch",
+    description: "Vercel cloud deployment, domain configuration, CI/CD automated pipelines, performance optimization, SEO metadata, and product delivery.",
+    week_label: "Weeks 7–8",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-04-production-deployment.png",
+    topics: [
+      "Production cloud deployment on Vercel and modern infrastructure",
+      "CI/CD automated deployment pipelines & webhook integrations",
+      "Lighthouse performance optimization, caching & SEO meta tags",
+      "Live product launch, telemetry logging, and developer certification",
+    ],
+    display_order: 4,
+    is_visible: true,
+  },
+];
 
 const DEFAULT_TEAM: TeamMember[] = [
   {
@@ -400,6 +481,9 @@ function ensureStore(): StoreData {
       if (!memoryCache!.internshipRounds || memoryCache!.internshipRounds.length === 0) {
         memoryCache!.internshipRounds = [{ ...DEFAULT_INTERNSHIP_ROUND }];
       }
+      if (!memoryCache!.modules || memoryCache!.modules.length === 0) {
+        memoryCache!.modules = [...DEFAULT_MODULES];
+      }
       if (!memoryCache!.siteAssets || memoryCache!.siteAssets.length === 0) {
         memoryCache!.siteAssets = [...DEFAULT_SITE_ASSETS];
       }
@@ -421,6 +505,7 @@ function ensureStore(): StoreData {
   memoryCache = {
     applications: [],
     internshipRounds: [{ ...DEFAULT_INTERNSHIP_ROUND }],
+    modules: [...DEFAULT_MODULES],
     team: [...DEFAULT_TEAM],
     settings: { ...DEFAULT_SETTINGS },
     faqs: [...DEFAULT_FAQS],
@@ -453,7 +538,7 @@ function saveStoreSync(data: StoreData) {
 // ----------------- INTERNSHIP ROUNDS (SINGLE SOURCE OF TRUTH) -----------------
 
 export async function getActiveInternshipRound(): Promise<InternshipRound> {
-  // 1. Check Supabase first
+  // 1. Query Supabase
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -471,7 +556,7 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
           id: String(data.id),
           title: data.title || "CodeXa Developer Internship 2026",
           batch_code: data.batch_code || "2026-AUG",
-          status: data.status || "AUTO",
+          status: (data.status || "AUTO") as any,
           opens_at: data.opens_at,
           closes_at: data.closes_at,
           next_opens_at: data.next_opens_at,
@@ -486,7 +571,7 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
     console.warn("[Supabase getActiveInternshipRound Warning]:", err);
   }
 
-  // 2. Fallback to file store
+  // 2. Fallback to local file store
   const store = ensureStore();
   const active = store.internshipRounds.find((r) => r.is_active);
   return active || store.internshipRounds[0] || DEFAULT_INTERNSHIP_ROUND;
@@ -495,15 +580,21 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
 export async function saveInternshipRound(roundData: Partial<InternshipRound>): Promise<InternshipRound> {
   const store = ensureStore();
   const current = await getActiveInternshipRound();
+  const nowIso = new Date().toISOString();
 
   const updated: InternshipRound = {
     ...current,
     ...roundData,
-    id: roundData.id || current.id || `round-${Date.now()}`,
+    id: current.id || roundData.id || `round-${Date.now()}`,
+    title: roundData.title || current.title || "CodeXa Developer Internship 2026",
     batch_code: roundData.batch_code?.trim() || current.batch_code || "2026-AUG",
-    timezone: roundData.timezone || "Asia/Kolkata",
+    status: (roundData.status || current.status || "AUTO") as any,
+    opens_at: roundData.opens_at || current.opens_at,
+    closes_at: roundData.closes_at || current.closes_at,
+    next_opens_at: roundData.next_opens_at !== undefined ? roundData.next_opens_at : current.next_opens_at,
+    timezone: roundData.timezone || current.timezone || "Asia/Kolkata",
     is_active: true,
-    updated_at: new Date().toISOString(),
+    updated_at: nowIso,
   };
 
   // Sync to local store
@@ -538,7 +629,7 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     actionType: "SETTINGS_UPDATE",
     adminUser: "Master Admin",
     details: `Updated active internship round: ${updated.batch_code} (Status: ${updated.status}, Closes: ${updated.closes_at})`,
-    createdAt: new Date().toISOString(),
+    createdAt: nowIso,
   });
 
   saveStoreSync(store);
@@ -548,29 +639,56 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { error } = await supabase
-        .from("internship_rounds")
-        .upsert(
-          {
-            title: updated.title,
-            batch_code: updated.batch_code,
-            status: updated.status,
-            opens_at: updated.opens_at,
-            closes_at: updated.closes_at,
-            next_opens_at: updated.next_opens_at || null,
-            timezone: updated.timezone,
-            is_active: true,
-            updated_at: updated.updated_at,
-          },
-          { onConflict: "id" }
-        );
+      const dbPayload = {
+        title: updated.title,
+        batch_code: updated.batch_code,
+        status: updated.status,
+        opens_at: updated.opens_at,
+        closes_at: updated.closes_at,
+        next_opens_at: updated.next_opens_at || null,
+        timezone: updated.timezone,
+        is_active: true,
+        updated_at: nowIso,
+      };
 
-      if (error) {
-        console.warn("[Supabase saveInternshipRound Warning]:", error.message);
+      const { data: existingActive } = await supabase
+        .from("internship_rounds")
+        .select("id")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existingActive?.id) {
+        const { data: updatedDb, error: updateError } = await supabase
+          .from("internship_rounds")
+          .update(dbPayload)
+          .eq("id", existingActive.id)
+          .select()
+          .single();
+
+        if (!updateError && updatedDb) {
+          updated.id = String(updatedDb.id);
+          updated.updated_at = updatedDb.updated_at;
+          console.log("[SETTINGS:SAVE] database update success. Row ID:", updated.id, "Closes at:", updated.closes_at);
+        } else if (updateError) {
+          console.warn("[Supabase Round Update Warning]:", updateError.message);
+        }
+      } else {
+        const { data: insertedDb, error: insertError } = await supabase
+          .from("internship_rounds")
+          .insert(dbPayload)
+          .select()
+          .single();
+
+        if (!insertError && insertedDb) {
+          updated.id = String(insertedDb.id);
+          updated.updated_at = insertedDb.updated_at;
+        }
       }
     }
-  } catch (supabaseErr) {
-    console.warn("[Supabase saveInternshipRound Exception]:", supabaseErr);
+  } catch (err) {
+    console.warn("[Supabase saveInternshipRound Exception]:", err);
   }
 
   return updated;
@@ -1020,35 +1138,423 @@ export async function saveVoiceGuideCache(entry: VoiceGuideCacheEntry): Promise<
   return true;
 }
 
-// ----------------- TEAM CMS -----------------
+// ----------------- TEAM & LEADERSHIP CMS -----------------
 
-export async function getTeamMembers(): Promise<TeamMember[]> {
+function mapDbRowToTeamMember(row: any): TeamMember {
+  const responsibilities = Array.isArray(row.responsibilities)
+    ? row.responsibilities
+    : Array.isArray(row.roles)
+    ? row.roles
+    : [];
+  return {
+    id: row.id,
+    name: row.name,
+    displayName: row.display_name || row.name,
+    designation: row.designation,
+    secondaryDesignation: row.secondary_designation || "",
+    roleType: row.role_type || "Core Team",
+    department: row.department || "",
+    tagline: row.tagline || "",
+    bio: row.short_bio || row.bio || "",
+    shortBio: row.short_bio || row.bio || "",
+    fullBio: row.full_bio || "",
+    professionalSummary: row.professional_summary || "",
+    quote: row.quote || "",
+    photoUrl: row.profile_image_url || "/assets/image-assests/hero.jpeg",
+    profileStoragePath: row.profile_storage_path || "",
+    profileObjectPositionX: row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50,
+    profileObjectPositionY: row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50,
+    profileScale: row.profile_scale != null ? Number(row.profile_scale) : 1,
+    backgroundAssetUrl: row.background_asset_url || "",
+    backgroundType: row.background_type || "none",
+    responsibilities,
+    roles: responsibilities,
+    skills: Array.isArray(row.skills) ? row.skills : [],
+    email: row.email || "",
+    secondaryEmail: row.secondary_email || "",
+    phone: row.phone || "",
+    whatsapp: row.whatsapp || "",
+    location: row.location || "",
+    preferredContact: row.preferred_contact || "",
+    githubUrl: row.github_url || "",
+    linkedinUrl: row.linkedin_url || "",
+    instagramUrl: row.instagram_url || "",
+    portfolioUrl: row.portfolio_url || "",
+    websiteUrl: row.website_url || "",
+    youtubeUrl: row.youtube_url || "",
+    twitterUrl: row.twitter_url || "",
+    discordUsername: row.discord_username || "",
+    otherLinks: Array.isArray(row.other_links) ? row.other_links : [],
+    showPhone: row.show_phone !== false,
+    showEmail: row.show_email !== false,
+    showWhatsapp: row.show_whatsapp !== false,
+    showSocials: row.show_socials !== false,
+    showContact: row.show_phone !== false || row.show_whatsapp !== false || row.show_email !== false,
+    isFeatured: row.is_featured === true,
+    isVisible: row.is_visible !== false,
+    isArchived: row.is_archived === true,
+    displayOrder: row.display_order != null ? Number(row.display_order) : 0,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapTeamMemberToDbRow(m: TeamMember): any {
+  const resp = m.responsibilities || m.roles || [];
+  return {
+    id: m.id,
+    name: m.name,
+    display_name: m.displayName || m.name,
+    designation: m.designation,
+    secondary_designation: m.secondaryDesignation || null,
+    role_type: m.roleType || "Core Team",
+    department: m.department || null,
+    tagline: m.tagline || null,
+    short_bio: m.shortBio || m.bio || null,
+    full_bio: m.fullBio || null,
+    professional_summary: m.professionalSummary || null,
+    quote: m.quote || null,
+    email: m.email || null,
+    secondary_email: m.secondaryEmail || null,
+    phone: m.phone || null,
+    whatsapp: m.whatsapp || null,
+    location: m.location || null,
+    preferred_contact: m.preferredContact || null,
+    github_url: m.githubUrl || null,
+    linkedin_url: m.linkedinUrl || null,
+    instagram_url: m.instagramUrl || null,
+    portfolio_url: m.portfolioUrl || null,
+    website_url: m.websiteUrl || null,
+    youtube_url: m.youtubeUrl || null,
+    twitter_url: m.twitterUrl || null,
+    discord_username: m.discordUsername || null,
+    other_links: m.otherLinks || [],
+    profile_image_url: m.photoUrl,
+    profile_storage_path: m.profileStoragePath || null,
+    profile_object_position_x: m.profileObjectPositionX ?? 50,
+    profile_object_position_y: m.profileObjectPositionY ?? 50,
+    profile_scale: m.profileScale ?? 1,
+    background_asset_url: m.backgroundAssetUrl || null,
+    background_type: m.backgroundType || "none",
+    responsibilities: resp,
+    skills: m.skills || [],
+    display_order: m.displayOrder ?? 0,
+    is_visible: m.isVisible !== false,
+    is_featured: m.isFeatured === true,
+    is_archived: m.isArchived === true,
+    show_phone: m.showPhone !== false,
+    show_email: m.showEmail !== false,
+    show_whatsapp: m.showWhatsapp !== false,
+    show_socials: m.showSocials !== false,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+export async function getTeamMembers(includeArchived: boolean = false): Promise<TeamMember[]> {
+  // 1. Try Supabase
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      let query = supabase.from("team_profiles").select("*").order("display_order", { ascending: true });
+      if (!includeArchived) {
+        query = query.eq("is_archived", false);
+      }
+      const { data, error } = await query;
+      if (data && !error && data.length > 0) {
+        return data.map(mapDbRowToTeamMember);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase Team Fetch Warning]:", err);
+  }
+
+  // 2. Local store fallback
   const store = ensureStore();
-  return store.team.sort((a, b) => a.displayOrder - b.displayOrder);
+  const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || !m.isArchived);
+  return list.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+}
+
+export async function getTeamMemberById(id: string): Promise<TeamMember | null> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase.from("team_profiles").select("*").eq("id", id).maybeSingle();
+      if (data && !error) {
+        return mapDbRowToTeamMember(data);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase Team Member Fetch Warning]:", err);
+  }
+
+  const store = ensureStore();
+  return (store.team || DEFAULT_TEAM).find((t) => t.id === id) || null;
 }
 
 export async function saveTeamMember(member: TeamMember): Promise<boolean> {
   const store = ensureStore();
+  if (!store.team) store.team = [...DEFAULT_TEAM];
+
+  const now = new Date().toISOString();
+  const updatedMember: TeamMember = {
+    ...member,
+    updatedAt: now,
+    createdAt: member.createdAt || now,
+    responsibilities: member.responsibilities || member.roles || [],
+    roles: member.responsibilities || member.roles || [],
+  };
+
   const idx = store.team.findIndex((t) => t.id === member.id);
   if (idx >= 0) {
-    store.team[idx] = member;
+    store.team[idx] = updatedMember;
   } else {
-    store.team.push(member);
+    store.team.push(updatedMember);
   }
   saveStoreSync(store);
+
+  // Sync to Supabase
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const row = mapTeamMemberToDbRow(updatedMember);
+      const { error } = await supabase.from("team_profiles").upsert(row, { onConflict: "id" });
+      if (error) {
+        console.warn("[Supabase Team Save Warning]:", error.message);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase Team Save Exception]:", err);
+  }
+
   return true;
 }
 
-export async function deleteTeamMember(id: string): Promise<boolean> {
+export async function deleteTeamMember(id: string, softDelete: boolean = true): Promise<boolean> {
   const store = ensureStore();
-  store.team = store.team.filter((t) => t.id !== id);
-  saveStoreSync(store);
+  if (!store.team) store.team = [...DEFAULT_TEAM];
+
+  if (softDelete) {
+    const member = store.team.find((t) => t.id === id);
+    if (member) {
+      member.isArchived = true;
+      member.isVisible = false;
+      member.updatedAt = new Date().toISOString();
+      saveStoreSync(store);
+
+      try {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const supabase = getSupabaseAdmin();
+        if (supabase) {
+          await supabase.from("team_profiles").update({ is_archived: true, is_visible: false, updated_at: new Date().toISOString() }).eq("id", id);
+        }
+      } catch (err) {
+        console.warn("[Supabase Team Archive Warning]:", err);
+      }
+    }
+  } else {
+    store.team = store.team.filter((t) => t.id !== id);
+    saveStoreSync(store);
+
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const supabase = getSupabaseAdmin();
+      if (supabase) {
+        await supabase.from("team_profiles").delete().eq("id", id);
+      }
+    } catch (err) {
+      console.warn("[Supabase Team Delete Warning]:", err);
+    }
+  }
+
   return true;
+}
+
+export async function restoreTeamMember(id: string): Promise<boolean> {
+  const store = ensureStore();
+  const member = (store.team || []).find((t) => t.id === id);
+  if (member) {
+    member.isArchived = false;
+    member.isVisible = true;
+    member.updatedAt = new Date().toISOString();
+    saveStoreSync(store);
+  }
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase.from("team_profiles").update({ is_archived: false, is_visible: true, updated_at: new Date().toISOString() }).eq("id", id);
+    }
+  } catch (err) {
+    console.warn("[Supabase Team Restore Warning]:", err);
+  }
+
+  return true;
+}
+
+export async function duplicateTeamMember(id: string): Promise<TeamMember | null> {
+  const original = await getTeamMemberById(id);
+  if (!original) return null;
+
+  const now = new Date().toISOString();
+  const newMember: TeamMember = {
+    ...original,
+    id: `team-${Date.now()}`,
+    name: `${original.name} (Copy)`,
+    displayName: original.displayName ? `${original.displayName} (Copy)` : undefined,
+    displayOrder: (original.displayOrder ?? 0) + 1,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await saveTeamMember(newMember);
+  return newMember;
+}
+
+export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean> {
+  const store = ensureStore();
+  orderedIds.forEach((id, index) => {
+    const member = (store.team || []).find((t) => t.id === id);
+    if (member) {
+      member.displayOrder = index + 1;
+      member.updatedAt = new Date().toISOString();
+    }
+  });
+  saveStoreSync(store);
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      for (let i = 0; i < orderedIds.length; i++) {
+        await supabase.from("team_profiles").update({ display_order: i + 1, updated_at: new Date().toISOString() }).eq("id", orderedIds[i]);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase Team Reorder Warning]:", err);
+  }
+
+  return true;
+}
+
+// ----------------- SITE MODULES CMS -----------------
+
+function mapDbRowToSiteModule(row: any): SiteModule {
+  return {
+    id: row.id,
+    module_number: Number(row.module_number) || 1,
+    module_code: row.module_code || `MOD-0${row.module_number || 1}`,
+    title: row.title,
+    subtitle: row.subtitle || "",
+    description: row.description || "",
+    week_label: row.week_label || "",
+    duration: row.duration || "",
+    image_url: row.image_url || "/assets/cards/modules/module-01-foundations-vibe-coding.png",
+    topics: Array.isArray(row.topics) ? row.topics : [],
+    display_order: Number(row.display_order) || 1,
+    is_visible: row.is_visible !== false,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+export async function getSiteModules(includeHidden: boolean = false): Promise<SiteModule[]> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      let query = supabase.from("site_modules").select("*").order("display_order", { ascending: true });
+      if (!includeHidden) {
+        query = query.eq("is_visible", true);
+      }
+      const { data, error } = await query;
+      if (data && !error && data.length > 0) {
+        return data.map(mapDbRowToSiteModule);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase Site Modules Warning]:", err);
+  }
+
+  const store = ensureStore();
+  const list = store.modules || DEFAULT_MODULES;
+  return list
+    .filter((m) => includeHidden || m.is_visible !== false)
+    .sort((a, b) => a.display_order - b.display_order);
+}
+
+export async function saveSiteModule(mod: SiteModule): Promise<SiteModule> {
+  const store = ensureStore();
+  if (!store.modules) store.modules = [...DEFAULT_MODULES];
+
+  const now = new Date().toISOString();
+  const updatedMod: SiteModule = {
+    ...mod,
+    updated_at: now,
+    created_at: mod.created_at || now,
+    topics: mod.topics || [],
+  };
+
+  const idx = store.modules.findIndex((m) => m.id === mod.id);
+  if (idx >= 0) {
+    store.modules[idx] = updatedMod;
+  } else {
+    store.modules.push(updatedMod);
+  }
+  saveStoreSync(store);
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase.from("site_modules").upsert(
+        {
+          id: updatedMod.id,
+          module_number: updatedMod.module_number,
+          module_code: updatedMod.module_code,
+          title: updatedMod.title,
+          subtitle: updatedMod.subtitle || null,
+          description: updatedMod.description,
+          week_label: updatedMod.week_label || null,
+          duration: updatedMod.duration || null,
+          image_url: updatedMod.image_url,
+          topics: updatedMod.topics,
+          display_order: updatedMod.display_order,
+          is_visible: updatedMod.is_visible,
+          updated_at: now,
+        },
+        { onConflict: "id" }
+      );
+    }
+  } catch (err) {
+    console.warn("[Supabase saveSiteModule Exception]:", err);
+  }
+
+  return updatedMod;
 }
 
 // ----------------- WEBSITE SETTINGS -----------------
 
 export async function getWebsiteSettings(): Promise<WebsiteSettings> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase.from("site_settings").select("*").eq("id", "default").maybeSingle();
+      if (data && !error && data.raw_settings) {
+        return {
+          ...DEFAULT_SETTINGS,
+          ...data.raw_settings,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase getWebsiteSettings Warning]:", err);
+  }
+
   const store = ensureStore();
   return store.settings;
 }
@@ -1056,14 +1562,44 @@ export async function getWebsiteSettings(): Promise<WebsiteSettings> {
 export async function saveWebsiteSettings(settings: Partial<WebsiteSettings>): Promise<boolean> {
   const store = ensureStore();
   store.settings = { ...store.settings, ...settings };
+  const now = new Date().toISOString();
+
   store.auditLogs.unshift({
     id: `audit-${Date.now()}`,
     actionType: "SETTINGS_UPDATE",
     adminUser: "Master Admin",
     details: `Updated website CMS settings (Status: ${store.settings.applicationStatus})`,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
   });
   saveStoreSync(store);
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase.from("site_settings").upsert(
+        {
+          id: "default",
+          hero_heading: store.settings.heroHeading,
+          hero_subtitle: store.settings.heroSubtitle,
+          hero_description: store.settings.heroDescription,
+          agency_name: store.settings.agencyName,
+          agency_url: store.settings.agencyUrl,
+          agency_description: store.settings.agencyDescription,
+          whatsapp_support_number: store.settings.whatsappSupportNumber,
+          founder_email: store.settings.founderEmail,
+          voice_guide_enabled: store.settings.voiceGuide?.enabled ?? true,
+          voice_guide_settings: store.settings.voiceGuide || {},
+          raw_settings: store.settings,
+          updated_at: now,
+        },
+        { onConflict: "id" }
+      );
+    }
+  } catch (err) {
+    console.warn("[Supabase saveWebsiteSettings Exception]:", err);
+  }
+
   return true;
 }
 
