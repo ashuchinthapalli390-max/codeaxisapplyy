@@ -37,9 +37,10 @@ export async function sendEmail({ to, subject, html }: SendEmailParams): Promise
     }
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : "Network error";
     console.error("[Email Service] Failed to send email:", error);
-    return { success: false, error: error?.message || "Network error" };
+    return { success: false, error: errorMsg };
   }
 }
 

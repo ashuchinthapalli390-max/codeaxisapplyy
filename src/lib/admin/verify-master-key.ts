@@ -10,7 +10,7 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
   }
 
   const cleanKey = enteredKey.trim();
-  let storedHash = (process.env.ADMIN_KEY_HASH || "").trim().replace(/^["']|["']$/g, "").trim();
+  const storedHash = (process.env.ADMIN_KEY_HASH || "").trim().replace(/^["']|["']$/g, "").trim();
   const saltEnv = (process.env.ADMIN_KEY_SALT || "").trim().replace(/^["']|["']$/g, "").trim();
   const fallbackKey = (process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY || "CODEXA-ADMIN-2026").trim().replace(/^["']|["']$/g, "");
 

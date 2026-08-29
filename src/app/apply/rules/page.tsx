@@ -7,7 +7,8 @@ import CodingBackground from "@/components/CodingBackground";
 import Checkbox from "@/components/ui/Checkbox";
 import Button3D from "@/components/ui/Button3D";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Link2, ShieldAlert, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Link2, ShieldAlert, Sparkles, Headphones } from "lucide-react";
+import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import { playButtonClick } from "@/lib/audio";
 
 export default function RulesPage() {
@@ -95,18 +96,27 @@ export default function RulesPage() {
           </div>
         )}
 
-        {/* Header */}
-        <div className="space-y-3 text-center sm:text-left">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/30 bg-red-950/20 text-[10px] font-bold tracking-[0.2em] text-red-400 uppercase">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            SCREENING INTEGRITY POLICY
+        {/* Header with Telugu Voice Listener Notice */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-2 text-center sm:text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/30 bg-red-950/20 text-[10px] font-bold tracking-[0.2em] text-red-400 uppercase">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              SCREENING INTEGRITY POLICY
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black text-white">
+              Application Rules & Guidelines
+            </h1>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Please read these integrity guidelines carefully before initiating your 8-round screening assessment.
+            </p>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-white">
-            Application Rules & Guidelines
-          </h1>
-          <p className="text-xs text-slate-300 leading-relaxed">
-            Please read these integrity guidelines carefully before initiating your 8-round screening assessment.
-          </p>
+
+          <div className="shrink-0 text-center sm:text-right">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-black/80 border border-red-500/40 text-xs text-red-300 font-bold shadow-[0_0_15px_rgba(239,68,68,0.25)]">
+              <Headphones className="w-4 h-4 text-red-400 animate-pulse" />
+              <span>🔊 సూచనలు వినండి (AI Guide)</span>
+            </div>
+          </div>
         </div>
 
         {/* Rules Card Box */}
@@ -165,6 +175,9 @@ export default function RulesPage() {
         </div>
 
       </main>
+
+      {/* Floating AI Voice Guide */}
+      <CodeXaVoiceGuide scrollThreshold={100} />
 
       <Footer />
     </div>

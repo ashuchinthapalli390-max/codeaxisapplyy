@@ -14,6 +14,7 @@ import Button3D from "@/components/ui/Button3D";
 import Modal from "@/components/ui/Modal";
 import ClipboardWarningModal from "@/components/application/ClipboardWarningModal";
 import ApplicationResetOverlay from "@/components/application/ApplicationResetOverlay";
+import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
@@ -337,9 +338,10 @@ export default function ApplicationFormPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [tabWarningModal, setTabWarningModal] = useState(false);
 
-  // Submission animation overlay
+  // Submission animation overlay & error retry state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionStep, setSubmissionStep] = useState<number>(1);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // New project modal / form
   const [newProject, setNewProject] = useState<ProjectEntry>({
@@ -670,14 +672,20 @@ export default function ApplicationFormPage() {
         clearTimeout(t2);
         clearTimeout(t3);
         setIsSubmitting(false);
-        alert(json.error || "Submission failed. Please check your responses and try again.");
+        setSubmissionError(
+          json.error || "Submission could not be completed. Your responses are safely kept. Please retry."
+        );
+        playWarningTone();
       }
     } catch {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
       setIsSubmitting(false);
-      alert("Network error occurred during submission. Your draft is safely saved. Please click Submit again.");
+      setSubmissionError(
+        "A network connection issue occurred while submitting. Your draft is completely safe. Please click Retry Submission."
+      );
+      playWarningTone();
     }
   };
 
@@ -2091,6 +2099,52 @@ export default function ApplicationFormPage() {
           </div>
         </div>
       )}
+
+      {/* Submission Failure & Retry Dialog */}
+      <Modal
+        isOpen={Boolean(submissionError)}
+        onClose={() => setSubmissionError(null)}
+        title="APPLICATION SUBMISSION FAILED"
+      >
+        <div className="space-y-4 text-left">
+          <div className="p-3.5 bg-red-950/70 border border-red-500/50 rounded-2xl text-xs text-red-300 flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <span className="font-bold block text-white uppercase tracking-wider">Draft Preserved Safely</span>
+              <span className="leading-relaxed">{submissionError}</span>
+            </div>
+          </div>
+
+          <p className="text-xs text-slate-300 leading-relaxed">
+            All your 8-round screening responses, written essays, and progress are preserved. You will not lose any data.
+          </p>
+
+          <div className="flex items-center space-x-3 pt-2">
+            <Button3D
+              type="button"
+              variant="secondary"
+              onClick={() => setSubmissionError(null)}
+              className="flex-1 py-3 text-xs font-bold"
+            >
+              REVIEW APPLICATION
+            </Button3D>
+            <Button3D
+              type="button"
+              variant="primary"
+              onClick={() => {
+                setSubmissionError(null);
+                handleSubmitFinalApplication();
+              }}
+              className="flex-1 py-3 text-xs font-black uppercase tracking-wider shadow-[0_0_20px_rgba(239,68,68,0.5)]"
+            >
+              RETRY SUBMISSION
+            </Button3D>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Floating AI Voice Guide (Collapsed Helper Mode on Form) */}
+      <CodeXaVoiceGuide autoCollapseOnForm={true} />
 
       <Footer />
     </div>

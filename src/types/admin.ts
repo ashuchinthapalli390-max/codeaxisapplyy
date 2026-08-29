@@ -24,13 +24,46 @@ export interface TeamMember {
   displayOrder: number;
 }
 
-export type ApplicationWindowStatus = "OPEN" | "OPENING_SOON" | "CLOSED";
+export type ApplicationWindowStatus = "AUTO" | "OPEN" | "OPENING_SOON" | "CLOSED";
+
+export interface InternshipRound {
+  id: string;
+  title: string;
+  batch_code: string;
+  status: ApplicationWindowStatus;
+  opens_at: string; // ISO 8601 timestamp with offset
+  closes_at: string; // ISO 8601 timestamp with offset
+  next_opens_at?: string | null;
+  timezone: string; // e.g. "Asia/Kolkata"
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VoiceGuideSettings {
+  enabled: boolean;
+  title: string;
+  teluguScript: string;
+  provider: "google" | "elevenlabs" | "azure" | "browser";
+  voiceName: string;
+  speechSpeed: number; // 0.8 to 1.2, default 0.95
+  scrollTriggerPx: number; // default 350
+  showOncePerSession: boolean;
+  showTranscript: boolean;
+  defaultVolume: number; // 0.0 to 1.0
+  lastRegeneratedAt?: string;
+}
 
 export interface WebsiteSettings {
   applicationStatus: ApplicationWindowStatus;
-  openDate: string; // e.g. "2026-08-22"
-  closeDate: string; // e.g. "2026-08-31"
+  batchCode?: string;
+  openDate: string; // e.g. "2026-08-20"
+  openTime?: string; // e.g. "09:00"
+  closeDate: string; // e.g. "2026-09-07"
+  closeTime?: string; // e.g. "23:59"
   nextOpenDate?: string; // e.g. "2026-09-15"
+  nextOpenTime?: string; // e.g. "09:00"
+  timezone?: string; // default "Asia/Kolkata"
   
   heroHeading: string;
   heroSubtitle: string;
@@ -45,7 +78,23 @@ export interface WebsiteSettings {
   
   whatsappOnboardingLink: string;
   discordOnboardingLink: string;
-  sessionDurationDays?: number; // e.g. 7, 30, 60, 90
+  sessionDurationDays?: number; // e.g. 30
+
+  voiceGuide?: VoiceGuideSettings;
+}
+
+export interface VoiceGuideCacheEntry {
+  id: string;
+  guide_key: string;
+  content_hash: string;
+  language: string;
+  provider: string;
+  voice_name: string;
+  script_text: string;
+  audio_base64: string;
+  audio_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface FaqItem {
@@ -93,7 +142,7 @@ export interface EmailLog {
 
 export interface AdminAuditLog {
   id: string;
-  actionType: "LOGIN" | "STATUS_UPDATE" | "NOTE_ADDED" | "DUPLICATE_FLAGGED" | "DELETE" | "RESTORE" | "EXPORT" | "SETTINGS_UPDATE" | "TEAM_UPDATE" | "EMAIL_SENT" | "SESSION_REVOKED" | "ASSET_UPDATE";
+  actionType: "LOGIN" | "STATUS_UPDATE" | "NOTE_ADDED" | "DUPLICATE_FLAGGED" | "DELETE" | "RESTORE" | "EXPORT" | "SETTINGS_UPDATE" | "TEAM_UPDATE" | "EMAIL_SENT" | "SESSION_REVOKED" | "ASSET_UPDATE" | "VOICE_GUIDE_UPDATE";
   adminUser: string;
   targetId?: string;
   details: string;

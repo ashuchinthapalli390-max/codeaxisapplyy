@@ -21,20 +21,43 @@ export const CLIPBOARD_ALLOWED_FIELDS = new Set([
   "github_profile",
   "linkedin_profile",
   "portfolio_website",
+  "github_link",
+  "portfolio_link",
+  "linkedin_link",
   "url",
   "liveUrl",
+  "link",
 ]);
 
 /**
  * Determines whether clipboard actions are allowed for a given field.
  */
 export function isFieldClipboardAllowed(fieldName?: string, fieldType?: string): boolean {
-  if (!fieldName) return false;
+  if (!fieldName && !fieldType) return false;
   if (fieldType === "url") return true;
-  if (CLIPBOARD_ALLOWED_FIELDS.has(fieldName)) return true;
-  if (fieldName.toLowerCase().endsWith("url") || fieldName.toLowerCase().endsWith("link")) {
+  if (!fieldName) return false;
+
+  const lowName = fieldName.toLowerCase();
+  if (CLIPBOARD_ALLOWED_FIELDS.has(fieldName) || CLIPBOARD_ALLOWED_FIELDS.has(lowName)) {
     return true;
   }
+
+  if (
+    lowName.endsWith("url") ||
+    lowName.endsWith("link") ||
+    lowName.includes("github") ||
+    lowName.includes("linkedin") ||
+    lowName.includes("portfolio") ||
+    lowName.includes("website") ||
+    lowName.includes("instagram") ||
+    lowName.includes("leetcode") ||
+    lowName.includes("hackerrank") ||
+    lowName.includes("codechef") ||
+    lowName.includes("codeforces")
+  ) {
+    return true;
+  }
+
   return false;
 }
 
@@ -51,28 +74,28 @@ export const CLIPBOARD_WARNINGS: Record<number, WarningContent> = {
     title: "COPY / PASTE WARNING",
     badge: "Warning 1 of 5",
     message: "Copying or pasting is not allowed in this field.",
-    submessage: "Please complete the application using your own authentic responses.",
+    submessage: "Please complete the application using your own authentic responses. (Submission is still permitted).",
     severity: "info",
   },
   2: {
     title: "INTEGRITY WARNING",
     badge: "Warning 2 of 5",
     message: "Copy / Paste is restricted during the application assessment.",
-    submessage: "Directly type your responses to maintain application integrity.",
+    submessage: "Directly type your responses to maintain application integrity. (Submission is still permitted).",
     severity: "warning",
   },
   3: {
     title: "APPLICATION INTEGRITY WARNING",
     badge: "Warning 3 of 5",
     message: "Repeated clipboard activity has been detected.",
-    submessage: "Human evaluators review integrity telemetry alongside your scores.",
+    submessage: "Human evaluators review integrity telemetry alongside your scores. (Submission is still permitted).",
     severity: "danger",
   },
   4: {
     title: "FINAL WARNING",
     badge: "Warning 4 of 5",
     message: "One more restricted Copy / Paste attempt will reset your entire application.",
-    submessage: "All draft answers and progress will be permanently erased on the next attempt.",
+    submessage: "All draft answers and progress will be permanently erased on the 5th attempt. You may still submit now.",
     severity: "critical",
   },
   5: {

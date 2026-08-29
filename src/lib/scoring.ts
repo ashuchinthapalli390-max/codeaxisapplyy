@@ -163,7 +163,7 @@ export function calculateApplicationScores(data: Partial<ApplicationData>): Scor
     }
 
     const ratio = expected > 0 ? correct / expected : 0;
-    let topicScore = 1.5 + ratio * 1.5; // range 1.5 to 3.0
+    const topicScore = 1.5 + ratio * 1.5; // range 1.5 to 3.0
 
     let authenticity: "Consistent" | "Needs Review" | "Skipped" = "Consistent";
     if ((level === "Expert" || level === "Advanced") && ratio < 0.3) {

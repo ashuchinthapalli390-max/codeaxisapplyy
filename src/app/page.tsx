@@ -6,7 +6,8 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import IntroAnimation from "@/components/IntroAnimation";
-import { TeamMember } from "@/types/admin";
+import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
+import { TeamMember, InternshipRound } from "@/types/admin";
 import {
   ArrowRight,
   ArrowUpRight,
@@ -59,13 +60,44 @@ export default function HomePage() {
       .catch(() => {});
   }, []);
 
-  // Countdown timer state
-  const [timeLeft, setTimeLeft] = useState({
-    days: 8,
-    hours: 14,
-    minutes: 36,
-    seconds: 20,
+  // Live Application & Internship Round Configuration
+  const [appConfig, setAppConfig] = useState<{
+    round: InternshipRound;
+    settings: any;
+  } | null>(null);
+
+  // Dynamic countdown timer state derived from database timestamps
+  const [countdown, setCountdown] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+    badgeText: "APPLICATION WINDOW CLOSING SOON",
+    status: "OPEN" as "OPEN" | "OPENING_SOON" | "CLOSED",
+    canApply: true,
   });
+
+  // Fetch active application config from database
+  const fetchAppConfig = () => {
+    fetch("/api/applications/config", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success && json.data) {
+          setAppConfig(json.data);
+        }
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchAppConfig();
+    const interval = setInterval(fetchAppConfig, 20000); // 20s live sync
+    window.addEventListener("focus", fetchAppConfig);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", fetchAppConfig);
+    };
+  }, []);
 
   // Check if intro was already shown in this session
   useEffect(() => {
@@ -77,19 +109,84 @@ export default function HomePage() {
     }
   }, []);
 
-  // Live countdown timer logic
+  // Real-time second-by-second countdown calculated strictly from database timestamps
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-        if (prev.minutes > 0) return { ...prev, minutes: 59, seconds: 59 };
-        if (prev.hours > 0) return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-        if (prev.days > 0) return { ...prev, days: prev.days - 1, hours: 23, minutes: 59, seconds: 59 };
-        return prev;
+    const calculateTime = () => {
+      const now = Date.now();
+      const round = appConfig?.round;
+
+      const opensAtMs = round?.opens_at
+        ? new Date(round.opens_at).getTime()
+        : new Date("2026-08-20T09:00:00+05:30").getTime();
+      const closesAtMs = round?.closes_at
+        ? new Date(round.closes_at).getTime()
+        : new Date("2026-09-07T23:59:59+05:30").getTime();
+      const nextOpensAtMs = round?.next_opens_at ? new Date(round.next_opens_at).getTime() : null;
+
+      // Status derivation
+      const rawStatus = (round as any)?.raw_status || round?.status || "AUTO";
+
+      let status: "OPEN" | "OPENING_SOON" | "CLOSED" = "OPEN";
+      let targetMs = closesAtMs;
+      let badgeText = "APPLICATION WINDOW CLOSING SOON";
+      let canApply = true;
+
+      if (rawStatus === "OPEN") {
+        status = "OPEN";
+        targetMs = closesAtMs;
+        badgeText = "APPLICATION WINDOW CLOSING SOON";
+        canApply = true;
+      } else if (rawStatus === "OPENING_SOON") {
+        status = "OPENING_SOON";
+        targetMs = opensAtMs;
+        badgeText = "APPLICATION WINDOW OPENS IN";
+        canApply = false;
+      } else if (rawStatus === "CLOSED") {
+        status = "CLOSED";
+        targetMs = nextOpensAtMs || closesAtMs;
+        badgeText = nextOpensAtMs ? "NEXT APPLICATION WINDOW IN" : "APPLICATIONS CURRENTLY CLOSED";
+        canApply = false;
+      } else {
+        // AUTO calculation based on timestamps
+        if (opensAtMs > 0 && now < opensAtMs) {
+          status = "OPENING_SOON";
+          targetMs = opensAtMs;
+          badgeText = "APPLICATION WINDOW OPENS IN";
+          canApply = false;
+        } else if (closesAtMs > 0 && now >= closesAtMs) {
+          status = "CLOSED";
+          targetMs = nextOpensAtMs || closesAtMs;
+          badgeText = nextOpensAtMs ? "NEXT APPLICATION WINDOW IN" : "APPLICATIONS CURRENTLY CLOSED";
+          canApply = false;
+        } else {
+          status = "OPEN";
+          targetMs = closesAtMs;
+          badgeText = "APPLICATION WINDOW CLOSING SOON";
+          canApply = true;
+        }
+      }
+
+      const diff = Math.max(0, targetMs - now);
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+
+      setCountdown({
+        days,
+        hours,
+        minutes,
+        seconds,
+        badgeText,
+        status,
+        canApply,
       });
-    }, 1000);
+    };
+
+    calculateTime();
+    const timer = setInterval(calculateTime, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [appConfig]);
 
   // VS Code simulation code snippets
   const codeFiles = {
@@ -364,14 +461,21 @@ agency.launchRecruitmentBatch("2026-AUG");`,
 
               {/* Action Buttons */}
               <div className="flex flex-col sm:flex-row gap-3 pt-2 max-w-lg">
-                <Link
-                  href="/apply"
-                  onClick={playButtonClick}
-                  className="btn-red-sweep flex-1 py-4 px-5 text-xs font-mono font-black uppercase tracking-widest bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.5)] flex items-center justify-center gap-2 hover:shadow-[0_0_35px_rgba(239,68,68,0.8)] transition-all"
-                >
-                  <span>APPLY NOW</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
+                {countdown.canApply ? (
+                  <Link
+                    href="/apply"
+                    onClick={playButtonClick}
+                    className="btn-red-sweep flex-1 py-4 px-5 text-xs font-mono font-black uppercase tracking-widest bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.5)] flex items-center justify-center gap-2 hover:shadow-[0_0_35px_rgba(239,68,68,0.8)] transition-all"
+                  >
+                    <span>APPLY NOW</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </Link>
+                ) : (
+                  <div className="flex-1 py-4 px-5 text-xs font-mono font-black uppercase tracking-widest bg-red-950/40 text-red-300 rounded-2xl border border-red-900/60 shadow-[0_0_15px_rgba(239,68,68,0.2)] flex items-center justify-center gap-2 cursor-not-allowed select-none">
+                    <Lock className="w-4 h-4 text-red-400" />
+                    <span>{countdown.status === "OPENING_SOON" ? "OPENS SOON" : "APPLICATIONS CLOSED"}</span>
+                  </div>
+                )}
 
                 <Link
                   href="/internship"
@@ -395,28 +499,30 @@ agency.launchRecruitmentBatch("2026-AUG");`,
               {/* Date & Countdown Box */}
               <div className="red-glass rounded-2xl p-4 sm:p-5 border border-red-500/30 max-w-lg space-y-3">
                 <div className="flex items-center justify-between text-[10px] font-mono text-red-400 border-b border-red-950/60 pb-2">
-                  <span className="flex items-center gap-1.5">
-                    <Flame className="w-3.5 h-3.5 text-red-500" />
-                    APPLICATION WINDOW CLOSING SOON
+                  <span className="flex items-center gap-1.5 font-bold">
+                    <Flame className="w-3.5 h-3.5 text-red-500 animate-pulse" />
+                    {countdown.badgeText}
                   </span>
-                  <span className="text-slate-400">BATCH: 2026-AUG</span>
+                  <span className="text-slate-300 font-bold">
+                    BATCH: {appConfig?.round?.batch_code || "2026-AUG"}
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2 text-center font-mono">
                   <div className="bg-black/60 rounded-xl p-2 border border-red-950">
-                    <div className="text-lg sm:text-2xl font-black text-white">{String(timeLeft.days).padStart(2, "0")}</div>
+                    <div className="text-lg sm:text-2xl font-black text-white">{String(countdown.days).padStart(2, "0")}</div>
                     <div className="text-[9px] text-slate-500 uppercase">DAYS</div>
                   </div>
                   <div className="bg-black/60 rounded-xl p-2 border border-red-950">
-                    <div className="text-lg sm:text-2xl font-black text-white">{String(timeLeft.hours).padStart(2, "0")}</div>
+                    <div className="text-lg sm:text-2xl font-black text-white">{String(countdown.hours).padStart(2, "0")}</div>
                     <div className="text-[9px] text-slate-500 uppercase">HOURS</div>
                   </div>
                   <div className="bg-black/60 rounded-xl p-2 border border-red-950">
-                    <div className="text-lg sm:text-2xl font-black text-white">{String(timeLeft.minutes).padStart(2, "0")}</div>
+                    <div className="text-lg sm:text-2xl font-black text-white">{String(countdown.minutes).padStart(2, "0")}</div>
                     <div className="text-[9px] text-slate-500 uppercase">MINUTES</div>
                   </div>
                   <div className="bg-black/60 rounded-xl p-2 border border-red-950">
-                    <div className="text-lg sm:text-2xl font-black text-red-400 animate-pulse">{String(timeLeft.seconds).padStart(2, "0")}</div>
+                    <div className="text-lg sm:text-2xl font-black text-red-400 animate-pulse">{String(countdown.seconds).padStart(2, "0")}</div>
                     <div className="text-[9px] text-slate-500 uppercase">SECONDS</div>
                   </div>
                 </div>
@@ -1202,6 +1308,9 @@ agency.launchRecruitmentBatch("2026-AUG");`,
         </section>
 
       </main>
+
+      {/* AI-Powered Natural Telugu Voice Guide Widget */}
+      <CodeXaVoiceGuide scrollThreshold={350} />
 
       <Footer />
     </div>
