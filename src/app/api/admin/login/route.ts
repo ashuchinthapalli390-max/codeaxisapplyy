@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addAuditLog } from "@/lib/storage";
 import { verifyAdminMasterKey, createRateLimitIdentifier } from "@/lib/admin/verify-master-key";
-import { createSession, SESSION_COOKIE_NAME } from "@/lib/admin/session";
+import { createSession, ADMIN_SESSION_COOKIE } from "@/lib/admin/session";
 
 // Privacy-preserving in-memory rate limiting map
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
@@ -71,9 +71,9 @@ export async function POST(req: NextRequest) {
       expiresAt: expiresAt.toISOString(),
     });
 
-    // Set 30-day persistent HttpOnly cookie
+    // Set persistent HttpOnly cookie
     response.cookies.set({
-      name: SESSION_COOKIE_NAME,
+      name: ADMIN_SESSION_COOKIE,
       value: rawToken,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

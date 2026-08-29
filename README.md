@@ -8,7 +8,7 @@ Create `.env.local` for local development:
 
 ```env
 DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE_NAME"
-ADMIN_PASSKEY="Ashu×Luger"
+ADMIN_PASSKEY="161217110311"
 ADMIN_SESSION_SECRET="replace-with-random-long-secret"
 ```
 
@@ -24,7 +24,7 @@ In Vercel:
 
 ```env
 DATABASE_URL=mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME
-ADMIN_PASSKEY=Ashu×Luger
+ADMIN_PASSKEY=161217110311
 ADMIN_SESSION_SECRET=any-long-random-secret-here
 ```
 

@@ -32,7 +32,7 @@ Create a `.env.local` file in the project root for local development.
 
 ```env
 DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE_NAME"
-ADMIN_PASSKEY="Ashu×Luger"
+ADMIN_PASSKEY="161217110311"
 ADMIN_SESSION_SECRET="any-long-random-secret-here"
 ```
 
@@ -65,7 +65,7 @@ When deploying to Vercel, ensure you configure the environment variables:
 2. Go to **Settings** -> **Environment Variables**.
 3. Add these variables (selecting `Production`, `Preview`, and `Development` environments):
    - `DATABASE_URL` = `mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME`
-   - `ADMIN_PASSKEY` = `Ashu×Luger`
+   - `ADMIN_PASSKEY` = `161217110311`
    - `ADMIN_SESSION_SECRET` = `your-secure-random-secret`
 4. Deploy the project using the **Vercel CLI** or by triggering a Git hook.
 5. If redeploying a failed deployment, go to **Deployments** -> **Latest Deployment** -> click the three dots (`...`) -> **Redeploy**.
