@@ -377,6 +377,29 @@ function ensureStore(): StoreData {
   return memoryCache;
 }
 
+export function isTestSubmission(app: Partial<ApplicationData>): boolean {
+  if (app.is_test) return true;
+  const email = (app.email || "").toLowerCase().trim();
+  const name = (app.full_name || "").toLowerCase().trim();
+  const ref = (app.reference_id || "").toLowerCase().trim();
+
+  const testPatterns = [
+    "test",
+    "dummy",
+    "fake",
+    "example.com",
+    "sample",
+    "demo",
+    "sai.krishna.",
+    "john.doe",
+    "asdf",
+    "qwerty",
+    "cax-test-",
+  ];
+
+  return testPatterns.some((p) => email.includes(p) || name.includes(p) || ref.includes(p));
+}
+
 function mapDbRowToApplication(row: any): ApplicationData {
   const raw = row.raw_submission || {};
   return {
@@ -499,6 +522,8 @@ function mapDbRowToApplication(row: any): ApplicationData {
     admin_tags: Array.isArray(row.admin_tags) ? row.admin_tags : raw.admin_tags || [],
     is_deleted: Boolean(row.is_deleted),
     deleted_at: row.deleted_at,
+    deletion_reason: row.deletion_reason || undefined,
+    is_test: Boolean(row.is_test || (raw.email && isTestSubmission(raw))),
     created_at: row.created_at || raw.created_at,
     updated_at: row.updated_at || raw.updated_at,
   };
@@ -817,6 +842,7 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
     skill_authenticity: data.skill_authenticity || {},
 
     status: data.status || "Submitted",
+    is_test: Boolean(data.is_test ?? isTestSubmission(data)),
     raw_submission: data,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
@@ -935,13 +961,22 @@ export async function getApplications(filters?: {
   college?: string;
   limit?: number;
   offset?: number;
+  view?: "active" | "trash" | "test";
 }): Promise<{ applications: ApplicationData[]; total: number }> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
 
     if (supabase) {
-      let query = supabase.from("applications").select("*", { count: "exact" }).eq("is_deleted", false);
+      let query = supabase.from("applications").select("*", { count: "exact" });
+
+      if (filters?.view === "trash") {
+        query = query.eq("is_deleted", true);
+      } else if (filters?.view === "test") {
+        query = query.eq("is_deleted", false).eq("is_test", true);
+      } else {
+        query = query.eq("is_deleted", false).eq("is_test", false);
+      }
 
       if (filters?.search) {
         const q = filters.search.trim();
@@ -986,7 +1021,14 @@ export async function getApplications(filters?: {
 
   // Fallback to memory
   const store = ensureStore();
-  let list = store.applications.filter((a) => !a.is_deleted);
+  let list = store.applications;
+  if (filters?.view === "trash") {
+    list = list.filter((a) => a.is_deleted);
+  } else if (filters?.view === "test") {
+    list = list.filter((a) => !a.is_deleted && (a.is_test || isTestSubmission(a)));
+  } else {
+    list = list.filter((a) => !a.is_deleted && !a.is_test && !isTestSubmission(a));
+  }
 
   if (filters?.search) {
     const q = filters.search.toLowerCase().trim();
@@ -1125,7 +1167,7 @@ export async function addApplicationNote(refOrId: string, note: string): Promise
   return true;
 }
 
-export async function deleteApplication(refOrId: string): Promise<boolean> {
+export async function deleteApplication(refOrId: string, reason?: string): Promise<boolean> {
   const query = refOrId.trim();
   const now = new Date().toISOString();
 
@@ -1137,6 +1179,7 @@ export async function deleteApplication(refOrId: string): Promise<boolean> {
       let updateQuery = supabase.from("applications").update({
         is_deleted: true,
         deleted_at: now,
+        deletion_reason: reason || "Admin soft delete",
       });
       if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
@@ -1144,6 +1187,7 @@ export async function deleteApplication(refOrId: string): Promise<boolean> {
         updateQuery = updateQuery.ilike("reference_id", query);
       }
       await updateQuery;
+      await addAuditLog("APPLICATION_DELETED", `Application ${query} moved to Trash. Reason: ${reason || "None specified"}`);
       return true;
     }
   } catch (err) {
@@ -1158,7 +1202,65 @@ export async function deleteApplication(refOrId: string): Promise<boolean> {
 
   app.is_deleted = true;
   app.deleted_at = now;
+  app.deletion_reason = reason || "Admin soft delete";
+  await addAuditLog("APPLICATION_DELETED", `Application ${query} moved to Trash.`);
   return true;
+}
+
+export async function permanentDeleteApplication(refOrId: string): Promise<boolean> {
+  const query = refOrId.trim();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const existing = await getApplicationByRef(query);
+      const ref = existing?.reference_id || query;
+      const appId = existing?.id;
+
+      // 1. Delete associated interviews
+      try {
+        await supabase.from("interviews").delete().or(`reference_id.ilike.${ref}${appId ? `,application_id.eq.${appId}` : ""}`);
+      } catch (err) {
+        console.warn("[Cascade Delete Interviews Warning]:", err);
+      }
+
+      // 2. Delete associated offers
+      try {
+        await supabase.from("offers").delete().or(`reference_id.ilike.${ref}${appId ? `,application_id.eq.${appId}` : ""}`);
+      } catch (err) {
+        console.warn("[Cascade Delete Offers Warning]:", err);
+      }
+
+      // 3. Delete application row
+      const isNum = !isNaN(Number(query));
+      let deleteQuery = supabase.from("applications").delete();
+      if (isNum) {
+        deleteQuery = deleteQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+      } else {
+        deleteQuery = deleteQuery.ilike("reference_id", query);
+      }
+      await deleteQuery;
+      await addAuditLog("APPLICATION_PERMANENTLY_DELETED", `Application ${ref} permanently removed from system.`);
+      return true;
+    }
+  } catch (err) {
+    console.warn("[permanentDeleteApplication Supabase Error]:", err);
+  }
+
+  // Memory fallback
+  const store = ensureStore();
+  const idx = store.applications.findIndex(
+    (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
+  );
+  if (idx !== -1) {
+    const [removed] = store.applications.splice(idx, 1);
+    store.interviews = store.interviews.filter((i) => i.reference_id !== removed.reference_id);
+    store.offers = store.offers.filter((o) => o.reference_id !== removed.reference_id);
+    await addAuditLog("APPLICATION_PERMANENTLY_DELETED", `Application ${removed.reference_id} permanently removed.`);
+    return true;
+  }
+  return false;
 }
 
 export async function restoreApplication(refOrId: string): Promise<boolean> {
@@ -1172,6 +1274,7 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
       let updateQuery = supabase.from("applications").update({
         is_deleted: false,
         deleted_at: null,
+        deletion_reason: null,
       });
       if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
@@ -1179,6 +1282,7 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
         updateQuery = updateQuery.ilike("reference_id", query);
       }
       await updateQuery;
+      await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash.`);
       return true;
     }
   } catch (err) {
@@ -1193,6 +1297,8 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
 
   app.is_deleted = false;
   app.deleted_at = undefined;
+  app.deletion_reason = undefined;
+  await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash.`);
   return true;
 }
 

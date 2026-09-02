@@ -13,6 +13,7 @@ export async function GET(req: NextRequest) {
     const scoreBand = searchParams.get("scoreBand") || undefined;
     const commitment = searchParams.get("commitment") || undefined;
     const college = searchParams.get("college") || undefined;
+    const view = (searchParams.get("view") || "active") as "active" | "trash" | "test";
     const limit = parseInt(searchParams.get("limit") || "100", 10);
     const offset = parseInt(searchParams.get("offset") || "0", 10);
 
@@ -24,6 +25,7 @@ export async function GET(req: NextRequest) {
       college,
       limit,
       offset,
+      view,
     });
 
     return NextResponse.json({

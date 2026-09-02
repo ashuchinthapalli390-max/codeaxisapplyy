@@ -157,6 +157,8 @@ CREATE TABLE IF NOT EXISTS applications (
   admin_tags JSONB DEFAULT '[]'::jsonb,
   is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
   deleted_at TIMESTAMPTZ NULL,
+  deletion_reason TEXT NULL,
+  is_test BOOLEAN NOT NULL DEFAULT FALSE,
 
   -- Raw Snapshot Backup
   raw_submission JSONB NULL,
@@ -171,6 +173,8 @@ CREATE INDEX IF NOT EXISTS idx_applications_email ON applications(email);
 CREATE INDEX IF NOT EXISTS idx_applications_ref ON applications(reference_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
 CREATE INDEX IF NOT EXISTS idx_applications_created ON applications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applications_deleted ON applications(is_deleted);
+CREATE INDEX IF NOT EXISTS idx_applications_is_test ON applications(is_test);
 
 -- 3. ADMIN SESSIONS TABLE (30-Day Concurrency & Persistence)
 CREATE TABLE IF NOT EXISTS admin_sessions (

@@ -40,10 +40,26 @@ export async function GET(req: NextRequest) {
     const settings = await getWebsiteSettings();
     const round = await getActiveInternshipRound();
 
+    // Extract exact date & time from database round in Asia/Kolkata timezone
+    const openDate = round?.opens_at ? round.opens_at.split("T")[0] : settings.openDate || "2026-09-01";
+    const openTime = round?.opens_at ? round.opens_at.split("T")[1]?.slice(0, 5) : settings.openTime || "09:00";
+    const closeDate = round?.closes_at ? round.closes_at.split("T")[0] : settings.closeDate || "2026-09-07";
+    const closeTime = round?.closes_at ? round.closes_at.split("T")[1]?.slice(0, 5) : settings.closeTime || "23:59";
+    const nextOpenDate = round?.next_opens_at ? round.next_opens_at.split("T")[0] : settings.nextOpenDate || "";
+    const nextOpenTime = round?.next_opens_at ? round.next_opens_at.split("T")[1]?.slice(0, 5) : settings.nextOpenTime || "09:00";
+
     return NextResponse.json({
       success: true,
       data: {
         ...settings,
+        batchCode: round?.batch_code || settings.batchCode || "2026-SEP",
+        applicationStatus: round?.status || settings.applicationStatus || "AUTO",
+        openDate,
+        openTime,
+        closeDate,
+        closeTime,
+        nextOpenDate,
+        nextOpenTime,
         round,
       },
     });
@@ -72,18 +88,18 @@ export async function POST(req: NextRequest) {
     if (round || settings) {
       const batchCode = round?.batch_code?.trim() || settings?.batchCode?.trim() || "2026-SEP";
       const status = round?.status || settings?.applicationStatus || "AUTO";
-      const timezone = round?.timezone || settings?.timezone || "Asia/Kolkata";
+      const timezone = "Asia/Kolkata";
 
       const openDate = settings?.openDate || (round?.opens_at ? round.opens_at.split("T")[0] : "2026-09-01");
-      const openTime = settings?.openTime || "09:00";
+      const openTime = settings?.openTime || (round?.opens_at ? round.opens_at.split("T")[1]?.slice(0, 5) : "09:00");
       const opensAt = formatIndiaTimestamp(openDate, openTime, "09:00:00");
 
       const closeDate = settings?.closeDate || (round?.closes_at ? round.closes_at.split("T")[0] : "2026-09-07");
-      const closeTime = settings?.closeTime || "23:59";
-      const closesAt = formatIndiaTimestamp(closeDate, closeTime, "23:59:59");
+      const closeTime = settings?.closeTime || (round?.closes_at ? round.closes_at.split("T")[1]?.slice(0, 5) : "23:59");
+      const closesAt = formatIndiaTimestamp(closeDate, closeTime, "23:59:00");
 
       const nextOpenDate = settings?.nextOpenDate || (round?.next_opens_at ? round.next_opens_at.split("T")[0] : "");
-      const nextOpenTime = settings?.nextOpenTime || "09:00";
+      const nextOpenTime = settings?.nextOpenTime || (round?.next_opens_at ? round.next_opens_at.split("T")[1]?.slice(0, 5) : "09:00");
       const nextOpensAt = nextOpenDate ? formatIndiaTimestamp(nextOpenDate, nextOpenTime, "09:00:00") : null;
 
       await saveInternshipRound({

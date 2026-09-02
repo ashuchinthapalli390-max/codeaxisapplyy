@@ -193,6 +193,8 @@ export interface ApplicationData {
   duplicate_reason?: string;
   is_deleted?: boolean;
   deleted_at?: string;
+  deletion_reason?: string;
+  is_test?: boolean;
 
   created_at?: string;
   updated_at?: string;

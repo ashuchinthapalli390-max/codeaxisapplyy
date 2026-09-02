@@ -41,6 +41,7 @@ import {
   UserCheck,
   Users,
   Video,
+  X,
   XCircle,
   Zap,
 } from "lucide-react";
@@ -108,8 +109,112 @@ export default function CandidateDetailPage() {
     acceptance_deadline: "2026-09-10",
     authorized_person: "Ashu Chinthapalli",
     designation: "Founder & Chief Executive Officer",
+    company_name: "CodeXa Agency",
     send_email: true,
   });
+
+  // Delete Modal States
+  const [showSoftDeleteModal, setShowSoftDeleteModal] = useState(false);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const [showPermDeleteModal, setShowPermDeleteModal] = useState(false);
+  const [permConfirmationText, setPermConfirmationText] = useState("");
+  const [isPermDeleting, setIsPermDeleting] = useState(false);
+
+  const handleSoftDeleteSubmit = async () => {
+    if (!candidate) return;
+    setIsDeleting(true);
+    playButtonClick();
+    try {
+      const res = await fetch("/api/admin/delete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: candidate.reference_id || candidate.id,
+          permanent: false,
+          reason: deleteReason.trim() || "Admin soft delete",
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        playSuccessSound();
+        setShowSoftDeleteModal(false);
+        router.replace("/admin/applications");
+      } else {
+        playWarningTone();
+        alert(json.error || "Failed to delete application.");
+      }
+    } catch {
+      playWarningTone();
+      alert("Network error deleting application.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handlePermDeleteSubmit = async () => {
+    if (!candidate) return;
+    if (permConfirmationText.trim() !== "DELETE") {
+      playWarningTone();
+      alert('Please type "DELETE" to confirm permanent deletion.');
+      return;
+    }
+    setIsPermDeleting(true);
+    playButtonClick();
+    try {
+      const res = await fetch("/api/admin/delete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: candidate.reference_id || candidate.id,
+          permanent: true,
+          confirmation: "DELETE",
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        playSuccessSound();
+        setShowPermDeleteModal(false);
+        router.replace("/admin/applications");
+      } else {
+        playWarningTone();
+        alert(json.error || "Failed to permanently delete application.");
+      }
+    } catch {
+      playWarningTone();
+      alert("Network error during permanent deletion.");
+    } finally {
+      setIsPermDeleting(false);
+    }
+  };
+
+  const handleRestoreCandidate = async () => {
+    if (!candidate) return;
+    playButtonClick();
+    try {
+      const res = await fetch("/api/admin/restore", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: candidate.reference_id || candidate.id }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        playSuccessSound();
+        setCandidate((prev) => (prev ? { ...prev, is_deleted: false, deleted_at: undefined, deletion_reason: undefined } : prev));
+        alert("Application restored successfully.");
+      } else {
+        playWarningTone();
+        alert(json.error || "Failed to restore application.");
+      }
+    } catch {
+      playWarningTone();
+      alert("Network error restoring application.");
+    }
+  };
 
   const fetchCandidate = async () => {
     setLoading(true);
@@ -372,8 +477,74 @@ export default function CandidateDetailPage() {
             <Download className="w-3.5 h-3.5" />
             <span>DOSSIER PDF</span>
           </button>
+
+          {/* Delete Action Button */}
+          {candidate.is_deleted ? (
+            <button
+              type="button"
+              onClick={() => {
+                playWarningTone();
+                setShowPermDeleteModal(true);
+                setPermConfirmationText("");
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-red-950/80 border border-red-600 text-red-300 hover:bg-red-700 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>PERMANENTLY DELETE</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                playWarningTone();
+                setShowSoftDeleteModal(true);
+                setDeleteReason("");
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-red-950/60 border border-red-900 text-red-400 hover:bg-red-700 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>DELETE APPLICATION</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Trash Bin Banner if deleted */}
+      {candidate.is_deleted && (
+        <div className="p-4 rounded-2xl bg-amber-950/50 border border-amber-500/60 text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <Trash2 className="w-5 h-5 text-amber-400 shrink-0" />
+            <div>
+              <span className="font-bold text-white block">Application In Trash Bin</span>
+              <span className="text-xs text-amber-300/80">
+                Reason: {candidate.deletion_reason || "Admin soft delete"} • Deleted: {candidate.deleted_at ? new Date(candidate.deleted_at).toLocaleString() : "N/A"}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRestoreCandidate}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>RESTORE APPLICATION</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                playWarningTone();
+                setShowPermDeleteModal(true);
+                setPermConfirmationText("");
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>PERMANENTLY DELETE</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Candidate Overview Score Ribbon */}
       <div className="red-glass rounded-3xl p-5 sm:p-6 border border-red-500/30 grid grid-cols-2 sm:grid-cols-6 gap-4 text-center">
@@ -1164,6 +1335,152 @@ export default function CandidateDetailPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: SOFT DELETE APPLICATION (MOVE TO TRASH)
+         ========================================================================= */}
+      {showSoftDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-[#0a0505] border border-red-600/60 p-6 space-y-5 text-left shadow-[0_0_50px_rgba(239,68,68,0.3)]">
+            <div className="flex items-center justify-between border-b border-red-950 pb-3">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-5 h-5 text-red-500" />
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Move Application to Trash
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSoftDeleteModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-950/30 border border-red-900/50 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Candidate:</span>
+                <span className="text-white font-bold">{candidate.full_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Reference ID:</span>
+                <span className="text-red-400 font-bold">{candidate.reference_id}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Email:</span>
+                <span className="text-slate-300">{candidate.email}</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-slate-300">
+                Reason for Removal (Optional):
+              </label>
+              <textarea
+                value={deleteReason}
+                onChange={(e) => setDeleteReason(e.target.value)}
+                placeholder="e.g. Duplicate submission, test run, or disqualified profile..."
+                rows={3}
+                className="w-full rounded-xl bg-black border border-red-950 p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500"
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400">
+              The application will be removed from the active candidate pipeline and moved to Trash where it can be restored if needed.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowSoftDeleteModal(false)}
+                className="px-4 py-2 rounded-xl bg-black border border-slate-800 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSoftDeleteSubmit}
+                disabled={isDeleting}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(239,68,68,0.5)] cursor-pointer"
+              >
+                {isDeleting ? "Moving to Trash..." : "Move to Trash"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: PERMANENT DELETE APPLICATION (REQUIRES "DELETE" CONFIRMATION)
+         ========================================================================= */}
+      {showPermDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in">
+          <div className="relative w-full max-w-md rounded-3xl bg-[#0d0202] border-2 border-red-600 p-6 space-y-5 text-left shadow-[0_0_60px_rgba(239,68,68,0.5)]">
+            <div className="flex items-center justify-between border-b border-red-900/80 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-red-500" />
+                <h3 className="text-sm font-black text-red-400 uppercase tracking-wider">
+                  Permanent Deletion Warning
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPermDeleteModal(false)}
+                className="text-slate-400 hover:text-white p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-red-950/50 border border-red-800/80 space-y-1.5 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Candidate:</span>
+                <span className="text-white font-bold">{candidate.full_name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Reference:</span>
+                <span className="text-red-400 font-bold">{candidate.reference_id}</span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-red-950/30 border border-red-900/50 rounded-xl text-[11px] text-red-300 leading-relaxed">
+              <strong>Irreversible Action:</strong> This will permanently erase this application row, all scheduled interview rounds, offer letters, audit history, and associated evaluation data. It cannot be undone.
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-white block">
+                Type <span className="text-red-400 font-mono font-black">DELETE</span> to permanently remove this application:
+              </label>
+              <input
+                type="text"
+                value={permConfirmationText}
+                onChange={(e) => setPermConfirmationText(e.target.value)}
+                placeholder="Type DELETE here"
+                className="w-full rounded-xl bg-black border-2 border-red-900 focus:border-red-500 p-3 text-xs text-white placeholder-slate-700 font-mono tracking-widest font-bold focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowPermDeleteModal(false)}
+                className="px-4 py-2 rounded-xl bg-black border border-slate-800 text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handlePermDeleteSubmit}
+                disabled={permConfirmationText.trim() !== "DELETE" || isPermDeleting}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-950 disabled:text-slate-500 text-white text-xs font-black transition-all shadow-[0_0_20px_rgba(239,68,68,0.7)] cursor-pointer"
+              >
+                {isPermDeleting ? "Permanently Deleting..." : "PERMANENTLY DELETE"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -76,7 +76,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
     return (
       <div className="min-h-screen bg-[#02040a] text-slate-100 relative font-mono selection:bg-red-600 selection:text-white">
-        <AdminLoginPage />
+        <AdminLoginPage
+          onLoginSuccess={() => {
+            setIsAuthenticated(true);
+            router.replace("/admin/dashboard");
+            router.refresh();
+          }}
+        />
       </div>
     );
   }

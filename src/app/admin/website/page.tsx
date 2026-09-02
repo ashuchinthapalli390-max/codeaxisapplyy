@@ -29,8 +29,12 @@ export default function AdminWebsitePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   useEffect(() => {
+    // Only fetch if form is not dirty
+    if (isDirty) return;
+
     fetch("/api/admin/website", { credentials: "include" })
       .then((r) => r.json())
       .then((json) => {
@@ -47,6 +51,24 @@ export default function AdminWebsitePage() {
       })
       .finally(() => setLoading(false));
   }, []);
+
+  // Prevent accidental page close with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [isDirty]);
+
+  const updateSettings = (updates: Partial<WebsiteSettings>) => {
+    if (!settings) return;
+    setIsDirty(true);
+    setSettings((prev) => (prev ? { ...prev, ...updates } : null));
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +91,7 @@ export default function AdminWebsitePage() {
       if (json.success) {
         playSuccessSound();
         setSaveSuccess(true);
+        setIsDirty(false);
         if (json.data) {
           setSettings(json.data);
           if (json.data.round) setRound(json.data.round);
@@ -98,16 +121,25 @@ export default function AdminWebsitePage() {
 
   return (
     <div className="space-y-6 text-left font-mono">
-      <div className="border-b border-red-950 pb-4">
-        <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest">
-          CONTENT & RECRUITMENT TIMING CONTROLS
-        </span>
-        <h1 className="text-2xl font-black text-white uppercase">
-          Landing Page & Application Timers
-        </h1>
-        <p className="text-xs text-slate-400 mt-1">
-          Changes here update the single source of truth in Supabase and sync live to public countdowns.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-red-950 pb-4">
+        <div>
+          <span className="text-[10px] text-red-500 font-bold uppercase tracking-widest">
+            CONTENT & RECRUITMENT TIMING CONTROLS
+          </span>
+          <h1 className="text-2xl font-black text-white uppercase">
+            Landing Page & Application Timers
+          </h1>
+          <p className="text-xs text-slate-400 mt-1">
+            Changes here update the single source of truth in Supabase and sync live to public countdowns.
+          </p>
+        </div>
+
+        {isDirty && (
+          <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-500/50 text-amber-300 text-xs font-bold animate-pulse">
+            <span className="w-2 h-2 rounded-full bg-amber-400" />
+            <span>Unsaved Changes</span>
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSave} className="space-y-8 max-w-4xl">
@@ -134,8 +166,11 @@ export default function AdminWebsitePage() {
               value={settings.batchCode || round?.batch_code || "2026-SEP"}
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
-                setSettings({ ...settings, batchCode: val });
-                if (round) setRound({ ...round, batch_code: val });
+                updateSettings({ batchCode: val });
+                if (round) {
+                  setIsDirty(true);
+                  setRound({ ...round, batch_code: val });
+                }
               }}
               placeholder="e.g. 2026-SEP or 2026-OCT"
               required
@@ -146,8 +181,11 @@ export default function AdminWebsitePage() {
               value={settings.applicationStatus || "AUTO"}
               onChange={(e) => {
                 const val = e.target.value as any;
-                setSettings({ ...settings, applicationStatus: val });
-                if (round) setRound({ ...round, status: val });
+                updateSettings({ applicationStatus: val });
+                if (round) {
+                  setIsDirty(true);
+                  setRound({ ...round, status: val });
+                }
               }}
               options={[
                 { value: "AUTO", label: "AUTO (Calculated dynamically from Open/Close timestamps)" },
@@ -170,14 +208,14 @@ export default function AdminWebsitePage() {
                 label="Opening Date *"
                 type="date"
                 value={settings.openDate || "2026-09-01"}
-                onChange={(e) => setSettings({ ...settings, openDate: e.target.value })}
+                onChange={(e) => updateSettings({ openDate: e.target.value })}
                 required
               />
               <Input
                 label="Opening Time (24-Hour HH:MM) *"
                 type="time"
                 value={settings.openTime || "09:00"}
-                onChange={(e) => setSettings({ ...settings, openTime: e.target.value })}
+                onChange={(e) => updateSettings({ openTime: e.target.value })}
                 required
               />
             </div>
@@ -194,14 +232,14 @@ export default function AdminWebsitePage() {
                 label="Closing Date *"
                 type="date"
                 value={settings.closeDate || "2026-09-07"}
-                onChange={(e) => setSettings({ ...settings, closeDate: e.target.value })}
+                onChange={(e) => updateSettings({ closeDate: e.target.value })}
                 required
               />
               <Input
                 label="Closing Time (24-Hour HH:MM) *"
                 type="time"
                 value={settings.closeTime || "23:59"}
-                onChange={(e) => setSettings({ ...settings, closeTime: e.target.value })}
+                onChange={(e) => updateSettings({ closeTime: e.target.value })}
                 required
               />
             </div>
@@ -218,14 +256,14 @@ export default function AdminWebsitePage() {
                 label="Next Opening Date (Optional)"
                 type="date"
                 value={settings.nextOpenDate || ""}
-                onChange={(e) => setSettings({ ...settings, nextOpenDate: e.target.value })}
+                onChange={(e) => updateSettings({ nextOpenDate: e.target.value })}
                 optional
               />
               <Input
                 label="Next Opening Time (Optional)"
                 type="time"
                 value={settings.nextOpenTime || "09:00"}
-                onChange={(e) => setSettings({ ...settings, nextOpenTime: e.target.value })}
+                onChange={(e) => updateSettings({ nextOpenTime: e.target.value })}
                 optional
               />
             </div>
@@ -247,13 +285,13 @@ export default function AdminWebsitePage() {
             <Input
               label="Hero Main Heading *"
               value={settings.heroHeading}
-              onChange={(e) => setSettings({ ...settings, heroHeading: e.target.value })}
+              onChange={(e) => updateSettings({ heroHeading: e.target.value })}
               required
             />
             <Input
               label="Hero Subtitle *"
               value={settings.heroSubtitle}
-              onChange={(e) => setSettings({ ...settings, heroSubtitle: e.target.value })}
+              onChange={(e) => updateSettings({ heroSubtitle: e.target.value })}
               required
             />
           </div>
@@ -261,7 +299,7 @@ export default function AdminWebsitePage() {
           <Textarea
             label="Hero Description Copy *"
             value={settings.heroDescription}
-            onChange={(e) => setSettings({ ...settings, heroDescription: e.target.value })}
+            onChange={(e) => updateSettings({ heroDescription: e.target.value })}
             rows={3}
             required
           />
@@ -270,19 +308,19 @@ export default function AdminWebsitePage() {
             <Input
               label="Agency Official URL *"
               value={settings.agencyUrl}
-              onChange={(e) => setSettings({ ...settings, agencyUrl: e.target.value })}
+              onChange={(e) => updateSettings({ agencyUrl: e.target.value })}
               required
             />
             <Input
               label="Founder Contact Email *"
               value={settings.founderEmail}
-              onChange={(e) => setSettings({ ...settings, founderEmail: e.target.value })}
+              onChange={(e) => updateSettings({ founderEmail: e.target.value })}
               required
             />
             <Input
               label="WhatsApp Support Number *"
               value={settings.whatsappSupportNumber}
-              onChange={(e) => setSettings({ ...settings, whatsappSupportNumber: e.target.value })}
+              onChange={(e) => updateSettings({ whatsappSupportNumber: e.target.value })}
               required
             />
           </div>

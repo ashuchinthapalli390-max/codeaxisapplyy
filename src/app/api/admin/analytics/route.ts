@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin(req);
-    const { applications } = await getApplications({ limit: 10000 });
+    const { applications } = await getApplications({ limit: 10000, view: "active" });
 
     const total = applications.length;
     const underReview = applications.filter((a) => a.status === "Under Review" || a.status === "Submitted").length;

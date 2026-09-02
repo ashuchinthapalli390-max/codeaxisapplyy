@@ -7,7 +7,11 @@ import { Lock, ShieldAlert, Sparkles, Terminal, ArrowLeft } from "lucide-react";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
 import Link from "next/link";
 
-export default function AdminLoginPage() {
+interface AdminLoginPageProps {
+  onLoginSuccess?: () => void;
+}
+
+export default function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps = {}) {
   const router = useRouter();
   const [accessKey, setAccessKey] = useState("");
   const [rememberMe, setRememberMe] = useState(true);
@@ -16,6 +20,7 @@ export default function AdminLoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     playButtonClick();
 
     if (!accessKey.trim()) {
@@ -39,8 +44,12 @@ export default function AdminLoginPage() {
 
       if (json.success) {
         playSuccessSound();
-        router.replace("/admin/dashboard");
-        router.refresh();
+        if (onLoginSuccess) {
+          onLoginSuccess();
+        } else {
+          router.replace("/admin/dashboard");
+          router.refresh();
+        }
       } else {
         setErrorMsg(json.error || "Authentication failed. Invalid master key.");
         playWarningTone();
