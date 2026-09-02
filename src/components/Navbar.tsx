@@ -51,8 +51,8 @@ export default function Navbar() {
           onClick={playButtonClick}
           className="flex items-center space-x-3 group"
         >
-          <div className="w-10 h-10 rounded-xl bg-red-950/40 border border-red-500/30 flex items-center justify-center p-1 shadow-[0_0_15px_rgba(239,68,68,0.25)] group-hover:border-red-500 transition-all">
-            <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-cover rounded-lg" />
+          <div className="w-11 h-11 rounded-xl bg-black/80 border border-red-500/40 flex items-center justify-center p-0.5 overflow-hidden shadow-[0_0_15px_rgba(239,68,68,0.3)] group-hover:border-red-500 group-hover:shadow-[0_0_20px_rgba(239,68,68,0.5)] transition-all">
+            <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-contain rounded-lg" />
           </div>
           <div>
             <div className="text-base font-black tracking-widest font-mono text-white flex items-center gap-1.5">

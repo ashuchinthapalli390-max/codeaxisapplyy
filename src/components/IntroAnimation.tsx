@@ -114,8 +114,8 @@ export default function IntroAnimation({ onComplete }: IntroAnimationProps) {
             phase >= 3 ? "scale-100 opacity-100" : "scale-75 opacity-0"
           }`}
         >
-          <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl bg-gradient-to-b from-red-950/80 to-black border-2 border-red-500/50 p-2 shadow-[0_0_50px_rgba(239,68,68,0.45)] ring-pulse-red flex items-center justify-center">
-            <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-cover rounded-2xl" />
+          <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl bg-black border-2 border-red-500/50 p-2 shadow-[0_0_50px_rgba(239,68,68,0.5)] ring-pulse-red flex items-center justify-center overflow-hidden">
+            <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-contain rounded-2xl" />
           </div>
         </div>
 

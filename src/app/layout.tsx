@@ -32,6 +32,8 @@ export const metadata: Metadata = {
   icons: {
     icon: [
       { url: "/logo.jpeg", type: "image/jpeg" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+      { url: "/icon.jpeg", type: "image/jpeg" },
     ],
     shortcut: "/logo.jpeg",
     apple: "/logo.jpeg",
@@ -51,6 +53,7 @@ export default function RootLayout({
     >
       <head>
         <link rel="icon" href="/logo.jpeg" type="image/jpeg" />
+        <link rel="icon" href="/favicon.ico" type="image/x-icon" />
         <link rel="shortcut icon" href="/logo.jpeg" type="image/jpeg" />
         <link rel="apple-touch-icon" href="/logo.jpeg" />
       </head>

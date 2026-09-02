@@ -29,8 +29,8 @@ export default function Footer() {
           {/* Col 1 & 2: Agency Identity */}
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-red-950/40 border border-red-500/30 flex items-center justify-center p-1 shadow-[0_0_15px_rgba(239,68,68,0.25)]">
-                <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-cover rounded-lg" />
+              <div className="w-11 h-11 rounded-xl bg-black/80 border border-red-500/40 flex items-center justify-center p-0.5 overflow-hidden shadow-[0_0_15px_rgba(239,68,68,0.3)]">
+                <img src="/logo.jpeg" alt="CodeXa Logo" className="w-full h-full object-contain rounded-lg" />
               </div>
               <div>
                 <div className="text-base font-black tracking-widest font-mono text-white">CODEXA AGENCY</div>

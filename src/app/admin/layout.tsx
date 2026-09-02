@@ -130,8 +130,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       {/* Top Mobile Bar */}
       <div className="lg:hidden bg-[#06060e] border-b border-red-950/80 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-2">
-          <div className="w-7 h-7 rounded-lg bg-red-950/40 border border-red-500/30 flex items-center justify-center p-0.5">
-            <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover rounded" />
+          <div className="w-8 h-8 rounded-lg bg-black/80 border border-red-500/30 flex items-center justify-center p-0.5 overflow-hidden">
+            <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-contain rounded" />
           </div>
           <span className="text-xs font-black text-white">CODEXA COMMAND</span>
         </div>
@@ -155,8 +155,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           <div className="space-y-6">
             {/* Sidebar Brand */}
             <div className="flex items-center space-x-3 px-2 pt-2">
-              <div className="w-9 h-9 rounded-xl bg-red-950/50 border border-red-500/40 flex items-center justify-center p-1 shadow-[0_0_12px_rgba(239,68,68,0.25)]">
-                <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-cover rounded-lg" />
+              <div className="w-10 h-10 rounded-xl bg-black/80 border border-red-500/40 flex items-center justify-center p-0.5 overflow-hidden shadow-[0_0_12px_rgba(239,68,68,0.25)]">
+                <img src="/logo.jpeg" alt="Logo" className="w-full h-full object-contain rounded-lg" />
               </div>
               <div>
                 <div className="text-sm font-black text-white tracking-widest">CODEXA ADMIN</div>
