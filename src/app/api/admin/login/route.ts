@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { accessKey } = (await req.json()) as { accessKey?: string };
+    const { accessKey, rememberMe } = (await req.json()) as { accessKey?: string; rememberMe?: boolean };
     const cleanInput = (accessKey || "").trim();
 
     const isAuthorized = verifyAdminMasterKey(cleanInput);
@@ -60,14 +60,15 @@ export async function POST(req: NextRequest) {
     // Successful login: reset attempts
     loginAttempts.delete(identifierHash);
 
-    // Create 30-day persistent session in Supabase & local cache
-    const { rawToken, expiresAt, maxAge } = await createSession(ip, userAgent);
+    // Create session (12 hours normal, 30 days if rememberMe)
+    const { rawToken, expiresAt, maxAge } = await createSession(ip, userAgent, Boolean(rememberMe));
 
-    await addAuditLog("LOGIN", `Admin authenticated successfully from ${userAgent.slice(0, 40)}`);
+    await addAuditLog("LOGIN", `Admin authenticated successfully (RememberMe: ${Boolean(rememberMe)}) from ${userAgent.slice(0, 40)}`);
 
     const response = NextResponse.json({
       success: true,
       message: "Admin authentication authorized.",
+      rememberMe: Boolean(rememberMe),
       expiresAt: expiresAt.toISOString(),
     });
 

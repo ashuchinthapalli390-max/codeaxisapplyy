@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -14,8 +14,12 @@ import {
 // Canonical cookie name across the entire application
 export const ADMIN_SESSION_COOKIE = process.env.ADMIN_SESSION_COOKIE || "codexa_admin_session";
 export const SESSION_COOKIE_NAME = ADMIN_SESSION_COOKIE; // alias for backwards compatibility
-export const SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 3650);
-export const SESSION_MAX_AGE_SECONDS = SESSION_DAYS * 24 * 60 * 60; // 10 years (3650 days) in seconds
+
+// Session durations
+export const NORMAL_SESSION_SECONDS = 12 * 60 * 60; // 12 Hours
+export const REMEMBER_ME_SESSION_SECONDS = 30 * 24 * 60 * 60; // 30 Days
+export const MAX_ABSOLUTE_SESSION_SECONDS = 30 * 24 * 60 * 60; // 30 Days Maximum
+export const SESSION_MAX_AGE_SECONDS = REMEMBER_ME_SESSION_SECONDS; // Default ceiling
 
 export class UnauthorizedAdminError extends Error {
   constructor(message = "Unauthorized admin access.") {
@@ -40,6 +44,7 @@ export interface AdminSessionRecord {
   device_label?: string;
   user_agent?: string;
   ip_address?: string;
+  remember_me?: boolean;
   created_at: string;
   last_seen_at: string;
   expires_at: string;
@@ -53,37 +58,123 @@ export interface AdminSessionResult {
   reason?: string;
   session?: AdminSessionRecord;
   needsRefresh?: boolean;
+  rememberMe?: boolean;
+}
+
+interface SessionPayload {
+  sid: string;
+  iat: number; // Unix seconds
+  exp: number; // Unix seconds
+  rem: boolean;
+  role: "admin";
 }
 
 /**
- * Creates a new cryptographically secure admin session and returns rawToken for the HttpOnly cookie.
+ * Returns a stable session signing secret.
+ * Priority:
+ * 1. process.env.ADMIN_SESSION_SECRET
+ * 2. Deterministic derivation from process.env.ADMIN_PASSKEY
+ * Guarantees that across all serverless instances and cold boots, the secret NEVER changes randomly.
+ */
+export function getStableSessionSecret(): string {
+  const envSecret = process.env.ADMIN_SESSION_SECRET?.trim();
+  if (envSecret && envSecret.length >= 16) {
+    return envSecret;
+  }
+  const passkey = process.env.ADMIN_PASSKEY?.trim() || "codexa_admin_2026_default_fallback_passkey";
+  return createHash("sha256").update(`codexa_session_signing_seed:${passkey}`).digest("hex");
+}
+
+/**
+ * Signs a session payload using HMAC-SHA256 with the stable secret.
+ */
+function signSessionToken(sessionId: string, payload: SessionPayload): string {
+  const secret = getStableSessionSecret();
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = createHmac("sha256", secret)
+    .update(`${sessionId}.${payloadB64}`)
+    .digest("hex");
+  return `${sessionId}.${payloadB64}.${signature}`;
+}
+
+/**
+ * Validates and decodes a signed session token.
+ */
+function parseAndVerifySessionToken(rawToken: string): { valid: boolean; payload?: SessionPayload } {
+  if (!rawToken || typeof rawToken !== "string") return { valid: false };
+  const parts = rawToken.trim().split(".");
+  if (parts.length !== 3) return { valid: false };
+
+  const [sessionId, payloadB64, signature] = parts;
+  const secret = getStableSessionSecret();
+  const expectedSig = createHmac("sha256", secret)
+    .update(`${sessionId}.${payloadB64}`)
+    .digest("hex");
+
+  try {
+    const sigBuf = Buffer.from(signature, "hex");
+    const expBuf = Buffer.from(expectedSig, "hex");
+    if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+      return { valid: false };
+    }
+
+    const payload: SessionPayload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
+    if (payload.sid !== sessionId) return { valid: false };
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (payload.exp <= nowSec) return { valid: false };
+
+    return { valid: true, payload };
+  } catch {
+    return { valid: false };
+  }
+}
+
+/**
+ * Creates a new cryptographically signed admin session.
  */
 export async function createSession(
   ipAddress: string = "127.0.0.1",
-  userAgent: string = "Web Browser"
+  userAgent: string = "Web Browser",
+  rememberMe: boolean = false
 ): Promise<{ rawToken: string; expiresAt: Date; maxAge: number }> {
-  const rawToken = randomBytes(32).toString("base64url");
-  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
-  const sessionId = `sess-${Date.now()}-${randomBytes(4).toString("hex")}`;
-  const deviceLabel = userAgent.slice(0, 80);
+  const durationSeconds = rememberMe ? REMEMBER_ME_SESSION_SECONDS : NORMAL_SESSION_SECONDS;
+  const expiresAt = new Date(now.getTime() + durationSeconds * 1000);
+
+  const sessionId = `sess-${Date.now()}-${randomBytes(8).toString("hex")}`;
+  const payload: SessionPayload = {
+    sid: sessionId,
+    iat: Math.floor(now.getTime() / 1000),
+    exp: Math.floor(expiresAt.getTime() / 1000),
+    rem: Boolean(rememberMe),
+    role: "admin",
+  };
+
+  const rawToken = signSessionToken(sessionId, payload);
+  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const deviceLabel = userAgent.slice(0, 100);
 
   // 1. Save to Supabase admin_sessions table
   let supabaseSuccess = false;
   try {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { error } = await supabase.from("admin_sessions").insert({
-        id: sessionId,
-        token_hash: tokenHash,
-        device_label: deviceLabel,
-        user_agent: userAgent,
-        ip_address: ipAddress,
-        created_at: now.toISOString(),
-        last_seen_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      });
+      const { error } = await supabase.from("admin_sessions").upsert(
+        {
+          id: sessionId,
+          token_hash: tokenHash,
+          device_label: deviceLabel,
+          user_agent: userAgent,
+          ip_address: ipAddress,
+          remember_me: rememberMe,
+          created_at: now.toISOString(),
+          last_seen_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          revoked_at: null,
+        },
+        { onConflict: "id" }
+      );
 
       if (!error) {
         supabaseSuccess = true;
@@ -96,7 +187,7 @@ export async function createSession(
     console.warn("[Session Supabase Insert Exception]:", supabaseErr);
   }
 
-  // 2. Always maintain local cache fallback for instant offline/restart resilience
+  // 2. Save to local fallback cache
   try {
     await saveFallbackSession({
       id: sessionId,
@@ -116,17 +207,17 @@ export async function createSession(
   return {
     rawToken,
     expiresAt,
-    maxAge: SESSION_MAX_AGE_SECONDS,
+    maxAge: durationSeconds,
   };
 }
 
 /**
- * Validates a raw session token against Supabase and local cache.
- * Returns clear status: "authenticated" | "unauthenticated" | "temporary_error"
+ * Validates a raw session token using dual verification:
+ * 1. Cryptographic HMAC signature check (guarantees fast stateless verification across serverless cold starts)
+ * 2. Supabase database check against admin_sessions to verify active revocation state
  */
 export async function validateSessionToken(rawToken?: string | null): Promise<AdminSessionResult> {
   if (!rawToken || typeof rawToken !== "string" || !rawToken.trim()) {
-    console.log("[ADMIN_AUTH] missing cookie");
     return {
       status: "unauthenticated",
       isValid: false,
@@ -134,13 +225,25 @@ export async function validateSessionToken(rawToken?: string | null): Promise<Ad
     };
   }
 
-  console.log("[ADMIN_AUTH] cookie present");
   const cleanToken = rawToken.trim();
   const tokenHash = createHash("sha256").update(cleanToken).digest("hex");
   const now = new Date();
 
-  // 1. Check Supabase
-  let dbEncounteredError = false;
+  // 1. Verify Cryptographic Signature
+  const tokenCheck = parseAndVerifySessionToken(cleanToken);
+  if (!tokenCheck.valid || !tokenCheck.payload) {
+    return {
+      status: "unauthenticated",
+      isValid: false,
+      reason: "invalid_or_expired_signature",
+    };
+  }
+
+  const { sid, exp, rem, iat } = tokenCheck.payload;
+  const tokenExpiresAt = new Date(exp * 1000);
+  const tokenCreatedAt = new Date(iat * 1000);
+
+  // 2. Check Supabase admin_sessions table for revocation
   try {
     const supabase = getSupabaseAdmin();
     if (supabase) {
@@ -150,12 +253,9 @@ export async function validateSessionToken(rawToken?: string | null): Promise<Ad
         .eq("token_hash", tokenHash)
         .maybeSingle();
 
-      if (error) {
-        dbEncounteredError = true;
-        console.warn("[ADMIN_AUTH] database unavailable:", error.message);
-      } else if (data) {
+      if (!error && data) {
         if (data.revoked_at) {
-          console.log("[ADMIN_AUTH] revoked");
+          console.log("[ADMIN_AUTH] session revoked in database");
           return {
             status: "unauthenticated",
             isValid: false,
@@ -164,7 +264,7 @@ export async function validateSessionToken(rawToken?: string | null): Promise<Ad
         }
 
         if (new Date(data.expires_at).getTime() <= now.getTime()) {
-          console.log("[ADMIN_AUTH] session expired");
+          console.log("[ADMIN_AUTH] session expired in database");
           return {
             status: "unauthenticated",
             isValid: false,
@@ -182,77 +282,40 @@ export async function validateSessionToken(rawToken?: string | null): Promise<Ad
           // ignore background update error
         }
 
-        const expiryDate = new Date(data.expires_at);
-        const daysRemaining = (expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-        const needsRefresh = daysRemaining < 7;
+        // Sliding renewal: if half the session duration has elapsed, request sliding refresh
+        const totalDurationMs = new Date(data.expires_at).getTime() - new Date(data.created_at).getTime();
+        const elapsedMs = now.getTime() - new Date(data.last_seen_at || data.created_at).getTime();
+        const needsRefresh = elapsedMs > totalDurationMs / 2;
 
-        console.log("[ADMIN_AUTH] session found (Supabase verified)");
         return {
           status: "authenticated",
           isValid: true,
           session: data,
           needsRefresh,
+          rememberMe: Boolean(data.remember_me),
         };
       }
     }
   } catch (supabaseErr) {
-    dbEncounteredError = true;
-    console.warn("[ADMIN_AUTH] database unavailable (exception):", supabaseErr);
+    console.warn("[ADMIN_AUTH] Supabase database read error (falling back to cryptographically verified token):", supabaseErr);
   }
 
-  // 2. Check local fallback store
-  try {
-    const isValidLocal = await verifyFallbackSession(cleanToken);
-    if (isValidLocal) {
-      console.log("[ADMIN_AUTH] session found (Local fallback verified)");
-      return {
-        status: "authenticated",
-        isValid: true,
-        needsRefresh: false,
-        session: {
-          id: `local-${cleanToken.slice(0, 8)}`,
-          created_at: now.toISOString(),
-          last_seen_at: now.toISOString(),
-          expires_at: new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000).toISOString(),
-        },
-      };
-    }
-  } catch (fallbackErr) {
-    console.warn("[Session Local Fallback Validation Error]:", fallbackErr);
-  }
+  // 3. Fallback: If DB query fails or table is pending, the cryptographic token itself is validated!
+  const remainingSeconds = exp - Math.floor(now.getTime() / 1000);
+  const needsRefresh = remainingSeconds < 3600; // refresh if less than 1h remains
 
-  // 3. If DB had a real connection error and local check was not matched:
-  if (dbEncounteredError) {
-    return {
-      status: "temporary_error",
-      isValid: false,
-      reason: "database_error",
-    };
-  }
-
-  console.log("[ADMIN_AUTH] session not found");
   return {
-    status: "unauthenticated",
-    isValid: false,
-    reason: "session_not_found",
-  };
-}
-
-/**
- * Backwards compatibility helper for existing code.
- */
-export async function validateSession(rawToken?: string | null): Promise<{
-  isValid: boolean;
-  needsRefresh?: boolean;
-  session?: AdminSessionRecord;
-  temporaryError?: boolean;
-}> {
-  const result = await validateSessionToken(rawToken);
-  return {
-    isValid: result.status === "authenticated",
-    needsRefresh: result.needsRefresh,
-    session: result.session,
-    temporaryError: result.status === "temporary_error",
+    status: "authenticated",
+    isValid: true,
+    needsRefresh,
+    rememberMe: rem,
+    session: {
+      id: sid,
+      created_at: tokenCreatedAt.toISOString(),
+      last_seen_at: now.toISOString(),
+      expires_at: tokenExpiresAt.toISOString(),
+      remember_me: rem,
+    },
   };
 }
 
@@ -281,7 +344,6 @@ export async function getAdminSession(req?: NextRequest): Promise<AdminSessionRe
 
 /**
  * Enforces admin authentication for protected API routes and server actions.
- * Throws UnauthorizedAdminError (401) or AdminServiceUnavailableError (503).
  */
 export async function requireAdmin(req?: NextRequest): Promise<AdminSessionRecord> {
   const result = await getAdminSession(req);
@@ -332,10 +394,28 @@ export function handleAdminAuthError(error: unknown): NextResponse {
 }
 
 /**
+ * Revokes a session by unique session ID.
+ */
+export async function revokeSessionById(sessionId: string): Promise<void> {
+  const now = new Date().toISOString();
+  try {
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase
+        .from("admin_sessions")
+        .update({ revoked_at: now })
+        .eq("id", sessionId);
+    }
+  } catch (err) {
+    console.warn("[Supabase Revoke Session By ID Error]:", err);
+  }
+}
+
+/**
  * Revokes a single session by raw token.
  */
 export async function revokeSessionByToken(rawToken: string): Promise<void> {
-  const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+  const tokenHash = createHash("sha256").update(rawToken.trim()).digest("hex");
   const now = new Date().toISOString();
 
   try {
@@ -361,7 +441,7 @@ export async function revokeSessionByToken(rawToken: string): Promise<void> {
  * Revokes all other sessions except current raw token.
  */
 export async function revokeOtherSessions(currentRawToken: string): Promise<void> {
-  const currentTokenHash = createHash("sha256").update(currentRawToken).digest("hex");
+  const currentTokenHash = createHash("sha256").update(currentRawToken.trim()).digest("hex");
   const now = new Date().toISOString();
 
   try {

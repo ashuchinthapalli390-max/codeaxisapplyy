@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const underReview = applications.filter((a) => a.status === "Under Review" || a.status === "Submitted").length;
     const shortlisted = applications.filter((a) => a.status === "Shortlisted").length;
     const selected = applications.filter((a) => a.status === "Selected").length;
-    const rejected = applications.filter((a) => a.status === "Not Selected").length;
+    const rejected = applications.filter((a) => a.status === "Rejected").length;
 
     // Score calculations
     const scores = applications.map((a) => a.total_score || 0);

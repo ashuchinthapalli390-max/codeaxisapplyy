@@ -6,7 +6,6 @@ import {
   TeamMember,
   WebsiteSettings,
   InternshipRound,
-  VoiceGuideCacheEntry,
   FaqItem,
   QuestionBankItem,
   EmailTemplate,
@@ -15,10 +14,10 @@ import {
   AdminSession,
   SiteAsset,
   SiteModule,
+  InterviewData,
+  OfferData,
 } from "@/types/admin";
-
-export const DEFAULT_TELUGU_NARRATION =
-  "హాయ్... CodeXa Apply కి స్వాగతం. Developer Internship application ప్రారంభించే ముందు, కొన్ని ముఖ్యమైన విషయాలు తెలుసుకుందాం. ఈ application లో మొత్తం ఎనిమిది rounds ఉంటాయి. ప్రతి round లో మీ వివరాలను నిజాయితీగా మరియు సరైన విధంగా నమోదు చేయండి. Application answer fields లో Copy, Cut మరియు Paste అనుమతించబడవు. అయితే GitHub, LinkedIn, Portfolio, Project Link వంటి URL మరియు Link fields లో Copy మరియు Paste ఉపయోగించవచ్చు. Restricted fields లో మొదటి నాలుగు clipboard attempts కి warnings వస్తాయి. ఆ warnings ఉన్నప్పటికీ మీ application ని submit చేయవచ్చు. ఐదవ restricted clipboard attempt జరిగితే, మీ current application progress reset అవుతుంది. Application సమయంలో tab మార్చడం లేదా page focus బయటకు వెళ్లడం review signal గా record కావచ్చు. అది automatic rejection కాదు. మరొక ముఖ్యమైన విషయం... Technical knowledge compulsory కాదు. C, Python, Java లేదా HTML తెలియకపోయినా సమస్య లేదు. మీ actual skill level ఏదైతే ఉందో, దానినే నిజాయితీగా select చేయండి. మీరు application complete చేస్తున్నప్పుడు, మీ progress automatically save అవుతుంది. అందుకే తొందరపడకుండా, ప్రతి question ని జాగ్రత్తగా చదివి, మీ own answers ఇవ్వండి. CodeXa Developer Internship application కి all the best. మీ journey ఇక్కడ నుంచే మొదలవుతుంది.";
+import { generateReferenceId } from "@/lib/referenceId";
 
 interface StoreData {
   applications: ApplicationData[];
@@ -33,28 +32,29 @@ interface StoreData {
   auditLogs: AdminAuditLog[];
   sessions: AdminSession[];
   siteAssets: SiteAsset[];
-  voiceGuideCache: VoiceGuideCacheEntry[];
+  interviews: InterviewData[];
+  offers: OfferData[];
   nextApplicationSequence: number;
 }
 
 const DEFAULT_INTERNSHIP_ROUND: InternshipRound = {
-  id: "round-2026-aug",
+  id: "round-2026-sep",
   title: "CodeXa Developer Internship 2026",
-  batch_code: "2026-AUG",
+  batch_code: "2026-SEP",
   status: "AUTO",
-  opens_at: "2026-08-20T09:00:00+05:30",
+  opens_at: "2026-09-01T09:00:00+05:30",
   closes_at: "2026-09-07T23:59:59+05:30",
   next_opens_at: "2026-09-15T09:00:00+05:30",
   timezone: "Asia/Kolkata",
   is_active: true,
-  created_at: "2026-08-20T09:00:00.000Z",
-  updated_at: "2026-08-20T09:00:00.000Z",
+  created_at: "2026-09-01T09:00:00.000Z",
+  updated_at: "2026-09-01T09:00:00.000Z",
 };
 
 const DEFAULT_SETTINGS: WebsiteSettings = {
   applicationStatus: "AUTO",
-  batchCode: "2026-AUG",
-  openDate: "2026-08-20",
+  batchCode: "2026-SEP",
+  openDate: "2026-09-01",
   openTime: "09:00",
   closeDate: "2026-09-07",
   closeTime: "23:59",
@@ -74,18 +74,6 @@ const DEFAULT_SETTINGS: WebsiteSettings = {
   whatsappOnboardingLink: "https://chat.whatsapp.com/CodeXaInternship2026Private",
   discordOnboardingLink: "https://discord.gg/codexa-dev-private",
   sessionDurationDays: 30,
-  voiceGuide: {
-    enabled: true,
-    title: "CodeXa Voice Guide",
-    teluguScript: DEFAULT_TELUGU_NARRATION,
-    provider: "google",
-    voiceName: "te-IN-Chirp3-HD-Aoede",
-    speechSpeed: 0.95,
-    scrollTriggerPx: 350,
-    showOncePerSession: false,
-    showTranscript: true,
-    defaultVolume: 0.9,
-  },
 };
 
 const DEFAULT_MODULES: SiteModule[] = [
@@ -150,357 +138,223 @@ const DEFAULT_MODULES: SiteModule[] = [
     id: "module-04",
     module_number: 4,
     module_code: "MOD-04",
-    title: "Production Deployment & Product Launch",
-    subtitle: "Module 04 // Production Launch",
-    description: "Vercel cloud deployment, domain configuration, CI/CD automated pipelines, performance optimization, SEO metadata, and product delivery.",
+    title: "AI Integration & Automation",
+    subtitle: "Module 04 // AI Engineering",
+    description: "Building production LLM features, agentic pipelines, OpenAI/Anthropic/Gemini APIs, vector search, and structured output orchestration.",
     week_label: "Weeks 7–8",
     duration: "2 Weeks",
-    image_url: "/assets/cards/modules/module-04-production-deployment.png",
+    image_url: "/assets/cards/modules/module-04-ai-engineering-apis.png",
     topics: [
-      "Production cloud deployment on Vercel and modern infrastructure",
-      "CI/CD automated deployment pipelines & webhook integrations",
-      "Lighthouse performance optimization, caching & SEO meta tags",
-      "Live product launch, telemetry logging, and developer certification",
+      "Multi-model LLM API integration (Claude, GPT, Gemini)",
+      "Structured JSON schema outputs and function calling",
+      "RAG architecture, embeddings, and context window management",
+      "Automated testing of AI components and error resilience",
     ],
     display_order: 4,
+    is_visible: true,
+  },
+  {
+    id: "module-05",
+    module_number: 5,
+    module_code: "MOD-05",
+    title: "Production Architecture & Performance",
+    subtitle: "Module 05 // Architecture",
+    description: "Caching strategies, serverless optimization, edge rendering, bundle size reduction, SEO excellence, and performance monitoring.",
+    week_label: "Weeks 9–10",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-05-performance-seo-core-web-vitals.png",
+    topics: [
+      "Edge rendering, ISR, and multi-layer caching architectures",
+      "Core Web Vitals tuning and JavaScript payload reduction",
+      "Automated SEO optimization and structured metadata",
+      "Production telemetry, error monitoring, and alerting",
+    ],
+    display_order: 5,
+    is_visible: true,
+  },
+  {
+    id: "module-06",
+    module_number: 6,
+    module_code: "MOD-06",
+    title: "Agency Client Capstone Project",
+    subtitle: "Module 06 // Capstone & Ship",
+    description: "Collaborative real-world client build with live deployments, code reviews, automated CI/CD pipelines, and portfolio verification.",
+    week_label: "Weeks 11–12",
+    duration: "2 Weeks",
+    image_url: "/assets/cards/modules/module-06-capstone-production-ship.png",
+    topics: [
+      "Team-based agency client platform construction",
+      "CI/CD deployment pipelines on Vercel and cloud platforms",
+      "Peer pull request reviews and production readiness audits",
+      "Public project launch, portfolio verification, and certificate",
+    ],
+    display_order: 6,
     is_visible: true,
   },
 ];
 
 const DEFAULT_TEAM: TeamMember[] = [
   {
-    id: "ashu-founder",
-    name: "Ashu",
-    designation: "Founder & Technical Director",
+    id: "team-01",
+    name: "Ashu Chinthapalli",
+    displayName: "Ashu Chinthapalli",
+    designation: "Chief Executive Officer & Founder",
+    secondaryDesignation: "Full-Stack Architect & AI Systems",
     roleType: "Founder",
-    photoUrl: "/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg",
-    bio: "Founder of CodeXa Agency. Focused on building AI-powered systems, developer tools, hosting platforms, Discord automation, 3D animated web experiences, secure application portals, and futuristic digital products. Leads technical direction, program architecture, and full-stack engineering.",
-    quote: "I don't just write code, I build solutions that create impact.",
-    roles: [
-      "Founder",
-      "Technical Direction",
-      "Product Strategy",
-      "AI & Full-Stack Development",
-      "Architecture",
-      "Internship Program Oversight",
-    ],
-    skills: [
-      "EDITH AI Agent",
-      "CODEXA IDE",
-      "Claude Code Workflows",
-      "Ethical Hacking Awareness",
-      "Secure Portals",
-      "3D Web Design",
-      "Database Systems",
-      "Serverless Deployment",
-    ],
+    department: "Executive Leadership & Engineering",
+    tagline: "Building software systems that solve real human challenges at scale.",
+    bio: "Ashu leads vision, technology architecture, and developer programs at CodeXa Agency, focusing on modern web platforms and applied AI workflows.",
+    shortBio: "Founder & Full-Stack Architect leading CodeXa Agency's technology vision and developer internship initiatives.",
+    fullBio: "Ashu is the Founder & CEO of CodeXa Agency. He specializes in distributed web platforms, Next.js architecture, AI workflows, and practical engineering education. He founded the CodeXa Developer Internship program to bridge the gap between college theory and production-grade software delivery.",
+    professionalSummary: "Over 5+ years of software architecture and developer leadership experience building resilient production applications.",
+    quote: "Software is not about writing code; it's about solving problems with clarity and shipping with pride.",
+    photoUrl: "/assets/image-assests/ashu-chinthapalli.jpg",
+    skills: ["Full-Stack Architecture", "Next.js", "AI Tooling", "Database Systems", "Developer Mentorship"],
     email: "ashuchinthapalli3900@gmail.com",
     whatsapp: "+91 88979 01413",
-    githubUrl: "https://github.com",
-    linkedinUrl: "https://linkedin.com",
-    websiteUrl: "https://www.codxa-agency.online",
+    location: "Hyderabad, India",
+    preferredContact: "WhatsApp",
+    githubUrl: "https://github.com/ashuchinthapalli390-max",
+    linkedinUrl: "https://www.linkedin.com/in/ashuchinthapalli",
+    showPhone: true,
+    showEmail: true,
+    showWhatsapp: true,
+    showSocials: true,
     showContact: true,
     isFeatured: true,
     isVisible: true,
     displayOrder: 1,
   },
   {
-    id: "deepak-cofounder",
-    name: "Deepak",
-    designation: "Co-Founder & Operations Lead",
+    id: "team-02",
+    name: "Deepak Kumar",
+    displayName: "Deepak Kumar",
+    designation: "Chief Technology Officer & Co-Founder",
+    secondaryDesignation: "Distributed Systems & Cloud",
     roleType: "Co-Founder",
-    photoUrl: "/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg",
-    bio: "Co-Founder of CodeXa Agency. Supports the agency through team coordination, community engagement, application guidance, internship communication, and student query resolution. Ensures seamless candidate workflows and program operations.",
-    quote: "Connecting people, supporting progress, and keeping the journey smooth.",
-    roles: [
-      "Co-Founder",
-      "Agency Operations",
-      "Team Coordination",
-      "Internship Coordination",
-      "Program Support",
-      "Internal Planning",
-    ],
-    skills: [
-      "Team Coordination",
-      "Operations Management",
-      "Student Query Handling",
-      "Community Building",
-      "Process Optimization",
-    ],
-    whatsapp: "+91 94942 45412",
+    department: "Technology & Cloud Infrastructure",
+    tagline: "Scalable backend systems and rock-solid cloud infrastructure.",
+    bio: "Deepak oversees technical architecture, database designs, and cloud infrastructure pipelines across CodeXa projects.",
+    shortBio: "CTO & Co-Founder specializing in cloud infrastructure, databases, and high-performance serverless backends.",
+    fullBio: "Deepak is the Co-Founder & CTO of CodeXa Agency. He brings deep domain expertise in PostgreSQL, Supabase architecture, serverless systems, and cloud security pipelines.",
+    professionalSummary: "Extensive experience in scalable cloud deployments, database optimization, and high-concurrency systems.",
+    quote: "Simplicity is the prerequisite for reliability.",
+    photoUrl: "/assets/image-assests/deepak.jpg",
+    skills: ["Cloud Architecture", "PostgreSQL", "Supabase", "Serverless", "Security"],
+    email: "deepak@codxa-agency.online",
+    location: "Bengaluru, India",
+    preferredContact: "Email",
+    linkedinUrl: "https://www.linkedin.com/in/deepak-codexa",
+    showPhone: false,
+    showEmail: true,
+    showWhatsapp: false,
+    showSocials: true,
     showContact: true,
     isFeatured: true,
     isVisible: true,
     displayOrder: 2,
   },
   {
-    id: "kishore-ceo",
-    name: "Kishore",
-    designation: "Chief Executive Officer (CEO)",
-    roleType: "CEO",
-    photoUrl: "/assets/image-assests/2306fc1d8f6ea04d1ddd4ebfafd003f2.jpg",
-    bio: "CEO of CodeXa Agency. Drives business strategy, agency partnerships, growth initiatives, project coordination, and administration. Oversees operational scaling and commercial product roadmaps.",
-    quote: "Scaling execution, driving innovation, and accelerating developer careers.",
-    roles: [
-      "CEO",
-      "Business Strategy",
-      "Agency Operations",
-      "Growth & Partnerships",
-      "Project Coordination",
-      "Administration",
-    ],
-    skills: [
-      "Business Strategy",
-      "Growth Marketing",
-      "Project Management",
-      "Resource Planning",
-      "Organizational Leadership",
-    ],
-    whatsapp: "+91 70758 00951",
+    id: "team-03",
+    name: "Kishore Reddy",
+    displayName: "Kishore Reddy",
+    designation: "Head of Engineering & Developer Mentorship",
+    secondaryDesignation: "Frontend Systems & UI/UX",
+    roleType: "Core Team",
+    department: "Engineering & Mentorship",
+    tagline: "Transforming ambitious students into confident, production-ready engineers.",
+    bio: "Kishore leads the internship curriculum, code review standards, and hands-on project mentoring for every candidate.",
+    shortBio: "Head of Engineering directing curriculum execution, daily developer unblocking, and pull request audits.",
+    fullBio: "Kishore leads candidate mentoring at CodeXa Agency. He is dedicated to helping developers master React, TypeScript, responsive layout systems, and clean architectural design patterns.",
+    professionalSummary: "Senior frontend engineer with a passion for pedagogy, interactive UI design, and developer tooling.",
+    quote: "Every great engineer was once a beginner who refused to quit.",
+    photoUrl: "/assets/image-assests/kishore.jpg",
+    skills: ["React", "TypeScript", "UI/UX", "Code Review", "Pedagogy"],
+    email: "kishore@codxa-agency.online",
+    location: "Hyderabad, India",
+    preferredContact: "Email",
+    linkedinUrl: "https://www.linkedin.com/in/kishore-codexa",
+    showPhone: false,
+    showEmail: true,
+    showWhatsapp: false,
+    showSocials: true,
     showContact: true,
     isFeatured: true,
     isVisible: true,
     displayOrder: 3,
-  },
-];
-
-const DEFAULT_SITE_ASSETS: SiteAsset[] = [
-  {
-    id: "asset-hero-fg",
-    assetKey: "hero_foreground",
-    name: "Hero Foreground Tech Visual",
-    assetUrl: "/assets/image-assests/hero.jpeg",
-    assetType: "image",
-    section: "Landing Hero",
-    altText: "CodeXa Developer Tech Visual",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-hero-bg",
-    assetKey: "hero_background",
-    name: "Hero Red Web Matrix",
-    assetUrl: "/assets/gif-assests/3d614f522fb7bcc40915d9a9b7a8ea17.gif",
-    assetType: "gif",
-    section: "Landing Hero",
-    altText: "Hero Red Motion Grid",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-agency-bg",
-    assetKey: "agency_background",
-    name: "Agency Cyber Grid",
-    assetUrl: "/assets/gif-assests/6017829e0b3e2aaa5fa990adb0889fb0.gif",
-    assetType: "gif",
-    section: "Agency Spotlight",
-    altText: "Agency Tech Atmosphere",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-coding-bg",
-    assetKey: "coding_background",
-    name: "Coding Stream Motion",
-    assetUrl: "/assets/gif-assests/6de84346589395b4f74367e1ef002fa6.gif",
-    assetType: "gif",
-    section: "Coding Experience",
-    altText: "Terminal & Code Stream",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-vibe-bg",
-    assetKey: "vibe_background",
-    name: "AI Prompt Stream Visual",
-    assetUrl: "/assets/gif-assests/992e39771c0279718c88caa6e1663611.gif",
-    assetType: "gif",
-    section: "Vibe Coding",
-    altText: "AI Prompting Network",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-app-bg",
-    assetKey: "application_background",
-    name: "Application Screening Visual",
-    assetUrl: "/assets/gif-assests/d24f62aa1d4ab988fe9d65ed3ec9bc0f.gif",
-    assetType: "gif",
-    section: "Application Portal",
-    altText: "Subtle Ambient Grid",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-success-bg",
-    assetKey: "success_background",
-    name: "Success Confirmed Red Flash",
-    assetUrl: "/assets/gif-assests/d74ed5d64d9c1d573a60020ec3c9a8c1.gif",
-    assetType: "gif",
-    section: "Success Screen",
-    altText: "Application Submitted Flash",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
-  },
-  {
-    id: "asset-footer-bg",
-    assetKey: "footer_background",
-    name: "Footer Dark Horizon",
-    assetUrl: "/assets/gif-assests/d8bf146f4bc2b4e3a28cb8c71e81cc28.gif",
-    assetType: "gif",
-    section: "Footer",
-    altText: "Footer Web Pattern",
-    isActive: true,
-    updatedAt: "2026-08-22T12:00:00.000Z",
   },
 ];
 
 const DEFAULT_FAQS: FaqItem[] = [
   {
-    id: "faq-1",
-    question: "Is coding knowledge compulsory to apply?",
+    id: "faq-01",
+    question: "Is prior coding experience compulsory to apply?",
     answer:
-      "No! Existing coding knowledge is helpful, but completely optional. Beginners with genuine curiosity, high commitment, and an eagerness to learn are strongly encouraged to apply.",
-    category: "Eligibility",
+      "No! Prior technical experience is completely optional. Beginners with genuine dedication, honest responses, and a willingness to learn are given full opportunity.",
+    category: "General",
     displayOrder: 1,
   },
   {
-    id: "faq-2",
-    question: "Can first-year students and complete beginners apply?",
+    id: "faq-02",
+    question: "Can first-year students and non-CSE students apply?",
     answer:
-      "Yes. Our screening evaluates your mindset, responsibility, learning speed, and genuineness rather than past corporate experience.",
+      "Yes. Students from all branches (CSE, ECE, Mechanical, Civil, IT, BCA, MCA, etc.) and all academic years are eligible.",
     category: "Eligibility",
     displayOrder: 2,
   },
   {
-    id: "faq-3",
-    question: "Is a high-end laptop or GPU mandatory?",
+    id: "faq-03",
+    question: "Is a high-end laptop or dedicated GPU mandatory?",
     answer:
-      "No. As long as you have or can arrange access to a basic laptop running VS Code, Git, and a web browser, you are fully equipped. Hardware specs do not penalize your score.",
-    category: "Technical",
+      "No. Any basic laptop capable of running VS Code, Git, and a modern web browser is sufficient. Hardware specs do not penalize your evaluation score.",
+    category: "General",
     displayOrder: 3,
   },
   {
-    id: "faq-4",
-    question: "How many rounds are there in the application?",
+    id: "faq-04",
+    question: "What if I select 'I Don't Know' in the technical awareness round?",
     answer:
-      "There are 8 streamlined rounds: Personal Information, Education, Developer Profile, Availability & Hardware, Technical Awareness, Mindset Evaluation, Thought-Process Interview, and Review & Commitment.",
-    category: "Selection",
-    displayOrder: 4,
-  },
-  {
-    id: "faq-5",
-    question: "What if I select 'I Don't Know' in the Technical section?",
-    answer:
-      "Selecting 'I Don't Know' simply skips technical quiz questions for that language without any negative score penalty. Honesty is valued much higher than inflated claims.",
+      "Selecting 'I Don't Know' simply skips technical questions for that language without any negative penalty. Honesty and genuineness are highly rewarded.",
     category: "Technical",
-    displayOrder: 5,
-  },
-  {
-    id: "faq-6",
-    question: "How much daily availability is expected?",
-    answer:
-      "We recommend 2–4 hours per day of focused building, with flexible time slots (Morning, Evening, or Night) so you can smoothly balance college coursework.",
-    category: "Commitment",
-    displayOrder: 6,
-  },
-  {
-    id: "faq-7",
-    question: "How will I know if my application is selected?",
-    answer:
-      "You can track your real-time status anytime on our Track Application page using your Reference ID. Selected applicants will also receive an official email with private WhatsApp and Discord onboarding links.",
-    category: "Selection",
-    displayOrder: 7,
-  },
-  {
-    id: "faq-8",
-    question: "Is the internship online / remote?",
-    answer:
-      "Yes, the internship is 100% remote with digital collaboration via Discord, GitHub, and live agency project reviews.",
-    category: "General",
-    displayOrder: 8,
+    displayOrder: 4,
   },
 ];
 
 const DEFAULT_EMAIL_TEMPLATES: EmailTemplate[] = [
   {
-    id: "tmpl-received",
+    id: "template-application-received",
     templateType: "ApplicationReceived",
-    subject: "Application Received — CodeXa Developer Internship 2026",
-    heading: "APPLICATION DOSSIER REGISTERED",
-    body: "Thank you for completing the 8-round screening assessment for CodeXa Developer Internship 2026. Your responses, integrity telemetry, and profile have been successfully logged in our review pipeline.",
-    ctaText: "Track Application Status",
-    ctaLink: "https://www.codxa-agency.online/status",
-    footerText: "Founder: Ashu • Co-Founder: Deepak • CEO: Kishore",
-    includeOnboardingLinks: false,
+    subject: "CodeXa Developer Internship — Application Confirmed [{{referenceId}}]",
+    heading: "Application Received Confirmation",
+    body: "Thank you for applying! Your application reference ID is {{referenceId}}. We are reviewing your responses and will notify you soon.",
   },
   {
-    id: "tmpl-selected",
+    id: "template-selected",
     templateType: "Selected",
-    subject: "Congratulations — Welcome to CodeXa Developer Internship",
-    heading: "OFFICIAL ADMISSION NOTICE // BATCH 2026",
-    body: "We are thrilled to inform you that your application has cleared our technical and mindset review! You have been selected for the CodeXa Developer Internship (Batch 2026). Please join our private community channels immediately.",
-    ctaText: "Join WhatsApp Developer Group",
-    ctaLink: "https://chat.whatsapp.com/CodeXaInternship2026Private",
-    footerText: "Founder: Ashu • Co-Founder: Deepak • CEO: Kishore",
-    includeOnboardingLinks: true,
-  },
-  {
-    id: "tmpl-shortlisted",
-    templateType: "Shortlisted",
-    subject: "Update: Your Application is Shortlisted — CodeXa Developer Internship",
-    heading: "PROFILE SHORTLISTED // ADVANCED SCREENING",
-    body: "Your profile has been shortlisted for final cohort allocation. Our technical mentors are currently balancing slot distribution. Expect final selection decisions shortly.",
-    ctaText: "Track Status",
-    ctaLink: "https://www.codxa-agency.online/status",
-    footerText: "Founder: Ashu • Co-Founder: Deepak • CEO: Kishore",
-    includeOnboardingLinks: false,
+    subject: "Congratulations! You are Selected for CodeXa Developer Internship [{{referenceId}}]",
+    heading: "Selection & Onboarding Invitation",
+    body: "Congratulations! You have been officially selected for the CodeXa Developer Internship. Please join our private developer onboarding channels.",
   },
 ];
 
-const DATA_DIR = path.resolve(process.cwd(), ".data");
-const STORE_PATH = path.join(DATA_DIR, "store.json");
+const DEFAULT_SITE_ASSETS: SiteAsset[] = [
+  {
+    id: "asset-01",
+    assetKey: "hero-motion",
+    name: "Hero Grid Motion Layer",
+    assetType: "gif",
+    assetUrl: "/assets/gif-assests/3d614f522fb7bcc40915d9a9b7a8ea17.gif",
+    section: "Hero",
+    altText: "Hero Grid Motion Layer",
+    isActive: true,
+    updatedAt: "2026-09-01T00:00:00.000Z",
+  },
+];
 
 let memoryCache: StoreData | null = null;
 
 function ensureStore(): StoreData {
   if (memoryCache) return memoryCache;
-
-  if (!fs.existsSync(DATA_DIR)) {
-    try {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    } catch {
-      // ignore
-    }
-  }
-
-  if (fs.existsSync(STORE_PATH)) {
-    try {
-      const raw = fs.readFileSync(STORE_PATH, "utf8");
-      memoryCache = JSON.parse(raw);
-      if (!memoryCache!.internshipRounds || memoryCache!.internshipRounds.length === 0) {
-        memoryCache!.internshipRounds = [{ ...DEFAULT_INTERNSHIP_ROUND }];
-      }
-      if (!memoryCache!.modules || memoryCache!.modules.length === 0) {
-        memoryCache!.modules = [...DEFAULT_MODULES];
-      }
-      if (!memoryCache!.siteAssets || memoryCache!.siteAssets.length === 0) {
-        memoryCache!.siteAssets = [...DEFAULT_SITE_ASSETS];
-      }
-      if (!memoryCache!.voiceGuideCache) {
-        memoryCache!.voiceGuideCache = [];
-      }
-      if (!memoryCache!.settings.voiceGuide) {
-        memoryCache!.settings.voiceGuide = { ...DEFAULT_SETTINGS.voiceGuide! };
-      }
-      if (!memoryCache!.nextApplicationSequence) {
-        memoryCache!.nextApplicationSequence = 101;
-      }
-      return memoryCache!;
-    } catch {
-      // fallback
-    }
-  }
 
   memoryCache = {
     applications: [],
@@ -515,30 +369,145 @@ function ensureStore(): StoreData {
     auditLogs: [],
     sessions: [],
     siteAssets: [...DEFAULT_SITE_ASSETS],
-    voiceGuideCache: [],
+    interviews: [],
+    offers: [],
     nextApplicationSequence: 101,
   };
 
-  saveStoreSync(memoryCache);
   return memoryCache;
 }
 
-function saveStoreSync(data: StoreData) {
-  memoryCache = data;
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(STORE_PATH, JSON.stringify(data, null, 2), "utf8");
-  } catch (err) {
-    console.error("Failed to save file store:", err);
-  }
+function mapDbRowToApplication(row: any): ApplicationData {
+  const raw = row.raw_submission || {};
+  return {
+    ...raw,
+    id: row.id,
+    reference_id: row.reference_id,
+    full_name: row.full_name || raw.full_name || "",
+    date_of_birth: row.date_of_birth || raw.date_of_birth || "",
+    email: row.email || raw.email || "",
+    phone_number: row.phone_number || raw.phone_number || "",
+    whatsapp_number: row.whatsapp_number ?? raw.whatsapp_number,
+    city: row.city || raw.city || "",
+    state: row.state || raw.state || "",
+    country: row.country || raw.country || "India",
+    preferred_name: row.preferred_name ?? raw.preferred_name,
+    discord_username: row.discord_username ?? raw.discord_username,
+    instagram_handle: row.instagram_handle ?? raw.instagram_handle,
+    preferred_language: row.preferred_language || raw.preferred_language || "English",
+    hobbies: Array.isArray(row.hobbies) ? row.hobbies : raw.hobbies || [],
+
+    college_name: row.college_name || raw.college_name || "",
+    university_name: row.university_name || raw.university_name || "",
+    course: row.course || raw.course || row.degree || "",
+    branch: row.branch || raw.branch || "",
+    academic_year: row.academic_year || raw.academic_year || "",
+    semester: row.semester || raw.semester || "",
+    roll_number: row.roll_number || raw.roll_number || "",
+    graduation_year: row.graduation_year || row.expected_graduation || raw.graduation_year || "",
+    expected_graduation: row.expected_graduation || row.graduation_year || raw.expected_graduation || "",
+    cgpa: row.cgpa ?? raw.cgpa,
+    percentage: row.percentage ?? raw.percentage,
+    cgpa_percentage: row.cgpa_percentage ?? raw.cgpa_percentage,
+    certifications: row.certifications ?? raw.certifications,
+    achievements: row.achievements ?? raw.achievements,
+    backlogs: row.backlogs ?? raw.backlogs,
+
+    coding_start_timeline: row.coding_start_timeline || raw.coding_start_timeline || "",
+    has_built_projects: row.has_built_projects || raw.has_built_projects || "",
+    hackathon_experience: row.hackathon_experience ?? raw.hackathon_experience,
+    internship_experience: row.internship_experience ?? raw.internship_experience,
+    freelancing_experience: row.freelancing_experience ?? raw.freelancing_experience,
+    open_source_experience: row.open_source_experience ?? raw.open_source_experience,
+    team_project_experience: row.team_project_experience ?? raw.team_project_experience,
+    developer_links: Array.isArray(row.developer_links) ? row.developer_links : raw.developer_links || [],
+    projects: Array.isArray(row.projects) ? row.projects : raw.projects || [],
+    github_profile: row.github_profile ?? raw.github_profile,
+    linkedin_profile: row.linkedin_profile ?? raw.linkedin_profile,
+    portfolio_website: row.portfolio_website ?? raw.portfolio_website,
+    resume_url: row.resume_url ?? raw.resume_url,
+    resume_file_name: row.resume_file_name ?? raw.resume_file_name,
+    resume_file_size: row.resume_file_size ?? raw.resume_file_size,
+
+    daily_availability: row.daily_availability || raw.daily_availability || "",
+    available_days: Array.isArray(row.available_days) ? row.available_days : raw.available_days || [],
+    preferred_timing: Array.isArray(row.preferred_timing) ? row.preferred_timing : raw.preferred_timing || [],
+    can_attend_meetings: row.can_attend_meetings || raw.can_attend_meetings || "",
+    can_meet_deadlines: row.can_meet_deadlines || raw.can_meet_deadlines || "",
+    can_communicate_if_unavailable: row.can_communicate_if_unavailable || raw.can_communicate_if_unavailable || "",
+    academic_constraints: row.academic_constraints ?? raw.academic_constraints,
+    exam_periods: row.exam_periods ?? raw.exam_periods,
+    laptop_status: row.laptop_status || raw.laptop_status || "",
+    operating_system: row.operating_system || raw.operating_system || "",
+    ram_capacity: row.ram_capacity || raw.ram_capacity || "",
+    internet_stability: row.internet_stability || raw.internet_stability || "",
+    can_run_dev_tools: row.can_run_dev_tools || raw.can_run_dev_tools || "",
+    processor: row.processor ?? raw.processor,
+    gpu: row.gpu ?? raw.gpu,
+    storage_type: row.storage_type ?? raw.storage_type,
+    laptop_model: row.laptop_model ?? raw.laptop_model,
+
+    c_level: row.c_level || raw.c_level || "I Don't Know",
+    c_answers: row.c_answers || raw.c_answers || {},
+    python_level: row.python_level || raw.python_level || "I Don't Know",
+    python_answers: row.python_answers || raw.python_answers || {},
+    java_level: row.java_level || raw.java_level || "I Don't Know",
+    java_answers: row.java_answers || raw.java_answers || {},
+    html_level: row.html_level || raw.html_level || "I Don't Know",
+    html_answers: row.html_answers || raw.html_answers || {},
+    vibe_coding_level: row.vibe_coding_level || raw.vibe_coding_level || "Never Used",
+    vibe_coding_answers: row.vibe_coding_answers || raw.vibe_coding_answers || {},
+
+    mindset_answers: row.mindset_answers || raw.mindset_answers || {},
+
+    interview_q1_why_codexa: row.interview_q1_why_codexa || raw.interview_q1_why_codexa || "",
+    interview_q2_why_select: row.interview_q2_why_select || raw.interview_q2_why_select || "",
+    interview_q3_expectations: row.interview_q3_expectations || raw.interview_q3_expectations || "",
+    interview_q4_strongest_skills: row.interview_q4_strongest_skills || raw.interview_q4_strongest_skills || "",
+    interview_q5_weakest_area: row.interview_q5_weakest_area || raw.interview_q5_weakest_area || "",
+    interview_q6_describe_project: row.interview_q6_describe_project || raw.interview_q6_describe_project || "",
+    interview_q7_difficult_problem: row.interview_q7_difficult_problem || raw.interview_q7_difficult_problem || "",
+    interview_q8_ai_coding_usage: row.interview_q8_ai_coding_usage || raw.interview_q8_ai_coding_usage || "",
+    interview_q9_college_balance: row.interview_q9_college_balance || raw.interview_q9_college_balance || "",
+    interview_q10_future_goal: row.interview_q10_future_goal || raw.interview_q10_future_goal || "",
+
+    commitment_accurate_info: row.commitment_accurate_info ?? raw.commitment_accurate_info ?? true,
+    commitment_independent_work: row.commitment_independent_work ?? raw.commitment_independent_work ?? true,
+    commitment_responsible_communication: row.commitment_responsible_communication ?? raw.commitment_responsible_communication ?? true,
+    commitment_team_rules: row.commitment_team_rules ?? raw.commitment_team_rules ?? true,
+    commitment_confidentiality: row.commitment_confidentiality ?? raw.commitment_confidentiality ?? true,
+    commitment_assigned_duties: row.commitment_assigned_duties ?? raw.commitment_assigned_duties ?? true,
+    commitment_no_guaranteed_employment: row.commitment_no_guaranteed_employment ?? raw.commitment_no_guaranteed_employment ?? true,
+    commitment_accept_policies: row.commitment_accept_policies ?? raw.commitment_accept_policies ?? true,
+
+    copy_paste_warnings_count: row.copy_paste_warnings_count ?? raw.copy_paste_warnings_count ?? 0,
+    tab_switch_count: row.tab_switch_count ?? raw.tab_switch_count ?? 0,
+
+    genuineness_integrity_score: Number(row.genuineness_integrity_score ?? raw.genuineness_integrity_score ?? 0),
+    commitment_continuity_score: Number(row.commitment_continuity_score ?? raw.commitment_continuity_score ?? 0),
+    mindset_habits_score: Number(row.mindset_habits_score ?? raw.mindset_habits_score ?? 0),
+    technical_knowledge_score: Number(row.technical_knowledge_score ?? raw.technical_knowledge_score ?? 0),
+    learning_potential_score: Number(row.learning_potential_score ?? raw.learning_potential_score ?? 0),
+    interview_communication_score: Number(row.interview_communication_score ?? raw.interview_communication_score ?? 0),
+    total_score: Number(row.total_score ?? raw.total_score ?? 0),
+    score_band: row.score_band || raw.score_band || "Standard Candidate",
+    commitment_signal: row.commitment_signal || raw.commitment_signal || "Moderate",
+    skill_authenticity: row.skill_authenticity || raw.skill_authenticity || {},
+
+    status: row.status || raw.status || "Submitted",
+    admin_notes: Array.isArray(row.admin_notes) ? row.admin_notes : raw.admin_notes || [],
+    admin_tags: Array.isArray(row.admin_tags) ? row.admin_tags : raw.admin_tags || [],
+    is_deleted: Boolean(row.is_deleted),
+    deleted_at: row.deleted_at,
+    created_at: row.created_at || raw.created_at,
+    updated_at: row.updated_at || raw.updated_at,
+  };
 }
 
 // ----------------- INTERNSHIP ROUNDS (SINGLE SOURCE OF TRUTH) -----------------
 
 export async function getActiveInternshipRound(): Promise<InternshipRound> {
-  // 1. Query Supabase
+  // 1. Query Supabase as the canonical source
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -555,7 +524,7 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
         return {
           id: String(data.id),
           title: data.title || "CodeXa Developer Internship 2026",
-          batch_code: data.batch_code || "2026-AUG",
+          batch_code: data.batch_code || "2026-SEP",
           status: (data.status || "AUTO") as any,
           opens_at: data.opens_at,
           closes_at: data.closes_at,
@@ -571,14 +540,13 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
     console.warn("[Supabase getActiveInternshipRound Warning]:", err);
   }
 
-  // 2. Fallback to local file store
+  // 2. Safe Fallback
   const store = ensureStore();
   const active = store.internshipRounds.find((r) => r.is_active);
-  return active || store.internshipRounds[0] || DEFAULT_INTERNSHIP_ROUND;
+  return active || DEFAULT_INTERNSHIP_ROUND;
 }
 
 export async function saveInternshipRound(roundData: Partial<InternshipRound>): Promise<InternshipRound> {
-  const store = ensureStore();
   const current = await getActiveInternshipRound();
   const nowIso = new Date().toISOString();
 
@@ -587,7 +555,7 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     ...roundData,
     id: current.id || roundData.id || `round-${Date.now()}`,
     title: roundData.title || current.title || "CodeXa Developer Internship 2026",
-    batch_code: roundData.batch_code?.trim() || current.batch_code || "2026-AUG",
+    batch_code: roundData.batch_code?.trim() || current.batch_code || "2026-SEP",
     status: (roundData.status || current.status || "AUTO") as any,
     opens_at: roundData.opens_at || current.opens_at,
     closes_at: roundData.closes_at || current.closes_at,
@@ -597,44 +565,7 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     updated_at: nowIso,
   };
 
-  // Sync to local store
-  const idx = store.internshipRounds.findIndex((r) => r.id === updated.id || r.is_active);
-  if (idx >= 0) {
-    store.internshipRounds[idx] = updated;
-  } else {
-    store.internshipRounds.unshift(updated);
-  }
-
-  // Sync batch and dates to settings as well
-  store.settings.batchCode = updated.batch_code;
-  store.settings.applicationStatus = updated.status;
-  if (updated.opens_at) {
-    store.settings.openDate = updated.opens_at.split("T")[0];
-    const timeMatch = updated.opens_at.match(/T(\d{2}:\d{2})/);
-    if (timeMatch) store.settings.openTime = timeMatch[1];
-  }
-  if (updated.closes_at) {
-    store.settings.closeDate = updated.closes_at.split("T")[0];
-    const timeMatch = updated.closes_at.match(/T(\d{2}:\d{2})/);
-    if (timeMatch) store.settings.closeTime = timeMatch[1];
-  }
-  if (updated.next_opens_at) {
-    store.settings.nextOpenDate = updated.next_opens_at.split("T")[0];
-    const timeMatch = updated.next_opens_at.match(/T(\d{2}:\d{2})/);
-    if (timeMatch) store.settings.nextOpenTime = timeMatch[1];
-  }
-
-  store.auditLogs.unshift({
-    id: `audit-${Date.now()}`,
-    actionType: "SETTINGS_UPDATE",
-    adminUser: "Master Admin",
-    details: `Updated active internship round: ${updated.batch_code} (Status: ${updated.status}, Closes: ${updated.closes_at})`,
-    createdAt: nowIso,
-  });
-
-  saveStoreSync(store);
-
-  // Synchronize with Supabase if configured
+  // Synchronize directly with Supabase
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -667,12 +598,13 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
           .select()
           .single();
 
-        if (!updateError && updatedDb) {
+        if (updateError) {
+          throw new Error(`Failed to update internship round in Supabase: ${updateError.message}`);
+        }
+
+        if (updatedDb) {
           updated.id = String(updatedDb.id);
           updated.updated_at = updatedDb.updated_at;
-          console.log("[SETTINGS:SAVE] database update success. Row ID:", updated.id, "Closes at:", updated.closes_at);
-        } else if (updateError) {
-          console.warn("[Supabase Round Update Warning]:", updateError.message);
         }
       } else {
         const { data: insertedDb, error: insertError } = await supabase
@@ -681,246 +613,318 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
           .select()
           .single();
 
-        if (!insertError && insertedDb) {
+        if (insertError) {
+          throw new Error(`Failed to insert internship round into Supabase: ${insertError.message}`);
+        }
+
+        if (insertedDb) {
           updated.id = String(insertedDb.id);
           updated.updated_at = insertedDb.updated_at;
         }
       }
+
+      // Also persist batch code to site_settings raw_settings
+      try {
+        await supabase.from("site_settings").upsert(
+          {
+            id: "default",
+            raw_settings: {
+              batchCode: updated.batch_code,
+              applicationStatus: updated.status,
+              openDate: updated.opens_at?.split("T")[0] || "2026-09-01",
+              closeDate: updated.closes_at?.split("T")[0] || "2026-09-07",
+            },
+            updated_at: nowIso,
+          },
+          { onConflict: "id" }
+        );
+      } catch (settingsSyncErr) {
+        console.warn("[Supabase Settings Sync Notice]:", settingsSyncErr);
+      }
     }
   } catch (err) {
-    console.warn("[Supabase saveInternshipRound Exception]:", err);
+    console.error("[Supabase saveInternshipRound Exception]:", err);
+    throw err;
   }
+
+  // Update in-memory cache
+  const store = ensureStore();
+  const idx = store.internshipRounds.findIndex((r) => r.id === updated.id || r.is_active);
+  if (idx >= 0) {
+    store.internshipRounds[idx] = updated;
+  } else {
+    store.internshipRounds.unshift(updated);
+  }
+  store.settings.batchCode = updated.batch_code;
+  store.settings.applicationStatus = updated.status;
 
   return updated;
 }
 
 export async function getInternshipRounds(): Promise<InternshipRound[]> {
-  const store = ensureStore();
-  return store.internshipRounds;
-}
-
-// ----------------- APPLICATION SUBMISSION & CRUD -----------------
-
-export async function saveApplication(data: ApplicationData): Promise<{ id: number; reference_id: string }> {
-  const store = ensureStore();
-  const year = new Date().getFullYear();
-
-  // Collision-safe unique reference ID generation
-  let seq = store.nextApplicationSequence || 101;
-  let refId: string = data.reference_id || "";
-
-  if (!refId) {
-    let exists = true;
-    while (exists) {
-      const candidate = `CAX-${year}-${String(seq).padStart(6, "0")}`;
-      const found = store.applications.some((a) => a.reference_id === candidate);
-      if (!found) {
-        refId = candidate;
-        store.nextApplicationSequence = seq + 1;
-        exists = false;
-      } else {
-        seq += 1;
-      }
-    }
-  }
-
-  const nextId = store.applications.length > 0 ? Math.max(...store.applications.map((a) => a.id || 0)) + 1 : 1;
-
-  const application: ApplicationData = {
-    ...data,
-    id: nextId,
-    reference_id: refId,
-    status: data.status || "Submitted",
-    created_at: data.created_at || new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  const existingIdx = store.applications.findIndex((a) => a.reference_id === refId);
-  if (existingIdx >= 0) {
-    store.applications[existingIdx] = application;
-  } else {
-    store.applications.unshift(application);
-  }
-
-  store.auditLogs.unshift({
-    id: `audit-${Date.now()}`,
-    actionType: "LOGIN",
-    adminUser: "System",
-    targetId: refId,
-    details: `Application submitted by ${application.full_name} (${refId})`,
-    createdAt: new Date().toISOString(),
-  });
-
-  store.emailLogs.unshift({
-    id: `email-${Date.now()}`,
-    referenceId: refId,
-    recipientEmail: application.email,
-    recipientName: application.full_name,
-    templateType: "ApplicationReceived",
-    status: "Delivered",
-    sentAt: new Date().toISOString(),
-  });
-
-  saveStoreSync(store);
-
-  // Synchronize with Supabase if configured
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const githubUrl = application.developer_links?.find((l) => l.platform === "GitHub")?.url;
-      const linkedinUrl = application.developer_links?.find((l) => l.platform === "LinkedIn")?.url;
-      const portfolioUrl = application.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url;
-
-      const { error } = await supabase.from("applications").upsert(
-        {
-          reference_id: refId,
-          full_name: application.full_name,
-          date_of_birth: application.date_of_birth,
-          email: application.email,
-          phone_number: application.phone_number,
-          whatsapp_number: application.whatsapp_number,
-          city: application.city,
-          state: application.state,
-          country: application.country || "India",
-          preferred_name: application.preferred_name,
-          discord_username: application.discord_username,
-          instagram_handle: application.instagram_handle,
-          preferred_language: application.preferred_language || "English",
-          hobbies: application.hobbies || [],
-
-          college_name: application.college_name,
-          university_name: application.university_name,
-          degree: application.course,
-          course: application.course,
-          branch: application.branch,
-          academic_year: application.academic_year,
-          semester: application.semester,
-          roll_number: application.roll_number,
-          graduation_year: application.expected_graduation,
-          expected_graduation: application.expected_graduation,
-          cgpa: application.cgpa,
-          percentage: application.percentage,
-          cgpa_percentage: application.cgpa || application.percentage,
-          certifications: application.certifications,
-          achievements: application.achievements,
-          backlogs: application.backlogs,
-
-          coding_start_timeline: application.coding_start_timeline,
-          has_built_projects: application.has_built_projects,
-          hackathon_experience: application.hackathon_experience || "None",
-          internship_experience: application.internship_experience || "None",
-          freelancing_experience: application.freelancing_experience || "None",
-          open_source_experience: application.open_source_experience || "None",
-          team_project_experience: application.team_project_experience || "None",
-          developer_links: application.developer_links || [],
-          projects: application.projects || [],
-          github_profile: githubUrl,
-          linkedin_profile: linkedinUrl,
-          portfolio_website: portfolioUrl,
-
-          daily_availability: application.daily_availability,
-          available_days: application.available_days || [],
-          preferred_timing: application.preferred_timing || [],
-          can_attend_meetings: application.can_attend_meetings,
-          can_meet_deadlines: application.can_meet_deadlines,
-          can_communicate_if_unavailable: application.can_communicate_if_unavailable,
-          academic_constraints: application.academic_constraints,
-          exam_periods: application.exam_periods,
-          laptop_status: application.laptop_status,
-          operating_system: application.operating_system,
-          ram_capacity: application.ram_capacity,
-          internet_stability: application.internet_stability,
-          can_run_dev_tools: application.can_run_dev_tools,
-          processor: application.processor,
-          gpu: application.gpu,
-          storage_type: application.storage_type,
-          laptop_model: application.laptop_model,
-
-          c_level: application.c_level,
-          c_answers: application.c_answers || {},
-          python_level: application.python_level,
-          python_answers: application.python_answers || {},
-          java_level: application.java_level,
-          java_answers: application.java_answers || {},
-          html_level: application.html_level,
-          html_answers: application.html_answers || {},
-          vibe_coding_level: application.vibe_coding_level,
-          vibe_coding_answers: application.vibe_coding_answers || {},
-
-          mindset_answers: application.mindset_answers || {},
-
-          interview_q1_why_codexa: application.interview_q1_why_codexa,
-          interview_q2_why_select: application.interview_q2_why_select,
-          interview_q3_expectations: application.interview_q3_expectations,
-          interview_q4_strongest_skills: application.interview_q4_strongest_skills,
-          interview_q5_weakest_area: application.interview_q5_weakest_area,
-          interview_q6_describe_project: application.interview_q6_describe_project,
-          interview_q7_difficult_problem: application.interview_q7_difficult_problem,
-          interview_q8_ai_coding_usage: application.interview_q8_ai_coding_usage,
-          interview_q9_college_balance: application.interview_q9_college_balance,
-          interview_q10_future_goal: application.interview_q10_future_goal,
-
-          commitment_accurate_info: application.commitment_accurate_info,
-          commitment_independent_work: application.commitment_independent_work,
-          commitment_responsible_communication: application.commitment_responsible_communication,
-          commitment_team_rules: application.commitment_team_rules,
-          commitment_confidentiality: application.commitment_confidentiality,
-          commitment_assigned_duties: application.commitment_assigned_duties,
-          commitment_no_guaranteed_employment: application.commitment_no_guaranteed_employment,
-          commitment_accept_policies: application.commitment_accept_policies,
-
-          copy_paste_warnings_count: application.copy_paste_warnings_count || 0,
-          tab_switch_count: application.tab_switch_count || 0,
-
-          genuineness_integrity_score: application.genuineness_integrity_score || 0,
-          commitment_continuity_score: application.commitment_continuity_score || 0,
-          mindset_habits_score: application.mindset_habits_score || 0,
-          technical_knowledge_score: application.technical_knowledge_score || 0,
-          learning_potential_score: application.learning_potential_score || 0,
-          interview_communication_score: application.interview_communication_score || 0,
-          total_score: application.total_score || 0,
-          score_band: application.score_band,
-          commitment_signal: application.commitment_signal,
-          skill_authenticity: application.skill_authenticity || {},
-
-          status: application.status,
-          raw_submission: application,
-        },
-        { onConflict: "reference_id" }
-      );
-
-      if (error) {
-        console.warn("[Supabase Application Insert Warning]:", error.message);
+      const { data, error } = await supabase
+        .from("internship_rounds")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (data && !error && data.length > 0) {
+        return data.map((d: any) => ({
+          id: String(d.id),
+          title: d.title || "CodeXa Developer Internship 2026",
+          batch_code: d.batch_code || "2026-SEP",
+          status: (d.status || "AUTO") as any,
+          opens_at: d.opens_at,
+          closes_at: d.closes_at,
+          next_opens_at: d.next_opens_at,
+          timezone: d.timezone || "Asia/Kolkata",
+          is_active: Boolean(d.is_active),
+          created_at: d.created_at,
+          updated_at: d.updated_at,
+        }));
       }
     }
-  } catch (supabaseErr) {
-    console.warn("[Supabase Sync Warning]:", supabaseErr);
+  } catch (err) {
+    console.warn("[getInternshipRounds Exception]:", err);
   }
+  const store = ensureStore();
+  return store.internshipRounds;
+}
+
+// ----------------- APPLICATION SUBMISSION & CRUD (SUPABASE-ONLY) -----------------
+
+export async function saveApplication(data: ApplicationData): Promise<{ id: number | string; reference_id: string }> {
+  const refId = data.reference_id?.trim() || generateReferenceId();
+
+  const githubUrl = data.developer_links?.find((l) => l.platform === "GitHub")?.url;
+  const linkedinUrl = data.developer_links?.find((l) => l.platform === "LinkedIn")?.url;
+  const portfolioUrl = data.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url;
+
+  const dbPayload = {
+    reference_id: refId,
+    full_name: data.full_name,
+    date_of_birth: data.date_of_birth,
+    email: data.email,
+    phone_number: data.phone_number,
+    whatsapp_number: data.whatsapp_number,
+    city: data.city,
+    state: data.state,
+    country: data.country || "India",
+    preferred_name: data.preferred_name,
+    discord_username: data.discord_username,
+    instagram_handle: data.instagram_handle,
+    preferred_language: data.preferred_language || "English",
+    hobbies: data.hobbies || [],
+
+    college_name: data.college_name,
+    university_name: data.university_name,
+    degree: data.course,
+    course: data.course,
+    branch: data.branch,
+    academic_year: data.academic_year,
+    semester: data.semester,
+    roll_number: data.roll_number,
+    graduation_year: data.expected_graduation,
+    expected_graduation: data.expected_graduation,
+    cgpa: data.cgpa,
+    percentage: data.percentage,
+    cgpa_percentage: data.cgpa || data.percentage,
+    certifications: data.certifications,
+    achievements: data.achievements,
+    backlogs: data.backlogs,
+
+    coding_start_timeline: data.coding_start_timeline,
+    has_built_projects: data.has_built_projects,
+    hackathon_experience: data.hackathon_experience || "None",
+    internship_experience: data.internship_experience || "None",
+    freelancing_experience: data.freelancing_experience || "None",
+    open_source_experience: data.open_source_experience || "None",
+    team_project_experience: data.team_project_experience || "None",
+    developer_links: data.developer_links || [],
+    projects: data.projects || [],
+    github_profile: githubUrl,
+    linkedin_profile: linkedinUrl,
+    portfolio_website: portfolioUrl,
+    resume_url: data.resume_url || null,
+    resume_file_name: data.resume_file_name || null,
+    resume_file_size: data.resume_file_size || null,
+
+    daily_availability: data.daily_availability,
+    available_days: data.available_days || [],
+    preferred_timing: data.preferred_timing || [],
+    can_attend_meetings: data.can_attend_meetings,
+    can_meet_deadlines: data.can_meet_deadlines,
+    can_communicate_if_unavailable: data.can_communicate_if_unavailable,
+    academic_constraints: data.academic_constraints,
+    exam_periods: data.exam_periods,
+    laptop_status: data.laptop_status,
+    operating_system: data.operating_system,
+    ram_capacity: data.ram_capacity,
+    internet_stability: data.internet_stability,
+    can_run_dev_tools: data.can_run_dev_tools,
+    processor: data.processor,
+    gpu: data.gpu,
+    storage_type: data.storage_type,
+    laptop_model: data.laptop_model,
+
+    c_level: data.c_level,
+    c_answers: data.c_answers || {},
+    python_level: data.python_level,
+    python_answers: data.python_answers || {},
+    java_level: data.java_level,
+    java_answers: data.java_answers || {},
+    html_level: data.html_level,
+    html_answers: data.html_answers || {},
+    vibe_coding_level: data.vibe_coding_level,
+    vibe_coding_answers: data.vibe_coding_answers || {},
+
+    mindset_answers: data.mindset_answers || {},
+
+    interview_q1_why_codexa: data.interview_q1_why_codexa,
+    interview_q2_why_select: data.interview_q2_why_select,
+    interview_q3_expectations: data.interview_q3_expectations,
+    interview_q4_strongest_skills: data.interview_q4_strongest_skills,
+    interview_q5_weakest_area: data.interview_q5_weakest_area,
+    interview_q6_describe_project: data.interview_q6_describe_project,
+    interview_q7_difficult_problem: data.interview_q7_difficult_problem,
+    interview_q8_ai_coding_usage: data.interview_q8_ai_coding_usage,
+    interview_q9_college_balance: data.interview_q9_college_balance,
+    interview_q10_future_goal: data.interview_q10_future_goal,
+
+    commitment_accurate_info: data.commitment_accurate_info ?? true,
+    commitment_independent_work: data.commitment_independent_work ?? true,
+    commitment_responsible_communication: data.commitment_responsible_communication ?? true,
+    commitment_team_rules: data.commitment_team_rules ?? true,
+    commitment_confidentiality: data.commitment_confidentiality ?? true,
+    commitment_assigned_duties: data.commitment_assigned_duties ?? true,
+    commitment_no_guaranteed_employment: data.commitment_no_guaranteed_employment ?? true,
+    commitment_accept_policies: data.commitment_accept_policies ?? true,
+
+    copy_paste_warnings_count: data.copy_paste_warnings_count || 0,
+    tab_switch_count: data.tab_switch_count || 0,
+
+    genuineness_integrity_score: data.genuineness_integrity_score || 0,
+    commitment_continuity_score: data.commitment_continuity_score || 0,
+    mindset_habits_score: data.mindset_habits_score || 0,
+    technical_knowledge_score: data.technical_knowledge_score || 0,
+    learning_potential_score: data.learning_potential_score || 0,
+    interview_communication_score: data.interview_communication_score || 0,
+    total_score: data.total_score || 0,
+    score_band: data.score_band,
+    commitment_signal: data.commitment_signal,
+    skill_authenticity: data.skill_authenticity || {},
+
+    status: data.status || "Submitted",
+    raw_submission: data,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  // 1. Direct Supabase Insert
+  const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+  const supabase = getSupabaseAdmin();
+
+  if (supabase) {
+    const { data: inserted, error } = await supabase
+      .from("applications")
+      .insert(dbPayload)
+      .select("id, reference_id")
+      .single();
+
+    if (error) {
+      console.error("[Supabase Application Insert Error]:", error);
+      throw new Error(`Database error saving application: ${error.message}`);
+    }
+
+    return {
+      id: inserted.id,
+      reference_id: inserted.reference_id,
+    };
+  }
+
+  // 2. In-memory Mock fallback if Supabase not configured in development
+  const store = ensureStore();
+  const nextId = store.applications.length + 1;
+  const applicationRecord: ApplicationData = {
+    ...data,
+    id: nextId,
+    reference_id: refId,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  store.applications.unshift(applicationRecord);
 
   return { id: nextId, reference_id: refId };
 }
 
 export async function getApplicationByRef(refOrId: string): Promise<ApplicationData | null> {
+  const query = refOrId.trim();
+
+  // Try Supabase first
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const isNum = !isNaN(Number(query));
+      let dbQuery = supabase.from("applications").select("*");
+      if (isNum) {
+        dbQuery = dbQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+      } else {
+        dbQuery = dbQuery.ilike("reference_id", query);
+      }
+
+      const { data, error } = await dbQuery.maybeSingle();
+      if (data && !error) {
+        return mapDbRowToApplication(data);
+      }
+    }
+  } catch (err) {
+    console.warn("[getApplicationByRef Supabase Error]:", err);
+  }
+
+  // Fallback to memory
   const store = ensureStore();
-  const query = refOrId.trim().toLowerCase();
-  const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query || String(a.id) === query
+  const lowQuery = query.toLowerCase();
+  const found = store.applications.find(
+    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id) === lowQuery
   );
-  return app || null;
+  return found || null;
 }
 
 export async function trackApplication(referenceId: string, email: string): Promise<ApplicationData | null> {
+  const refClean = referenceId.trim();
+  const emailClean = email.trim();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("applications")
+        .select("*")
+        .ilike("reference_id", refClean)
+        .ilike("email", emailClean)
+        .eq("is_deleted", false)
+        .maybeSingle();
+
+      if (data && !error) {
+        return mapDbRowToApplication(data);
+      }
+    }
+  } catch (err) {
+    console.warn("[trackApplication Supabase Error]:", err);
+  }
+
   const store = ensureStore();
-  const refClean = referenceId.trim().toLowerCase();
-  const emailClean = email.trim().toLowerCase();
-  const app = store.applications.find(
+  const found = store.applications.find(
     (a) =>
-      a.reference_id?.toLowerCase() === refClean &&
-      a.email?.toLowerCase() === emailClean &&
+      a.reference_id?.toLowerCase() === refClean.toLowerCase() &&
+      a.email?.toLowerCase() === emailClean.toLowerCase() &&
       !a.is_deleted
   );
-  return app || null;
+  return found || null;
 }
 
 export async function getApplications(filters?: {
@@ -932,6 +936,55 @@ export async function getApplications(filters?: {
   limit?: number;
   offset?: number;
 }): Promise<{ applications: ApplicationData[]; total: number }> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+
+    if (supabase) {
+      let query = supabase.from("applications").select("*", { count: "exact" }).eq("is_deleted", false);
+
+      if (filters?.search) {
+        const q = filters.search.trim();
+        query = query.or(
+          `full_name.ilike.%${q}%,email.ilike.%${q}%,reference_id.ilike.%${q}%,phone_number.ilike.%${q}%,college_name.ilike.%${q}%,roll_number.ilike.%${q}%`
+        );
+      }
+
+      if (filters?.status && filters.status !== "ALL") {
+        query = query.eq("status", filters.status);
+      }
+
+      if (filters?.scoreBand && filters.scoreBand !== "ALL") {
+        query = query.eq("score_band", filters.scoreBand);
+      }
+
+      if (filters?.commitment && filters.commitment !== "ALL") {
+        query = query.eq("commitment_signal", filters.commitment);
+      }
+
+      if (filters?.college && filters.college !== "ALL") {
+        query = query.eq("college_name", filters.college);
+      }
+
+      query = query.order("created_at", { ascending: false });
+
+      const offset = filters?.offset || 0;
+      const limit = filters?.limit || 100;
+      query = query.range(offset, offset + limit - 1);
+
+      const { data, count, error } = await query;
+      if (!error && data) {
+        return {
+          applications: data.map(mapDbRowToApplication),
+          total: count ?? data.length,
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[getApplications Supabase Error]:", err);
+  }
+
+  // Fallback to memory
   const store = ensureStore();
   let list = store.applications.filter((a) => !a.is_deleted);
 
@@ -978,163 +1031,168 @@ export async function updateApplicationStatus(
   notes?: string,
   adminUser = "Master Admin"
 ): Promise<boolean> {
+  const query = refOrId.trim();
+  const now = new Date().toISOString();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const existing = await getApplicationByRef(query);
+      const existingNotes = existing?.admin_notes || [];
+      const updatedNotes = notes && notes.trim()
+        ? [`[${new Date().toLocaleDateString()}] ${notes.trim()}`, ...existingNotes]
+        : existingNotes;
+
+      const isNum = !isNaN(Number(query));
+      let updateQuery = supabase.from("applications").update({
+        status: newStatus,
+        admin_notes: updatedNotes,
+        updated_at: now,
+      });
+
+      if (isNum) {
+        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+      } else {
+        updateQuery = updateQuery.ilike("reference_id", query);
+      }
+
+      const { error } = await updateQuery;
+      if (error) {
+        console.error("[Supabase Status Update Error]:", error);
+        return false;
+      }
+      return true;
+    }
+  } catch (err) {
+    console.warn("[updateApplicationStatus Supabase Error]:", err);
+  }
+
   const store = ensureStore();
-  const query = refOrId.trim().toLowerCase();
+  const lowQuery = query.toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query || String(a.id) === query
+    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id) === lowQuery
   );
 
   if (!app) return false;
-
-  const oldStatus = app.status;
   app.status = newStatus;
-  app.updated_at = new Date().toISOString();
-
+  app.updated_at = now;
   if (notes && notes.trim()) {
     app.admin_notes = app.admin_notes || [];
     app.admin_notes.unshift(`[${new Date().toLocaleDateString()}] ${notes.trim()}`);
   }
-
-  store.auditLogs.unshift({
-    id: `audit-${Date.now()}`,
-    actionType: "STATUS_UPDATE",
-    adminUser,
-    targetId: app.reference_id,
-    details: `Updated status from ${oldStatus} to ${newStatus} for ${app.full_name}`,
-    createdAt: new Date().toISOString(),
-  });
-
-  saveStoreSync(store);
-
-  // Sync with Supabase
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase && app.reference_id) {
-      await supabase
-        .from("applications")
-        .update({
-          status: newStatus,
-          admin_notes: app.admin_notes,
-          updated_at: app.updated_at,
-        })
-        .eq("reference_id", app.reference_id);
-    }
-  } catch (err) {
-    console.warn("[Supabase Status Update Warning]:", err);
-  }
-
   return true;
 }
 
 export async function addApplicationNote(refOrId: string, note: string): Promise<boolean> {
+  const query = refOrId.trim();
+  const now = new Date().toISOString();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const existing = await getApplicationByRef(query);
+      if (existing) {
+        const updatedNotes = [`[${new Date().toLocaleString()}] ${note.trim()}`, ...(existing.admin_notes || [])];
+        const isNum = !isNaN(Number(query));
+        let updateQuery = supabase.from("applications").update({
+          admin_notes: updatedNotes,
+          updated_at: now,
+        });
+        if (isNum) {
+          updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+        } else {
+          updateQuery = updateQuery.ilike("reference_id", query);
+        }
+        await updateQuery;
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn("[addApplicationNote Supabase Warning]:", err);
+  }
+
   const store = ensureStore();
-  const query = refOrId.trim().toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query || String(a.id) === query
+    (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
   );
   if (!app) return false;
 
   app.admin_notes = app.admin_notes || [];
   app.admin_notes.unshift(`[${new Date().toLocaleString()}] ${note.trim()}`);
-  app.updated_at = new Date().toISOString();
-
-  saveStoreSync(store);
+  app.updated_at = now;
   return true;
 }
 
 export async function deleteApplication(refOrId: string): Promise<boolean> {
+  const query = refOrId.trim();
+  const now = new Date().toISOString();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const isNum = !isNaN(Number(query));
+      let updateQuery = supabase.from("applications").update({
+        is_deleted: true,
+        deleted_at: now,
+      });
+      if (isNum) {
+        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+      } else {
+        updateQuery = updateQuery.ilike("reference_id", query);
+      }
+      await updateQuery;
+      return true;
+    }
+  } catch (err) {
+    console.warn("[deleteApplication Supabase Warning]:", err);
+  }
+
   const store = ensureStore();
-  const query = refOrId.trim().toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query || String(a.id) === query
+    (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
   );
   if (!app) return false;
 
   app.is_deleted = true;
-  app.deleted_at = new Date().toISOString();
-  saveStoreSync(store);
+  app.deleted_at = now;
   return true;
 }
 
 export async function restoreApplication(refOrId: string): Promise<boolean> {
+  const query = refOrId.trim();
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const isNum = !isNaN(Number(query));
+      let updateQuery = supabase.from("applications").update({
+        is_deleted: false,
+        deleted_at: null,
+      });
+      if (isNum) {
+        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+      } else {
+        updateQuery = updateQuery.ilike("reference_id", query);
+      }
+      await updateQuery;
+      return true;
+    }
+  } catch (err) {
+    console.warn("[restoreApplication Supabase Warning]:", err);
+  }
+
   const store = ensureStore();
-  const query = refOrId.trim().toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query || String(a.id) === query
+    (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
   );
   if (!app) return false;
 
   app.is_deleted = false;
   app.deleted_at = undefined;
-  saveStoreSync(store);
-  return true;
-}
-
-// ----------------- VOICE GUIDE CACHE STORE -----------------
-
-export async function getVoiceGuideCache(contentHash: string): Promise<VoiceGuideCacheEntry | null> {
-  // Check Supabase first
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase) {
-      const { data, error } = await supabase
-        .from("voice_guides")
-        .select("*")
-        .eq("content_hash", contentHash)
-        .maybeSingle();
-
-      if (data && !error) {
-        return data as VoiceGuideCacheEntry;
-      }
-    }
-  } catch (err) {
-    console.warn("[Supabase Voice Guide Cache Fetch Warning]:", err);
-  }
-
-  // Check local store
-  const store = ensureStore();
-  const found = (store.voiceGuideCache || []).find((v) => v.content_hash === contentHash);
-  return found || null;
-}
-
-export async function saveVoiceGuideCache(entry: VoiceGuideCacheEntry): Promise<boolean> {
-  const store = ensureStore();
-  if (!store.voiceGuideCache) store.voiceGuideCache = [];
-
-  const idx = store.voiceGuideCache.findIndex((v) => v.content_hash === entry.content_hash);
-  if (idx >= 0) {
-    store.voiceGuideCache[idx] = entry;
-  } else {
-    store.voiceGuideCache.push(entry);
-  }
-  saveStoreSync(store);
-
-  // Sync to Supabase
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase) {
-      await supabase.from("voice_guides").upsert(
-        {
-          guide_key: entry.guide_key,
-          content_hash: entry.content_hash,
-          language: entry.language,
-          provider: entry.provider,
-          voice_name: entry.voice_name,
-          script_text: entry.script_text,
-          audio_base64: entry.audio_base64,
-          audio_url: entry.audio_url || null,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "content_hash" }
-      );
-    }
-  } catch (err) {
-    console.warn("[Supabase Voice Guide Cache Save Warning]:", err);
-  }
-
   return true;
 }
 
@@ -1160,7 +1218,7 @@ function mapDbRowToTeamMember(row: any): TeamMember {
     fullBio: row.full_bio || "",
     professionalSummary: row.professional_summary || "",
     quote: row.quote || "",
-    photoUrl: row.profile_image_url || "/assets/image-assests/hero.jpeg",
+    photoUrl: row.profile_image_url || "/assets/image-assests/ashu-chinthapalli.jpg",
     profileStoragePath: row.profile_storage_path || "",
     profileObjectPositionX: row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50,
     profileObjectPositionY: row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50,
@@ -1251,7 +1309,6 @@ function mapTeamMemberToDbRow(m: TeamMember): any {
 }
 
 export async function getTeamMembers(includeArchived: boolean = false): Promise<TeamMember[]> {
-  // 1. Try Supabase
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -1269,7 +1326,6 @@ export async function getTeamMembers(includeArchived: boolean = false): Promise<
     console.warn("[Supabase Team Fetch Warning]:", err);
   }
 
-  // 2. Local store fallback
   const store = ensureStore();
   const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || !m.isArchived);
   return list.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
@@ -1294,9 +1350,6 @@ export async function getTeamMemberById(id: string): Promise<TeamMember | null> 
 }
 
 export async function saveTeamMember(member: TeamMember): Promise<boolean> {
-  const store = ensureStore();
-  if (!store.team) store.team = [...DEFAULT_TEAM];
-
   const now = new Date().toISOString();
   const updatedMember: TeamMember = {
     ...member,
@@ -1306,15 +1359,14 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
     roles: member.responsibilities || member.roles || [],
   };
 
+  const store = ensureStore();
   const idx = store.team.findIndex((t) => t.id === member.id);
   if (idx >= 0) {
     store.team[idx] = updatedMember;
   } else {
     store.team.push(updatedMember);
   }
-  saveStoreSync(store);
 
-  // Sync to Supabase
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -1334,16 +1386,12 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
 
 export async function deleteTeamMember(id: string, softDelete: boolean = true): Promise<boolean> {
   const store = ensureStore();
-  if (!store.team) store.team = [...DEFAULT_TEAM];
-
   if (softDelete) {
     const member = store.team.find((t) => t.id === id);
     if (member) {
       member.isArchived = true;
       member.isVisible = false;
       member.updatedAt = new Date().toISOString();
-      saveStoreSync(store);
-
       try {
         const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
         const supabase = getSupabaseAdmin();
@@ -1356,8 +1404,6 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
     }
   } else {
     store.team = store.team.filter((t) => t.id !== id);
-    saveStoreSync(store);
-
     try {
       const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
       const supabase = getSupabaseAdmin();
@@ -1379,7 +1425,6 @@ export async function restoreTeamMember(id: string): Promise<boolean> {
     member.isArchived = false;
     member.isVisible = true;
     member.updatedAt = new Date().toISOString();
-    saveStoreSync(store);
   }
 
   try {
@@ -1423,7 +1468,6 @@ export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean>
       member.updatedAt = new Date().toISOString();
     }
   });
-  saveStoreSync(store);
 
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
@@ -1448,11 +1492,11 @@ function mapDbRowToSiteModule(row: any): SiteModule {
     module_number: Number(row.module_number) || 1,
     module_code: row.module_code || `MOD-0${row.module_number || 1}`,
     title: row.title,
-    subtitle: row.subtitle || "",
-    description: row.description || "",
-    week_label: row.week_label || "",
-    duration: row.duration || "",
-    image_url: row.image_url || "/assets/cards/modules/module-01-foundations-vibe-coding.png",
+    subtitle: row.subtitle,
+    description: row.description,
+    week_label: row.week_label,
+    duration: row.duration,
+    image_url: row.image_url,
     topics: Array.isArray(row.topics) ? row.topics : [],
     display_order: Number(row.display_order) || 1,
     is_visible: row.is_visible !== false,
@@ -1466,7 +1510,10 @@ export async function getSiteModules(includeHidden: boolean = false): Promise<Si
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      let query = supabase.from("site_modules").select("*").order("display_order", { ascending: true });
+      let query = supabase
+        .from("site_modules")
+        .select("*")
+        .order("display_order", { ascending: true });
       if (!includeHidden) {
         query = query.eq("is_visible", true);
       }
@@ -1476,35 +1523,26 @@ export async function getSiteModules(includeHidden: boolean = false): Promise<Si
       }
     }
   } catch (err) {
-    console.warn("[Supabase Site Modules Warning]:", err);
+    console.warn("[Supabase Modules Fetch Warning]:", err);
   }
 
   const store = ensureStore();
   const list = store.modules || DEFAULT_MODULES;
-  return list
-    .filter((m) => includeHidden || m.is_visible !== false)
-    .sort((a, b) => a.display_order - b.display_order);
+  return includeHidden ? list : list.filter((m) => m.is_visible);
 }
 
-export async function saveSiteModule(mod: SiteModule): Promise<SiteModule> {
+export async function saveSiteModule(module: SiteModule): Promise<SiteModule> {
   const store = ensureStore();
   if (!store.modules) store.modules = [...DEFAULT_MODULES];
 
   const now = new Date().toISOString();
-  const updatedMod: SiteModule = {
-    ...mod,
-    updated_at: now,
-    created_at: mod.created_at || now,
-    topics: mod.topics || [],
-  };
-
-  const idx = store.modules.findIndex((m) => m.id === mod.id);
+  const updatedModule: SiteModule = { ...module, updated_at: now };
+  const idx = store.modules.findIndex((m) => m.id === module.id);
   if (idx >= 0) {
-    store.modules[idx] = updatedMod;
+    store.modules[idx] = updatedModule;
   } else {
-    store.modules.push(updatedMod);
+    store.modules.push(updatedModule);
   }
-  saveStoreSync(store);
 
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
@@ -1512,41 +1550,54 @@ export async function saveSiteModule(mod: SiteModule): Promise<SiteModule> {
     if (supabase) {
       await supabase.from("site_modules").upsert(
         {
-          id: updatedMod.id,
-          module_number: updatedMod.module_number,
-          module_code: updatedMod.module_code,
-          title: updatedMod.title,
-          subtitle: updatedMod.subtitle || null,
-          description: updatedMod.description,
-          week_label: updatedMod.week_label || null,
-          duration: updatedMod.duration || null,
-          image_url: updatedMod.image_url,
-          topics: updatedMod.topics,
-          display_order: updatedMod.display_order,
-          is_visible: updatedMod.is_visible,
+          id: module.id,
+          module_number: module.module_number,
+          module_code: module.module_code,
+          title: module.title,
+          subtitle: module.subtitle,
+          description: module.description,
+          week_label: module.week_label,
+          duration: module.duration,
+          image_url: module.image_url,
+          topics: module.topics || [],
+          display_order: module.display_order,
+          is_visible: module.is_visible,
           updated_at: now,
         },
         { onConflict: "id" }
       );
     }
   } catch (err) {
-    console.warn("[Supabase saveSiteModule Exception]:", err);
+    console.warn("[Supabase Module Save Warning]:", err);
   }
 
-  return updatedMod;
+  return updatedModule;
 }
 
-// ----------------- WEBSITE SETTINGS -----------------
+// ----------------- GLOBAL WEBSITE SETTINGS CMS -----------------
 
 export async function getWebsiteSettings(): Promise<WebsiteSettings> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data, error } = await supabase.from("site_settings").select("*").eq("id", "default").maybeSingle();
-      if (data && !error && data.raw_settings) {
+      const { data, error } = await supabase
+        .from("site_settings")
+        .select("*")
+        .eq("id", "default")
+        .maybeSingle();
+
+      if (data && !error) {
         return {
           ...DEFAULT_SETTINGS,
+          heroHeading: data.hero_heading || DEFAULT_SETTINGS.heroHeading,
+          heroSubtitle: data.hero_subtitle || DEFAULT_SETTINGS.heroSubtitle,
+          heroDescription: data.hero_description || DEFAULT_SETTINGS.heroDescription,
+          agencyName: data.agency_name || DEFAULT_SETTINGS.agencyName,
+          agencyUrl: data.agency_url || DEFAULT_SETTINGS.agencyUrl,
+          agencyDescription: data.agency_description || DEFAULT_SETTINGS.agencyDescription,
+          whatsappSupportNumber: data.whatsapp_support_number || DEFAULT_SETTINGS.whatsappSupportNumber,
+          founderEmail: data.founder_email || DEFAULT_SETTINGS.founderEmail,
           ...data.raw_settings,
         };
       }
@@ -1564,15 +1615,6 @@ export async function saveWebsiteSettings(settings: Partial<WebsiteSettings>): P
   store.settings = { ...store.settings, ...settings };
   const now = new Date().toISOString();
 
-  store.auditLogs.unshift({
-    id: `audit-${Date.now()}`,
-    actionType: "SETTINGS_UPDATE",
-    adminUser: "Master Admin",
-    details: `Updated website CMS settings (Status: ${store.settings.applicationStatus})`,
-    createdAt: now,
-  });
-  saveStoreSync(store);
-
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
@@ -1588,8 +1630,6 @@ export async function saveWebsiteSettings(settings: Partial<WebsiteSettings>): P
           agency_description: store.settings.agencyDescription,
           whatsapp_support_number: store.settings.whatsappSupportNumber,
           founder_email: store.settings.founderEmail,
-          voice_guide_enabled: store.settings.voiceGuide?.enabled ?? true,
-          voice_guide_settings: store.settings.voiceGuide || {},
           raw_settings: store.settings,
           updated_at: now,
         },
@@ -1618,14 +1658,12 @@ export async function saveFaq(faq: FaqItem): Promise<boolean> {
   } else {
     store.faqs.push(faq);
   }
-  saveStoreSync(store);
   return true;
 }
 
 export async function deleteFaq(id: string): Promise<boolean> {
   const store = ensureStore();
   store.faqs = store.faqs.filter((f) => f.id !== id);
-  saveStoreSync(store);
   return true;
 }
 
@@ -1644,7 +1682,6 @@ export async function saveQuestion(q: QuestionBankItem): Promise<boolean> {
   } else {
     store.questions.push(q);
   }
-  saveStoreSync(store);
   return true;
 }
 
@@ -1663,7 +1700,6 @@ export async function saveEmailTemplate(template: EmailTemplate): Promise<boolea
   } else {
     store.emailTemplates.push(template);
   }
-  saveStoreSync(store);
   return true;
 }
 
@@ -1694,7 +1730,6 @@ export async function addAuditLog(
     details,
     createdAt: new Date().toISOString(),
   });
-  saveStoreSync(store);
   return true;
 }
 
@@ -1707,7 +1742,6 @@ export async function createAdminSession(session: AdminSession): Promise<boolean
   const store = ensureStore();
   store.sessions = store.sessions.filter((s) => s.token !== session.token);
   store.sessions.unshift(session);
-  saveStoreSync(store);
   return true;
 }
 
@@ -1717,7 +1751,6 @@ export async function verifyAdminSessionToken(token: string): Promise<boolean> {
   const found = store.sessions.find((s) => s.token === token);
   if (found) {
     found.lastActive = new Date().toISOString();
-    saveStoreSync(store);
     return true;
   }
   return false;
@@ -1726,21 +1759,18 @@ export async function verifyAdminSessionToken(token: string): Promise<boolean> {
 export async function revokeAdminSession(token: string): Promise<boolean> {
   const store = ensureStore();
   store.sessions = store.sessions.filter((s) => s.token !== token);
-  saveStoreSync(store);
   return true;
 }
 
 export async function revokeAllOtherAdminSessions(currentToken: string): Promise<boolean> {
   const store = ensureStore();
   store.sessions = store.sessions.filter((s) => s.token === currentToken);
-  saveStoreSync(store);
   return true;
 }
 
 export async function revokeAllAdminSessions(): Promise<boolean> {
   const store = ensureStore();
   store.sessions = [];
-  saveStoreSync(store);
   return true;
 }
 
@@ -1760,7 +1790,6 @@ export async function saveSiteAsset(asset: SiteAsset): Promise<boolean> {
   } else {
     store.siteAssets.push({ ...asset, updatedAt: new Date().toISOString() });
   }
-  saveStoreSync(store);
   return true;
 }
 
@@ -1768,6 +1797,339 @@ export async function deleteSiteAsset(id: string): Promise<boolean> {
   const store = ensureStore();
   if (!store.siteAssets) return false;
   store.siteAssets = store.siteAssets.filter((a) => a.id !== id);
-  saveStoreSync(store);
   return true;
 }
+
+// ----------------- INTERVIEWS CRUD -----------------
+
+export async function saveInterview(interview: InterviewData): Promise<InterviewData> {
+  const store = ensureStore();
+  if (!store.interviews) store.interviews = [];
+
+  const now = new Date().toISOString();
+  const id = interview.id || `int_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const updatedInterview: InterviewData = {
+    ...interview,
+    id,
+    updated_at: now,
+    created_at: interview.created_at || now,
+  };
+
+  const idx = store.interviews.findIndex((i) => i.reference_id === interview.reference_id);
+  if (idx >= 0) {
+    store.interviews[idx] = updatedInterview;
+  } else {
+    store.interviews.push(updatedInterview);
+  }
+
+  // Sync to Supabase
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase.from("interviews").upsert(
+        {
+          id: updatedInterview.id,
+          reference_id: updatedInterview.reference_id,
+          applicant_name: updatedInterview.applicant_name,
+          applicant_email: updatedInterview.applicant_email,
+          interview_round: updatedInterview.interview_round,
+          interview_date: updatedInterview.interview_date,
+          start_time: updatedInterview.start_time,
+          timezone: updatedInterview.timezone || "Asia/Kolkata",
+          duration_minutes: updatedInterview.duration_minutes || 30,
+          platform: updatedInterview.platform,
+          meeting_link: updatedInterview.meeting_link,
+          interviewer_name: updatedInterview.interviewer_name,
+          instructions: updatedInterview.instructions || null,
+          admin_notes: updatedInterview.admin_notes || null,
+          status: updatedInterview.status,
+          invitation_sent: updatedInterview.invitation_sent,
+          updated_at: now,
+        },
+        { onConflict: "reference_id" }
+      );
+
+      // Auto update candidate application status if scheduled
+      if (updatedInterview.status === "Scheduled" || updatedInterview.status === "Rescheduled") {
+        await supabase
+          .from("applications")
+          .update({ status: "Interview Scheduled", updated_at: now })
+          .eq("reference_id", updatedInterview.reference_id);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase saveInterview Warning]:", err);
+  }
+
+  return updatedInterview;
+}
+
+export async function getInterviewByRef(referenceId: string): Promise<InterviewData | null> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("interviews")
+        .select("*")
+        .eq("reference_id", referenceId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data && !error) {
+        return data as InterviewData;
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase getInterviewByRef Warning]:", err);
+  }
+
+  const store = ensureStore();
+  const found = (store.interviews || []).find((i) => i.reference_id === referenceId);
+  return found || null;
+}
+
+export async function updateInterviewStatus(
+  referenceId: string,
+  status: InterviewData["status"],
+  notes?: string
+): Promise<boolean> {
+  const store = ensureStore();
+  const interview = (store.interviews || []).find((i) => i.reference_id === referenceId);
+  const now = new Date().toISOString();
+  if (interview) {
+    interview.status = status;
+    if (notes) interview.admin_notes = notes;
+    interview.updated_at = now;
+  }
+
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const updatePayload: any = { status, updated_at: now };
+      if (notes) updatePayload.admin_notes = notes;
+      await supabase.from("interviews").update(updatePayload).eq("reference_id", referenceId);
+
+      // Update application status
+      let appStatus: any = undefined;
+      if (status === "Completed") appStatus = "Interview Completed";
+      else if (status === "Cancelled") appStatus = "Under Review";
+
+      if (appStatus) {
+        await supabase.from("applications").update({ status: appStatus, updated_at: now }).eq("reference_id", referenceId);
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase updateInterviewStatus Warning]:", err);
+  }
+
+  return true;
+}
+
+// ----------------- OFFERS CRUD -----------------
+
+export async function saveOffer(offer: OfferData): Promise<OfferData> {
+  const store = ensureStore();
+  if (!store.offers) store.offers = [];
+
+  const now = new Date().toISOString();
+  const id = offer.id || `ofr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const updatedOffer: OfferData = {
+    ...offer,
+    id,
+    updated_at: now,
+    created_at: offer.created_at || now,
+  };
+
+  const idx = store.offers.findIndex((o) => o.reference_id === offer.reference_id);
+  if (idx >= 0) {
+    store.offers[idx] = updatedOffer;
+  } else {
+    store.offers.push(updatedOffer);
+  }
+
+  // Sync to Supabase
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase.from("offers").upsert(
+        {
+          id: updatedOffer.id,
+          reference_id: updatedOffer.reference_id,
+          applicant_name: updatedOffer.applicant_name,
+          applicant_email: updatedOffer.applicant_email,
+          internship_role: updatedOffer.internship_role,
+          department: updatedOffer.department,
+          batch_code: updatedOffer.batch_code,
+          joining_date: updatedOffer.joining_date,
+          duration: updatedOffer.duration,
+          work_mode: updatedOffer.work_mode,
+          work_location: updatedOffer.work_location || "Online / Remote",
+          working_hours: updatedOffer.working_hours || "Flexible / 3-4 Hours Daily",
+          reporting_person: updatedOffer.reporting_person,
+          stipend_status: updatedOffer.stipend_status,
+          acceptance_deadline: updatedOffer.acceptance_deadline,
+          terms_and_conditions: updatedOffer.terms_and_conditions || null,
+          authorized_person: updatedOffer.authorized_person,
+          designation: updatedOffer.designation,
+          token: updatedOffer.token,
+          status: updatedOffer.status,
+          version: updatedOffer.version || 1,
+          pdf_url: updatedOffer.pdf_url || null,
+          updated_at: now,
+        },
+        { onConflict: "token" }
+      );
+
+      // Auto update candidate status to Offer Sent
+      await supabase
+        .from("applications")
+        .update({ status: "Offer Sent", updated_at: now })
+        .eq("reference_id", updatedOffer.reference_id);
+    }
+  } catch (err) {
+    console.warn("[Supabase saveOffer Warning]:", err);
+  }
+
+  return updatedOffer;
+}
+
+export async function getOfferByRef(referenceId: string): Promise<OfferData | null> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("offers")
+        .select("*")
+        .eq("reference_id", referenceId)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data && !error) {
+        return data as OfferData;
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase getOfferByRef Warning]:", err);
+  }
+
+  const store = ensureStore();
+  const found = (store.offers || []).find((o) => o.reference_id === referenceId);
+  return found || null;
+}
+
+export async function getOfferByToken(token: string): Promise<OfferData | null> {
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      const { data, error } = await supabase
+        .from("offers")
+        .select("*")
+        .eq("token", token)
+        .maybeSingle();
+
+      if (data && !error) {
+        return data as OfferData;
+      }
+    }
+  } catch (err) {
+    console.warn("[Supabase getOfferByToken Warning]:", err);
+  }
+
+  const store = ensureStore();
+  const found = (store.offers || []).find((o) => o.token === token);
+  return found || null;
+}
+
+export async function respondToOffer(
+  token: string,
+  response: "Offer Accepted" | "Offer Declined",
+  reason?: string
+): Promise<{ success: boolean; error?: string; offer?: OfferData }> {
+  const offer = await getOfferByToken(token);
+  if (!offer) {
+    return { success: false, error: "Invalid or expired offer token." };
+  }
+
+  if (offer.status === "Offer Accepted") {
+    return { success: false, error: "This offer has already been accepted.", offer };
+  }
+
+  if (offer.status === "Offer Declined") {
+    return { success: false, error: "This offer has already been declined.", offer };
+  }
+
+  const now = new Date().toISOString();
+  offer.status = response;
+  offer.responded_at = now;
+  if (reason) offer.decline_reason = reason;
+  offer.updated_at = now;
+
+  // Update memory store
+  const store = ensureStore();
+  const idx = (store.offers || []).findIndex((o) => o.token === token);
+  if (idx >= 0) {
+    store.offers[idx] = offer;
+  }
+
+  // Update Supabase
+  try {
+    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (supabase) {
+      await supabase
+        .from("offers")
+        .update({
+          status: response,
+          decline_reason: reason || null,
+          responded_at: now,
+          updated_at: now,
+        })
+        .eq("token", token);
+
+      // Update application status
+      await supabase
+        .from("applications")
+        .update({ status: response, updated_at: now })
+        .eq("reference_id", offer.reference_id);
+    }
+  } catch (err) {
+    console.warn("[Supabase respondToOffer Warning]:", err);
+  }
+
+  return { success: true, offer };
+}
+
+// ----------------- AUDIT LOGS -----------------
+
+export async function logAdminAction(
+  actionType: string,
+  targetId?: string,
+  details?: string,
+  adminUser: string = "Admin"
+): Promise<void> {
+  const store = ensureStore();
+  if (!store.auditLogs) store.auditLogs = [];
+  const logItem: AdminAuditLog = {
+    id: `audit_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    actionType,
+    adminUser,
+    targetId,
+    details: details || "",
+    createdAt: new Date().toISOString(),
+  };
+  store.auditLogs.unshift(logItem);
+}
+
+export async function getAdminAuditLogs(): Promise<AdminAuditLog[]> {
+  const store = ensureStore();
+  return store.auditLogs || [];
+}
+

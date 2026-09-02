@@ -2,7 +2,8 @@ import "server-only";
 import { scryptSync, timingSafeEqual, createHash } from "node:crypto";
 
 /**
- * Verifies an entered admin key against the stored ADMIN_KEY_HASH (scrypt) or fallback ADMIN_SECRET_KEY.
+ * Verifies an entered admin key against the stored ADMIN_KEY_HASH (scrypt) or configured ADMIN_SECRET_KEY / ADMIN_PASSKEY.
+ * Strictly avoids any hardcoded passkey strings.
  */
 export function verifyAdminMasterKey(enteredKey: string): boolean {
   if (!enteredKey || typeof enteredKey !== "string") {
@@ -12,7 +13,7 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
   const cleanKey = enteredKey.trim();
   const storedHash = (process.env.ADMIN_KEY_HASH || "").trim().replace(/^["']|["']$/g, "").trim();
   const saltEnv = (process.env.ADMIN_KEY_SALT || "").trim().replace(/^["']|["']$/g, "").trim();
-  const fallbackKey = (process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY || "161217110311").trim().replace(/^["']|["']$/g, "");
+  const envPasskey = (process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY || "").trim().replace(/^["']|["']$/g, "");
 
   // 1. Check if ADMIN_KEY_SALT and ADMIN_KEY_HASH are stored separately
   if (saltEnv && storedHash && !storedHash.includes("scrypt")) {
@@ -27,7 +28,7 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
     }
   }
 
-  // 2. Check colon-delimited format (scrypt:salt:hash)
+  // 2. Check colon or dollar-delimited format (scrypt:salt:hash or scrypt$salt$hash)
   if (storedHash.startsWith("scrypt:") || storedHash.startsWith("scrypt$")) {
     const delimiter = storedHash.includes(":") ? ":" : "$";
     const parts = storedHash.split(delimiter);
@@ -46,8 +47,8 @@ export function verifyAdminMasterKey(enteredKey: string): boolean {
     }
   }
 
-  // 3. Fallback / Direct Passkey Verification
-  if (cleanKey === "161217110311" || (fallbackKey && cleanKey === fallbackKey)) {
+  // 3. Environment-defined Passkey Verification (Strictly requires environment variable, no hardcoded strings)
+  if (envPasskey && cleanKey === envPasskey) {
     return true;
   }
 

@@ -70,11 +70,11 @@ export async function POST(req: NextRequest) {
 
     // 1. Process and save Internship Round (Single Source of Truth for Dates & Timing)
     if (round || settings) {
-      const batchCode = round?.batch_code || settings?.batchCode || "2026-AUG";
+      const batchCode = round?.batch_code?.trim() || settings?.batchCode?.trim() || "2026-SEP";
       const status = round?.status || settings?.applicationStatus || "AUTO";
       const timezone = round?.timezone || settings?.timezone || "Asia/Kolkata";
 
-      const openDate = settings?.openDate || (round?.opens_at ? round.opens_at.split("T")[0] : "2026-08-20");
+      const openDate = settings?.openDate || (round?.opens_at ? round.opens_at.split("T")[0] : "2026-09-01");
       const openTime = settings?.openTime || "09:00";
       const opensAt = formatIndiaTimestamp(openDate, openTime, "09:00:00");
 

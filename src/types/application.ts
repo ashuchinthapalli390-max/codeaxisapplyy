@@ -1,4 +1,25 @@
-export type SkillLevel = "I Don't Know" | "Learner" | "Basic" | "Average" | "Expert";
+import type { InterviewData, OfferData } from "./admin";
+
+export type ApplicationStatus =
+  | "Draft"
+  | "Submitted"
+  | "Under Review"
+  | "Additional Information Required"
+  | "Shortlisted"
+  | "Interview Scheduled"
+  | "Interview Completed"
+  | "Selected"
+  | "Offer Sent"
+  | "Offer Viewed"
+  | "Offer Accepted"
+  | "Offer Declined"
+  | "Offer Expired"
+  | "Waitlisted"
+  | "Rejected"
+  | "Withdrawn";
+
+export { type InterviewData, type OfferData };
+export type SkillLevel = "I Don't Know" | "Beginner" | "Intermediate" | "Advanced";
 export type VibeSkillLevel = "Never Used" | "Learning" | "Basic" | "Average" | "Advanced";
 
 export interface ProjectEntry {
@@ -155,8 +176,17 @@ export interface ApplicationData {
     overall?: "High" | "Moderate" | "Needs Review";
   };
 
+  // Resume
+  resume_url?: string;
+  resume_file_name?: string;
+  resume_file_size?: number;
+
+  // Interview & Offer Lifecycles
+  interview?: InterviewData;
+  offer?: OfferData;
+
   // Status & Admin
-  status?: "Submitted" | "Under Review" | "Shortlisted" | "Selected" | "Waitlisted" | "Not Selected";
+  status?: ApplicationStatus;
   admin_notes?: string[];
   admin_tags?: string[];
   is_duplicate?: boolean;

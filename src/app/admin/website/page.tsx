@@ -30,11 +30,6 @@ export default function AdminWebsitePage() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Audio Preview State
-  const [isPreviewingVoice, setIsPreviewingVoice] = useState(false);
-  const [isRegeneratingVoice, setIsRegeneratingVoice] = useState(false);
-  const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
-
   useEffect(() => {
     fetch("/api/admin/website", { credentials: "include" })
       .then((r) => r.json())
@@ -91,69 +86,6 @@ export default function AdminWebsitePage() {
     }
   };
 
-  const handlePreviewVoice = async () => {
-    playButtonClick();
-    setIsPreviewingVoice(true);
-    setVoiceNotice(null);
-
-    try {
-      const res = await fetch("/api/voice-guide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guide: "application-rules" }),
-      });
-
-      if (!res.ok) {
-        throw new Error("Voice API returned " + res.status);
-      }
-
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.volume = settings?.voiceGuide?.defaultVolume ?? 0.9;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setIsPreviewingVoice(false);
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setIsPreviewingVoice(false);
-        setVoiceNotice("Audio playback failed.");
-      };
-      await audio.play();
-      setVoiceNotice("Playing AI Telugu voice preview...");
-    } catch (err: any) {
-      setIsPreviewingVoice(false);
-      setVoiceNotice("Voice preview error: " + (err.message || "Failed to generate audio."));
-    }
-  };
-
-  const handleRegenerateVoice = async () => {
-    playButtonClick();
-    setIsRegeneratingVoice(true);
-    setVoiceNotice(null);
-
-    try {
-      const res = await fetch("/api/voice-guide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guide: "application-rules", forceRegenerate: true }),
-      });
-
-      const json = await res.json();
-      if (json.success || res.ok) {
-        playSuccessSound();
-        setVoiceNotice("AI Voice regenerated successfully with latest Telugu script!");
-        setTimeout(() => setVoiceNotice(null), 5000);
-      } else {
-        setVoiceNotice("Regeneration notice: " + (json.error || "Completed."));
-      }
-    } catch (err: any) {
-      setVoiceNotice("Regeneration error: " + err.message);
-    } finally {
-      setIsRegeneratingVoice(false);
-    }
-  };
 
   if (loading || !settings) {
     return (
@@ -199,13 +131,13 @@ export default function AdminWebsitePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Batch Code / Identifier *"
-              value={settings.batchCode || round?.batch_code || "2026-AUG"}
+              value={settings.batchCode || round?.batch_code || "2026-SEP"}
               onChange={(e) => {
                 const val = e.target.value.toUpperCase();
                 setSettings({ ...settings, batchCode: val });
                 if (round) setRound({ ...round, batch_code: val });
               }}
-              placeholder="e.g. 2026-AUG or 2026-SEP"
+              placeholder="e.g. 2026-SEP or 2026-OCT"
               required
             />
 
@@ -237,7 +169,7 @@ export default function AdminWebsitePage() {
               <Input
                 label="Opening Date *"
                 type="date"
-                value={settings.openDate || "2026-08-20"}
+                value={settings.openDate || "2026-09-01"}
                 onChange={(e) => setSettings({ ...settings, openDate: e.target.value })}
                 required
               />
@@ -301,163 +233,13 @@ export default function AdminWebsitePage() {
         </div>
 
         {/* =========================================================================
-            SECTION 2: AI TELUGU FEMALE VOICE GUIDE CMS
-           ========================================================================= */}
-        <div className="red-glass rounded-3xl p-6 sm:p-8 border border-red-500/30 space-y-6">
-          <div className="flex items-center justify-between border-b border-red-950 pb-3">
-            <div className="flex items-center gap-2">
-              <Mic className="w-4 h-4 text-red-400" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-                2. AI-Powered Telugu Female Voice Guide
-              </h2>
-            </div>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={settings.voiceGuide?.enabled ?? true}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    voiceGuide: {
-                      ...(settings.voiceGuide || {
-                        title: "CodeXa Voice Guide",
-                        teluguScript: "",
-                        provider: "google",
-                        voiceName: "te-IN-Chirp3-HD-Aoede",
-                        speechSpeed: 0.95,
-                        scrollTriggerPx: 350,
-                        showOncePerSession: false,
-                        showTranscript: true,
-                        defaultVolume: 0.9,
-                      }),
-                      enabled: e.target.checked,
-                    },
-                  })
-                }
-                className="w-4 h-4 rounded accent-red-600"
-              />
-              <span className="text-slate-300 font-bold">Voice Guide Enabled</span>
-            </label>
-          </div>
-
-          <div className="space-y-4">
-            <Textarea
-              label="Official Telugu Narration Script *"
-              value={settings.voiceGuide?.teluguScript || ""}
-              onChange={(e) =>
-                setSettings({
-                  ...settings,
-                  voiceGuide: {
-                    ...(settings.voiceGuide || {
-                      enabled: true,
-                      title: "CodeXa Voice Guide",
-                      provider: "google",
-                      voiceName: "te-IN-Chirp3-HD-Aoede",
-                      speechSpeed: 0.95,
-                      scrollTriggerPx: 350,
-                      showOncePerSession: false,
-                      showTranscript: true,
-                      defaultVolume: 0.9,
-                    }),
-                    teluguScript: e.target.value,
-                  },
-                })
-              }
-              rows={6}
-              required
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Select
-                label="TTS Provider"
-                value={settings.voiceGuide?.provider || "google"}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    voiceGuide: {
-                      ...settings.voiceGuide!,
-                      provider: e.target.value as any,
-                    },
-                  })
-                }
-                options={[
-                  { value: "google", label: "Google Cloud Chirp 3 HD (Telugu Female)" },
-                  { value: "elevenlabs", label: "ElevenLabs v3 (Telugu Multilingual)" },
-                  { value: "azure", label: "Azure Speech (te-IN-ShrutiNeural)" },
-                  { value: "browser", label: "Browser SpeechSynthesis (Fallback)" },
-                ]}
-              />
-
-              <Input
-                label="Voice Identifier / Model"
-                value={settings.voiceGuide?.voiceName || "te-IN-Chirp3-HD-Aoede"}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    voiceGuide: {
-                      ...settings.voiceGuide!,
-                      voiceName: e.target.value,
-                    },
-                  })
-                }
-              />
-
-              <Input
-                label="Scroll Trigger (Pixels)"
-                type="number"
-                value={String(settings.voiceGuide?.scrollTriggerPx || 350)}
-                onChange={(e) =>
-                  setSettings({
-                    ...settings,
-                    voiceGuide: {
-                      ...settings.voiceGuide!,
-                      scrollTriggerPx: Number(e.target.value) || 350,
-                    },
-                  })
-                }
-              />
-            </div>
-
-            {/* Voice Actions */}
-            <div className="flex flex-wrap items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={handlePreviewVoice}
-                disabled={isPreviewingVoice}
-                className="px-4 py-2.5 rounded-xl bg-black/70 border border-red-950 hover:border-red-500/40 text-slate-200 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Play className="w-3.5 h-3.5 text-red-400" />
-                <span>{isPreviewingVoice ? "Playing Audio..." : "Preview AI Voice"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleRegenerateVoice}
-                disabled={isRegeneratingVoice}
-                className="px-4 py-2.5 rounded-xl bg-black/70 border border-red-950 hover:border-red-500/40 text-slate-200 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RotateCcw className="w-3.5 h-3.5 text-red-400" />
-                <span>{isRegeneratingVoice ? "Regenerating..." : "Regenerate AI Voice"}</span>
-              </button>
-            </div>
-
-            {voiceNotice && (
-              <div className="p-3 bg-black/80 border border-red-500/40 rounded-xl text-xs text-red-300 font-bold flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{voiceNotice}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* =========================================================================
-            SECTION 3: HERO SECTION HEADLINES & AGENCY LINKS
+            SECTION 2: HERO SECTION HEADLINES & AGENCY LINKS
            ========================================================================= */}
         <div className="red-glass rounded-3xl p-6 sm:p-8 border border-red-500/30 space-y-6">
           <div className="flex items-center gap-2 border-b border-red-950 pb-3">
             <Globe className="w-4 h-4 text-red-400" />
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              3. Hero Section Copy & Agency Links
+              2. Hero Section Copy & Agency Links
             </h2>
           </div>
 

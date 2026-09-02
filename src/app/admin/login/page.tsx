@@ -10,6 +10,7 @@ import Link from "next/link";
 export default function AdminLoginPage() {
   const router = useRouter();
   const [accessKey, setAccessKey] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -31,7 +32,7 @@ export default function AdminLoginPage() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessKey: accessKey.trim() }),
+        body: JSON.stringify({ accessKey: accessKey.trim(), rememberMe }),
       });
 
       const json = await res.json();
@@ -100,6 +101,18 @@ export default function AdminLoginPage() {
                 className="w-full bg-black/80 border border-red-950/80 focus:border-red-500 rounded-xl px-4 py-3.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-all font-mono"
                 required
               />
+            </div>
+
+            <div className="pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="w-4 h-4 rounded border-red-900 bg-black/80 accent-red-600 cursor-pointer"
+                />
+                <span>Remember me for 30 days (Stay signed in)</span>
+              </label>
             </div>
 
             {errorMsg && (

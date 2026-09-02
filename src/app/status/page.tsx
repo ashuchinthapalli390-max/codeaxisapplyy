@@ -65,11 +65,13 @@ export default function StatusTrackingPage() {
   };
 
   const getStatusColor = (status?: string) => {
-    if (status === "Selected") return "text-emerald-400 bg-emerald-950/80 border-emerald-500";
-    if (status === "Shortlisted") return "text-rose-400 bg-rose-950/80 border-rose-500";
+    if (status === "Selected" || status === "Offer Accepted") return "text-emerald-400 bg-emerald-950/80 border-emerald-500";
+    if (status === "Shortlisted" || status === "Offer Sent") return "text-cyan-400 bg-cyan-950/80 border-cyan-500";
+    if (status === "Interview Scheduled") return "text-blue-400 bg-blue-950/80 border-blue-500";
+    if (status === "Interview Completed") return "text-purple-400 bg-purple-950/80 border-purple-500";
     if (status === "Under Review") return "text-amber-400 bg-amber-950/80 border-amber-500";
-    if (status === "Waitlisted") return "text-blue-400 bg-blue-950/80 border-blue-500";
-    if (status === "Not Selected") return "text-slate-400 bg-slate-900 border-slate-700";
+    if (status === "Waitlisted") return "text-yellow-400 bg-yellow-950/80 border-yellow-500";
+    if (status === "Offer Declined" || status === "Rejected" || status === "Not Selected") return "text-slate-400 bg-slate-900 border-slate-700";
     return "text-red-400 bg-red-950/80 border-red-500";
   };
 
@@ -238,6 +240,57 @@ export default function StatusTrackingPage() {
                 <div className="text-slate-200 mt-0.5">2026 Developer Batch</div>
               </div>
             </div>
+
+            {/* Interview Schedule Notice */}
+            {result.interview && (
+              <div className="p-5 rounded-2xl bg-blue-950/40 border border-blue-500/50 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-blue-900/60 pb-2">
+                  <div className="font-bold flex items-center gap-2 text-blue-300">
+                    <Clock className="w-4 h-4 text-blue-400" />
+                    <span>Virtual Discussion Scheduled: {result.interview.interview_round}</span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-blue-900 text-blue-200 border border-blue-700">
+                    {result.interview.status}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-300">
+                  <div>Date: <strong className="text-white">{result.interview.interview_date}</strong></div>
+                  <div>Time: <strong className="text-white">{result.interview.start_time} ({result.interview.timezone})</strong></div>
+                  <div>Platform: <strong className="text-white">{result.interview.platform}</strong></div>
+                  <div>Duration: <strong className="text-white">{result.interview.duration_minutes} Mins</strong></div>
+                </div>
+                {result.interview.meeting_link && (
+                  <div className="pt-1">
+                    <a
+                      href={result.interview.meeting_link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs"
+                    >
+                      🚀 Open Meeting Room
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Offer Notice Card */}
+            {result.offer && (
+              <div className="p-5 rounded-2xl bg-emerald-950/40 border border-emerald-500/50 space-y-3 text-xs">
+                <div className="flex items-center justify-between border-b border-emerald-900/60 pb-2">
+                  <div className="font-bold flex items-center gap-2 text-emerald-300">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
+                    <span>Official Offer: {result.offer.internship_role}</span>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-emerald-900 text-emerald-200 border border-emerald-600">
+                    {result.offer.status}
+                  </span>
+                </div>
+                <p className="text-slate-300 leading-relaxed">
+                  An official offer letter has been issued for Batch {result.offer.batch_code}. Please check your email ({result.email}) to review the appointment terms and respond via your secure button before {result.offer.acceptance_deadline}.
+                </p>
+              </div>
+            )}
 
             {/* Selected Guidance */}
             {result.status === "Selected" && (

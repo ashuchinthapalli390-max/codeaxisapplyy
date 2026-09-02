@@ -11,9 +11,15 @@ export async function POST(req: NextRequest) {
     }
 
     const response = NextResponse.json({ success: true, message: "Logged out successfully." });
-    response.cookies.delete({
+    response.cookies.set({
       name: ADMIN_SESSION_COOKIE,
+      value: "",
       path: "/",
+      maxAge: 0,
+      expires: new Date(0),
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
     });
     return response;
   } catch (err) {

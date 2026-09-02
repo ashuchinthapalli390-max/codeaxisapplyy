@@ -274,3 +274,178 @@ export function generateAdminPDF(data: ApplicationData): void {
 export const generateReceiptPdf = generateApplicantPDF;
 export const generateFullReportPdf = generateAdminPDF;
 
+/**
+ * Generates an official CodeXa Internship Offer Letter PDF.
+ */
+export function generateOfferLetterPDF(offer: any): void {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let y = 18;
+
+  // Header Banner
+  doc.setFillColor(15, 23, 42); // dark navy
+  doc.rect(0, 0, pageWidth, 32, "F");
+
+  // Crimson accent line
+  doc.setFillColor(239, 68, 68); // crimson red
+  doc.rect(0, 32, pageWidth, 2, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text("CODEXA AGENCY", 14, 14);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(203, 213, 225);
+  doc.text("Engineering & Product Development Directorate", 14, 20);
+  doc.text("Official Internship Appointment & Offer of Engagement", 14, 26);
+
+  doc.setTextColor(239, 68, 68);
+  doc.setFontSize(10);
+  doc.setFont("helvetica", "bold");
+  doc.text("OFFICIAL OFFER", pageWidth - 45, 16);
+  doc.setFontSize(8);
+  doc.setTextColor(203, 213, 225);
+  doc.text(`Date: ${new Date().toLocaleDateString("en-IN")}`, pageWidth - 45, 22);
+  doc.text(`Offer Ref: ${offer.reference_id || "CAX-2026"}`, pageWidth - 45, 27);
+
+  y = 44;
+
+  // Recipient Block
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(15, 23, 42);
+  doc.text("TO:", 14, y);
+  doc.setFontSize(12);
+  doc.setTextColor(220, 38, 38);
+  doc.text((offer.applicant_name || "Applicant").toUpperCase(), 14, y + 6);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`Email: ${offer.applicant_email || "N/A"}`, 14, y + 12);
+  doc.text(`Candidate Reference ID: ${offer.reference_id}`, 14, y + 17);
+
+  y += 26;
+
+  // Congratulatory Opening
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Subject: Offer of Developer Internship — Batch " + (offer.batch_code || "2026-SEP"), 14, y);
+  y += 7;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(51, 65, 85);
+  const openingText = `Dear ${offer.applicant_name},\n\nWe are pleased to extend this formal offer of engagement for the CodeXa Developer Internship program. Following your comprehensive application review and technical assessment, our engineering evaluation committee has selected you to join our cohort. This program offers hands-on production engineering experience across modern web and AI development workflows.`;
+  const splitOpening = doc.splitTextToSize(openingText, pageWidth - 28);
+  doc.text(splitOpening, 14, y);
+  y += splitOpening.length * 4.5 + 4;
+
+  // Offer Terms Summary Box
+  doc.setFillColor(248, 250, 252);
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(14, y, pageWidth - 28, 58, 2, 2, "FD");
+
+  doc.setFillColor(239, 68, 68);
+  doc.rect(14, y, 3, 58, "F");
+
+  let boxY = y + 8;
+  const terms = [
+    ["Designation / Role:", offer.internship_role || "Full-Stack Developer Intern"],
+    ["Department / Domain:", offer.department || "Engineering & Product Development"],
+    ["Commencement Date:", offer.joining_date || "2026-09-15"],
+    ["Tenure / Duration:", offer.duration || "12 Weeks"],
+    ["Work Mode & Location:", `${offer.work_mode || "Remote"} (${offer.work_location || "Online"})`],
+    ["Expected Daily Commitment:", offer.working_hours || "3-4 Hours Daily (Flexible Schedule)"],
+    ["Compensation / Incentives:", offer.stipend_status || "Performance-Based Project Stipends"],
+    ["Acceptance Deadline:", offer.acceptance_deadline || "2026-09-10"],
+  ];
+
+  terms.forEach(([lbl, val]) => {
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8.5);
+    doc.setTextColor(100, 116, 139);
+    doc.text(lbl, 20, boxY);
+
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 23, 42);
+    doc.text(String(val), 80, boxY);
+    boxY += 6;
+  });
+
+  y += 66;
+
+  // Key Responsibilities & Code of Conduct
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text("Key Terms & Code of Engagement:", 14, y);
+  y += 5;
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(71, 85, 105);
+  const policies = [
+    "1. Intellectual Property & Confidentiality: All code, designs, and materials created remain proprietary to CodeXa Agency.",
+    "2. Quality & Integrity: Strict adherence to high-quality code standards, version control practices, and zero plagiarism.",
+    "3. Regular Attendance & Check-ins: Active participation in weekly virtual standups and timely sprint milestone delivery.",
+    "4. Certificate of Completion & Letter of Recommendation will be awarded upon satisfactory milestone completion.",
+  ];
+  policies.forEach((p) => {
+    doc.text(p, 14, y);
+    y += 4.5;
+  });
+
+  y += 6;
+
+  // Signatures & Authorized Seal
+  doc.setDrawColor(203, 213, 225);
+  doc.line(14, y, pageWidth - 14, y);
+  y += 10;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(15, 23, 42);
+  doc.text("ISSUED ON BEHALF OF CODEXA AGENCY:", 14, y);
+  y += 7;
+
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  doc.setTextColor(220, 38, 38);
+  doc.text(offer.authorized_person || "Ashu Chinthapalli", 14, y);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(offer.designation || "Founder & Chief Executive Officer", 14, y + 4.5);
+  doc.text("CodeXa Agency — Engineering Directorate", 14, y + 9);
+
+  // Digital Verification Stamp
+  doc.setDrawColor(239, 68, 68);
+  doc.setLineWidth(0.5);
+  doc.roundedRect(pageWidth - 75, y - 6, 61, 20, 2, 2, "D");
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.5);
+  doc.setTextColor(239, 68, 68);
+  doc.text("DIGITALLY SIGNED & VERIFIED", pageWidth - 72, y);
+  doc.setFontSize(6.5);
+  doc.setTextColor(100, 116, 139);
+  doc.text("CodeXa Secure Document Service", pageWidth - 72, y + 5);
+  doc.text(`Hash: ${offer.token?.slice(0, 16) || "CAX-VERIFIED-AUTH"}`, pageWidth - 72, y + 9);
+
+  // Bottom Footer
+  doc.setFontSize(7.5);
+  doc.setTextColor(148, 163, 184);
+  doc.text(
+    `Official CodeXa Appointment Document — Reference: ${offer.reference_id} | Verify at: https://www.codeaxisapply.xyz/status`,
+    14,
+    pageHeight - 8
+  );
+
+  doc.save(`CodeXa_Offer_Letter_${offer.reference_id || "Candidate"}.pdf`);
+}
+

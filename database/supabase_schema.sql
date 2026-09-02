@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS internship_rounds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   title VARCHAR(255) NOT NULL DEFAULT 'CodeXa Developer Internship',
-  batch_code VARCHAR(100) NOT NULL DEFAULT '2026-AUG',
+  batch_code VARCHAR(100) NOT NULL DEFAULT '2026-SEP',
   status VARCHAR(50) NOT NULL DEFAULT 'AUTO', -- 'AUTO', 'OPEN', 'OPENING_SOON', 'CLOSED'
   opens_at TIMESTAMPTZ NOT NULL,
   closes_at TIMESTAMPTZ NOT NULL,
@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS applications (
   github_profile VARCHAR(255) NULL,
   linkedin_profile VARCHAR(255) NULL,
   portfolio_website VARCHAR(255) NULL,
+  resume_url TEXT NULL,
+  resume_file_name VARCHAR(255) NULL,
+  resume_file_size INT NULL,
 
   -- Round 4: Availability & Hardware
   daily_availability VARCHAR(100) NOT NULL,
@@ -196,22 +199,87 @@ CREATE TABLE IF NOT EXISTS admin_audit_logs (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 5. AI VOICE GUIDES CACHE
-CREATE TABLE IF NOT EXISTS voice_guides (
+-- 4b. ADMIN SESSIONS (Persistent & Revocable Multi-Device Session State)
+CREATE TABLE IF NOT EXISTS admin_sessions (
   id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid()::text,
-  guide_key VARCHAR(100) NOT NULL,
-  content_hash VARCHAR(128) NOT NULL UNIQUE,
-  language VARCHAR(50) NOT NULL DEFAULT 'te-IN',
-  provider VARCHAR(50) NOT NULL,
-  voice_name VARCHAR(100) NOT NULL,
-  script_text TEXT NOT NULL,
-  audio_base64 TEXT NOT NULL,
-  audio_url TEXT NULL,
+  token_hash VARCHAR(128) UNIQUE NOT NULL,
+  device_label VARCHAR(255) NULL,
+  user_agent TEXT NULL,
+  ip_address VARCHAR(100) DEFAULT '127.0.0.1',
+  remember_me BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_token_hash ON admin_sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires_at ON admin_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_revoked_at ON admin_sessions(revoked_at);
+
+-- 5. INTERVIEWS TABLE (Multi-Platform Scheduling & Invitations)
+CREATE TABLE IF NOT EXISTS interviews (
+  id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  application_id BIGINT NULL,
+  reference_id VARCHAR(100) NOT NULL,
+  applicant_name VARCHAR(255) NOT NULL,
+  applicant_email VARCHAR(255) NOT NULL,
+  interview_round VARCHAR(100) NOT NULL DEFAULT 'Technical & Mindset Review',
+  interview_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  timezone VARCHAR(100) NOT NULL DEFAULT 'Asia/Kolkata',
+  duration_minutes INT NOT NULL DEFAULT 30,
+  platform VARCHAR(100) NOT NULL DEFAULT 'Google Meet',
+  meeting_link TEXT NOT NULL,
+  interviewer_name VARCHAR(255) NOT NULL DEFAULT 'Ashu Chinthapalli',
+  instructions TEXT,
+  admin_notes TEXT,
+  status VARCHAR(50) NOT NULL DEFAULT 'Scheduled',
+  invitation_sent BOOLEAN NOT NULL DEFAULT FALSE,
+  reminder_sent_24h BOOLEAN NOT NULL DEFAULT FALSE,
+  reminder_sent_1h BOOLEAN NOT NULL DEFAULT FALSE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_voice_guides_hash ON voice_guides(content_hash);
+CREATE INDEX IF NOT EXISTS idx_interviews_ref ON interviews(reference_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_date ON interviews(interview_date);
+CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
+
+-- 5b. OFFERS TABLE (Official Offer Letters & Token Confirmation)
+CREATE TABLE IF NOT EXISTS offers (
+  id VARCHAR(100) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  application_id BIGINT NULL,
+  reference_id VARCHAR(100) NOT NULL,
+  applicant_name VARCHAR(255) NOT NULL,
+  applicant_email VARCHAR(255) NOT NULL,
+  internship_role VARCHAR(255) NOT NULL DEFAULT 'Full-Stack Developer Intern',
+  department VARCHAR(255) NOT NULL DEFAULT 'Engineering & Product Development',
+  batch_code VARCHAR(100) NOT NULL DEFAULT '2026-SEP',
+  joining_date DATE NOT NULL,
+  duration VARCHAR(100) NOT NULL DEFAULT '12 Weeks',
+  work_mode VARCHAR(100) NOT NULL DEFAULT 'Remote',
+  work_location VARCHAR(255) DEFAULT 'Online / Remote',
+  working_hours VARCHAR(100) DEFAULT 'Flexible / 3-4 Hours Daily',
+  reporting_person VARCHAR(255) DEFAULT 'Ashu Chinthapalli (Founder & CEO)',
+  stipend_status VARCHAR(100) DEFAULT 'Performance-Based Stipend & Project Incentives',
+  acceptance_deadline DATE NOT NULL,
+  terms_and_conditions TEXT,
+  authorized_person VARCHAR(255) DEFAULT 'Ashu Chinthapalli',
+  designation VARCHAR(255) DEFAULT 'Founder & Chief Executive Officer',
+  token VARCHAR(128) NOT NULL UNIQUE,
+  status VARCHAR(50) NOT NULL DEFAULT 'Offer Sent',
+  decline_reason TEXT,
+  responded_at TIMESTAMPTZ,
+  version INT NOT NULL DEFAULT 1,
+  pdf_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_offers_ref ON offers(reference_id);
+CREATE INDEX IF NOT EXISTS idx_offers_token ON offers(token);
+CREATE INDEX IF NOT EXISTS idx_offers_status ON offers(status);
 
 -- 6. TEAM PROFILES TABLE (Dynamic Leadership & Team CMS)
 CREATE TABLE IF NOT EXISTS team_profiles (
@@ -287,7 +355,7 @@ CREATE TABLE IF NOT EXISTS site_modules (
 CREATE INDEX IF NOT EXISTS idx_site_modules_order ON site_modules(display_order ASC);
 CREATE INDEX IF NOT EXISTS idx_site_modules_visible ON site_modules(is_visible);
 
--- 8. SITE SETTINGS TABLE (Global Website CMS & Voice Configuration)
+-- 8. SITE SETTINGS TABLE (Global Website CMS)
 CREATE TABLE IF NOT EXISTS site_settings (
   id VARCHAR(100) PRIMARY KEY DEFAULT 'default',
   hero_heading TEXT,
@@ -298,8 +366,6 @@ CREATE TABLE IF NOT EXISTS site_settings (
   agency_description TEXT,
   whatsapp_support_number VARCHAR(100),
   founder_email VARCHAR(255),
-  voice_guide_enabled BOOLEAN DEFAULT TRUE,
-  voice_guide_settings JSONB DEFAULT '{}'::jsonb,
   raw_settings JSONB DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

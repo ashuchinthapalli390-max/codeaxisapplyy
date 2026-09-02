@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   getAdminSession,
   ADMIN_SESSION_COOKIE,
-  SESSION_MAX_AGE_SECONDS,
+  NORMAL_SESSION_SECONDS,
+  REMEMBER_ME_SESSION_SECONDS,
 } from "@/lib/admin/session";
 
 export const dynamic = "force-dynamic";
@@ -33,21 +34,24 @@ export async function GET(req: NextRequest) {
     const response = NextResponse.json({
       authenticated: true,
       expiresAt: authResult.session?.expires_at,
+      rememberMe: authResult.rememberMe,
+      deviceLabel: authResult.session?.device_label,
     });
 
-    // If sliding renewal is triggered, refresh cookie headers
+    // If sliding renewal is triggered, refresh cookie headers with appropriate duration
     if (authResult.needsRefresh) {
       const token = req.cookies.get(ADMIN_SESSION_COOKIE)?.value;
       if (token) {
         const now = new Date();
-        const newExpiry = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
+        const durationSeconds = authResult.rememberMe ? REMEMBER_ME_SESSION_SECONDS : NORMAL_SESSION_SECONDS;
+        const newExpiry = new Date(now.getTime() + durationSeconds * 1000);
         response.cookies.set({
           name: ADMIN_SESSION_COOKIE,
           value: token,
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
-          maxAge: SESSION_MAX_AGE_SECONDS,
+          maxAge: durationSeconds,
           expires: newExpiry,
           path: "/",
         });

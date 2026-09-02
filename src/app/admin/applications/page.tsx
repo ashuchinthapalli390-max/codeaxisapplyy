@@ -61,7 +61,28 @@ export default function AdminApplicationsPage() {
     const delay = setTimeout(() => {
       fetchApps();
     }, 300);
-    return () => clearTimeout(delay);
+
+    // 5-second live polling for new incoming applications
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        fetchApps();
+      }
+    }, 5000);
+
+    const handleFocus = () => fetchApps();
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") fetchApps();
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearTimeout(delay);
+      clearInterval(pollInterval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [searchTerm, statusFilter, scoreBandFilter, commitmentFilter]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {

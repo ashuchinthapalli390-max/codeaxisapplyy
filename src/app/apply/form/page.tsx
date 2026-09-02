@@ -14,7 +14,6 @@ import Button3D from "@/components/ui/Button3D";
 import Modal from "@/components/ui/Modal";
 import ClipboardWarningModal from "@/components/application/ClipboardWarningModal";
 import ApplicationResetOverlay from "@/components/application/ApplicationResetOverlay";
-import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
@@ -30,6 +29,7 @@ import {
   Cpu,
   Edit2,
   FileCheck,
+  FileText,
   Flame,
   HelpCircle,
   Laptop,
@@ -41,6 +41,7 @@ import {
   Sparkles,
   Terminal,
   Trash2,
+  UploadCloud,
   User,
 } from "lucide-react";
 
@@ -560,6 +561,54 @@ export default function ApplicationFormPage() {
     setFormData((prev) => ({
       ...prev,
       projects: (prev.projects || []).filter((p) => p.id !== id),
+    }));
+  };
+
+  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ];
+    const isValidExt = /\.(pdf|doc|docx)$/i.test(file.name);
+
+    if (!validTypes.includes(file.type) && !isValidExt) {
+      alert("Invalid file format. Please upload a PDF, DOC, or DOCX document.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File size exceeds 5 MB limit. Please upload a smaller file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64Url = reader.result as string;
+      setFormData((prev) => ({
+        ...prev,
+        resume_url: base64Url,
+        resume_file_name: file.name,
+        resume_file_size: file.size,
+      }));
+      playSuccessSound();
+    };
+    reader.onerror = () => {
+      alert("Failed to read file. Please try again.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveResume = () => {
+    playButtonClick();
+    setFormData((prev) => ({
+      ...prev,
+      resume_url: undefined,
+      resume_file_name: undefined,
+      resume_file_size: undefined,
     }));
   };
 
@@ -1254,6 +1303,73 @@ export default function ApplicationFormPage() {
                         SAVE PROJECT ENTRY
                       </Button3D>
                     </div>
+                  )}
+                </div>
+
+                {/* Optional Resume Upload Section */}
+                <div className="space-y-3 pt-4 border-t border-red-950">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-red-400" />
+                        Optional Resume / Curriculum Vitae (CV)
+                      </h3>
+                      <p className="text-[11px] text-slate-400">PDF, DOC, or DOCX formats accepted (Maximum file size: 5 MB).</p>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-normal">Optional &bull; Zero penalty if omitted</span>
+                  </div>
+
+                  {formData.resume_url ? (
+                    <div className="p-4 rounded-2xl bg-black/60 border border-emerald-500/50 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
+                          <FileCheck className="w-5 h-5" />
+                        </div>
+                        <div className="truncate">
+                          <div className="text-xs font-bold text-white truncate">{formData.resume_file_name || "Uploaded_Resume.pdf"}</div>
+                          <div className="text-[10px] text-emerald-400">
+                            {formData.resume_file_size ? `${(formData.resume_file_size / (1024 * 1024)).toFixed(2)} MB` : "Ready"} &bull; Verified & Attached
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <label className="px-3 py-1.5 rounded-xl bg-black/60 border border-red-950 hover:border-red-500/50 text-slate-300 hover:text-white text-[11px] font-bold transition-all cursor-pointer">
+                          <span>Replace</span>
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                            onChange={handleResumeUpload}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleRemoveResume}
+                          className="p-1.5 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                          title="Remove Resume"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <label className="p-6 border-2 border-dashed border-red-950 hover:border-red-500/50 rounded-2xl flex flex-col items-center justify-center gap-2 text-center cursor-pointer transition-all bg-black/30 hover:bg-black/50 group">
+                      <div className="p-3 rounded-2xl bg-red-950/30 text-red-400 group-hover:scale-110 transition-transform">
+                        <UploadCloud className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-white group-hover:text-red-300 transition-colors">
+                          Click to upload your resume (Optional)
+                        </span>
+                        <div className="text-[10px] text-slate-500 mt-0.5">Supports PDF, DOC, DOCX up to 5 MB</div>
+                      </div>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        onChange={handleResumeUpload}
+                        className="hidden"
+                      />
+                    </label>
                   )}
                 </div>
               </div>
@@ -2142,9 +2258,6 @@ export default function ApplicationFormPage() {
           </div>
         </div>
       </Modal>
-
-      {/* Floating AI Voice Guide (Collapsed Helper Mode on Form) */}
-      <CodeXaVoiceGuide autoCollapseOnForm={true} />
 
       <Footer />
     </div>

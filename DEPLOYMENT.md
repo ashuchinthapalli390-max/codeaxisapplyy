@@ -1,82 +1,55 @@
-# CodeXa Apply - Deployment Guide
+# CodeXa Apply - Production Deployment Guide
 
-This guide details how to set up the MySQL database, configure variables, and deploy the **CodeXa Apply** application to Vercel.
-
----
-
-## 1. Database Setup (MySQL)
-
-This portal requires a permanent MySQL database. Since Vercel serverless functions do not host a local database, you must configure a cloud database:
-
-1. **Get a MySQL Database**:
-   - Register for a free instance on cloud providers like **Aiven** (aiven.io), **Railway** (railway.app), or **TiDB Cloud** (pingcap.com).
-2. **Retrieve Connection String**:
-   - Copy the connection string provided by the database platform. It must match the following format:
-     `mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME`
-3. **URL Encode Password Symbols**:
-   - If your database password contains special characters, they **must** be URL-encoded before adding them to the connection string:
-     - `@` = `%40`
-     - `#` = `%23`
-     - `&` = `%26`
-     - `%` = `%25`
-     - `/` = `%2F`
-     - `:` = `%3A`
-     
-     *Example:* `Ashu@123#` becomes `Ashu%40123%23` in the URL.
+This guide details how to configure Supabase, AI Text-to-Speech (TTS) providers, environment variables, and deploy **CodeXa Apply** to Vercel.
 
 ---
 
-## 2. Environment Variables
+## 1. Supabase Database Setup
 
-Create a `.env.local` file in the project root for local development.
+CodeXa Apply uses Supabase PostgreSQL as its canonical production database for:
+- Internship application timing & active batch synchronization (`internship_rounds`)
+- 8-Round candidate screening records (`applications`)
+- Persistent & revocable multi-device admin sessions (`admin_sessions`)
+- Multi-platform interview schedules (`interviews`) and official offer appointments (`offers`)
+- Team leadership & curriculum CMS (`team_profiles`, `site_modules`, `site_settings`)
 
+### Setup Steps:
+1. Create a Supabase project at [supabase.com](https://supabase.com).
+2. In Supabase SQL Editor, execute `database/supabase_schema.sql`.
+3. Obtain your **Project URL** and **Service Role Secret Key** from `Project Settings -> API`.
+
+---
+
+## 2. Environment Variables Configuration
+
+Set these environment variables in your `.env.local` for local development and in **Vercel Dashboard (`Settings -> Environment Variables`)** across **Production**, **Preview**, and **Development** environments:
+
+### Core Database (Server Only)
 ```env
-DATABASE_URL="mysql://USER:PASSWORD@HOST:PORT/DATABASE_NAME"
-ADMIN_PASSKEY="161217110311"
-ADMIN_SESSION_SECRET="any-long-random-secret-here"
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_SECRET_KEY="your-supabase-service-role-secret-key"
 ```
 
-> [!WARNING]
-> Database operations are handled strictly on the server-side. Do **not** expose your credentials using `NEXT_PUBLIC_DATABASE_URL`.
-
----
-
-## 3. Database Initialisation
-
-To initialize the applications registry and logs structure, run the schema migration script:
-
-```bash
-# Verify database connection state
-npm run db:check
-
-# Run schema migrations and build tables
-npm run db:init
+### Admin Security & Sessions (HMAC-SHA256 Signed & Revocable)
+```env
+ADMIN_PASSKEY="your-admin-master-key"
+ADMIN_SESSION_SECRET="64-character-hex-secret-generated-via-openssl-rand-hex-32"
+ADMIN_SESSION_COOKIE="codexa_admin_session"
 ```
 
-The migration runner reads the statements in `database/schema.sql` and builds the necessary tables.
+> [!TIP]
+> Generate a secure `ADMIN_SESSION_SECRET` using terminal command: `openssl rand -hex 32`.
+> If omitted in development, a deterministic secret is derived from `ADMIN_PASSKEY` so serverless restarts never invalidate active sessions.
+
+> [!CAUTION]
+> Never prefix database secrets or admin keys with `NEXT_PUBLIC_*`. All database and admin security operations are executed strictly server-side.
 
 ---
 
-## 4. Deploying to Vercel
+## 3. Deploying to Vercel
 
-When deploying to Vercel, ensure you configure the environment variables:
+1. Push your changes to the Git repository.
+2. In **Vercel Dashboard**, verify that `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `ADMIN_SESSION_SECRET` are configured in `Settings -> Environment Variables`.
+3. Redeploy the latest commit (**Deployments -> Latest -> Redeploy**).
+4. Verify deployment health at `/api/db/health`.
 
-1. In your **Vercel Dashboard**, open your project.
-2. Go to **Settings** -> **Environment Variables**.
-3. Add these variables (selecting `Production`, `Preview`, and `Development` environments):
-   - `DATABASE_URL` = `mysql://USERNAME:PASSWORD@HOST:PORT/DATABASE_NAME`
-   - `ADMIN_PASSKEY` = `161217110311`
-   - `ADMIN_SESSION_SECRET` = `your-secure-random-secret`
-4. Deploy the project using the **Vercel CLI** or by triggering a Git hook.
-5. If redeploying a failed deployment, go to **Deployments** -> **Latest Deployment** -> click the three dots (`...`) -> **Redeploy**.
-
----
-
-## 5. Troubleshooting
-
-- **`Database connection is not configured yet. Please contact CodeXa support.`**:
-  This means `DATABASE_URL` is empty, missing, or incorrect. Add it to Vercel variables, redeploy the site, and verify the connection.
-- **Unexpected end of JSON input**:
-  Our API wrappers are protected to return valid JSON error shapes even if query operations fail. Check your runtime functions console log in Vercel to inspect the raw database error.
-- **Port 3000 is in use**:
-  Next.js will automatically fall back to port `3001`. If you need to force port `3000`, run a command to terminate the old Node.js process (`Stop-Process -Id <PID> -Force` on Windows or `kill -9 <PID>` on Unix/macOS) and run `npm run dev` again.

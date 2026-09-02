@@ -8,7 +8,6 @@ import Checkbox from "@/components/ui/Checkbox";
 import Button3D from "@/components/ui/Button3D";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Link2, ShieldAlert, Sparkles, Headphones } from "lucide-react";
-import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import { playButtonClick } from "@/lib/audio";
 
 export default function RulesPage() {
@@ -175,9 +174,6 @@ export default function RulesPage() {
         </div>
 
       </main>
-
-      {/* Floating AI Voice Guide */}
-      <CodeXaVoiceGuide scrollThreshold={100} />
 
       <Footer />
     </div>

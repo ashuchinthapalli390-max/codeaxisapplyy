@@ -66,18 +66,58 @@ export interface InternshipRound {
   updated_at?: string;
 }
 
-export interface VoiceGuideSettings {
-  enabled: boolean;
-  title: string;
-  teluguScript: string;
-  provider: "google" | "elevenlabs" | "azure" | "browser";
-  voiceName: string;
-  speechSpeed: number; // 0.8 to 1.2, default 0.95
-  scrollTriggerPx: number; // default 350
-  showOncePerSession: boolean;
-  showTranscript: boolean;
-  defaultVolume: number; // 0.0 to 1.0
-  lastRegeneratedAt?: string;
+export interface InterviewData {
+  id?: string;
+  application_id?: number | string;
+  reference_id: string;
+  applicant_name: string;
+  applicant_email: string;
+  interview_round: string;
+  interview_date: string; // YYYY-MM-DD
+  start_time: string; // HH:MM
+  timezone: string; // "Asia/Kolkata"
+  duration_minutes: number;
+  platform: "Google Meet" | "Zoom" | "Microsoft Teams" | "Other";
+  meeting_link: string;
+  interviewer_name: string;
+  instructions?: string;
+  admin_notes?: string;
+  status: "Scheduled" | "Rescheduled" | "Completed" | "Absent" | "Cancelled";
+  invitation_sent: boolean;
+  reminder_sent_24h?: boolean;
+  reminder_sent_1h?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface OfferData {
+  id?: string;
+  application_id?: number | string;
+  reference_id: string;
+  applicant_name: string;
+  applicant_email: string;
+  internship_role: string;
+  department: string;
+  batch_code: string;
+  joining_date: string;
+  duration: string;
+  work_mode: "Remote" | "Hybrid" | "In-Office";
+  work_location?: string;
+  working_hours?: string;
+  reporting_person?: string;
+  stipend_status: string;
+  acceptance_deadline: string;
+  terms_and_conditions?: string;
+  authorized_person: string;
+  designation: string;
+  token: string;
+  status: "Offer Sent" | "Offer Viewed" | "Offer Accepted" | "Offer Declined" | "Offer Expired";
+  decline_reason?: string;
+  responded_at?: string;
+  version: number;
+  pdf_url?: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface SiteModule {
@@ -122,22 +162,6 @@ export interface WebsiteSettings {
   whatsappOnboardingLink: string;
   discordOnboardingLink: string;
   sessionDurationDays?: number; // e.g. 30
-
-  voiceGuide?: VoiceGuideSettings;
-}
-
-export interface VoiceGuideCacheEntry {
-  id: string;
-  guide_key: string;
-  content_hash: string;
-  language: string;
-  provider: string;
-  voice_name: string;
-  script_text: string;
-  audio_base64: string;
-  audio_url?: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface FaqItem {
@@ -185,7 +209,7 @@ export interface EmailLog {
 
 export interface AdminAuditLog {
   id: string;
-  actionType: "LOGIN" | "STATUS_UPDATE" | "NOTE_ADDED" | "DUPLICATE_FLAGGED" | "DELETE" | "RESTORE" | "EXPORT" | "SETTINGS_UPDATE" | "TEAM_UPDATE" | "EMAIL_SENT" | "SESSION_REVOKED" | "ASSET_UPDATE" | "VOICE_GUIDE_UPDATE";
+  actionType: string;
   adminUser: string;
   targetId?: string;
   details: string;

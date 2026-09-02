@@ -7,7 +7,6 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import IntroAnimation from "@/components/IntroAnimation";
-import CodeXaVoiceGuide from "@/components/voice/CodeXaVoiceGuide";
 import LeadershipDetailModal from "@/components/team/LeadershipDetailModal";
 import { TeamMember, InternshipRound, SiteModule } from "@/types/admin";
 import { learningModules, applicationRounds } from "@/config/card-assets";
@@ -106,6 +105,9 @@ export default function HomePage() {
     canApply: true,
   });
 
+  // Server clock offset for accurate countdown calculations across devices with incorrect clocks
+  const [serverClockOffset, setServerClockOffset] = useState<number>(0);
+
   // Fetch active application config from database
   const fetchAppConfig = () => {
     fetch("/api/applications/config", { cache: "no-store" })
@@ -113,6 +115,10 @@ export default function HomePage() {
       .then((json) => {
         if (json.success && json.data) {
           setAppConfig(json.data);
+          if (typeof json.data.server_time_ms === "number") {
+            const offset = json.data.server_time_ms - Date.now();
+            setServerClockOffset(offset);
+          }
         }
       })
       .catch(() => {});
@@ -120,11 +126,20 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchAppConfig();
-    const interval = setInterval(fetchAppConfig, 20000); // 20s live sync
+    const interval = setInterval(fetchAppConfig, 5000); // 5s live sync
     window.addEventListener("focus", fetchAppConfig);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        fetchAppConfig();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", fetchAppConfig);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
 
@@ -138,15 +153,15 @@ export default function HomePage() {
     }
   }, []);
 
-  // Real-time second-by-second countdown calculated strictly from database timestamps
+  // Real-time second-by-second countdown calculated strictly with server-adjusted clock
   useEffect(() => {
     const calculateTime = () => {
-      const now = Date.now();
+      const correctedNow = Date.now() + serverClockOffset;
       const round = appConfig?.round;
 
       const opensAtMs = round?.opens_at
         ? new Date(round.opens_at).getTime()
-        : new Date("2026-08-20T09:00:00+05:30").getTime();
+        : new Date("2026-09-01T09:00:00+05:30").getTime();
       const closesAtMs = round?.closes_at
         ? new Date(round.closes_at).getTime()
         : new Date("2026-09-07T23:59:59+05:30").getTime();
@@ -177,12 +192,12 @@ export default function HomePage() {
         canApply = false;
       } else {
         // AUTO calculation based on timestamps
-        if (opensAtMs > 0 && now < opensAtMs) {
+        if (opensAtMs > 0 && correctedNow < opensAtMs) {
           status = "OPENING_SOON";
           targetMs = opensAtMs;
           badgeText = "APPLICATION WINDOW OPENS IN";
           canApply = false;
-        } else if (closesAtMs > 0 && now >= closesAtMs) {
+        } else if (closesAtMs > 0 && correctedNow >= closesAtMs) {
           status = "CLOSED";
           targetMs = nextOpensAtMs || closesAtMs;
           badgeText = nextOpensAtMs ? "NEXT APPLICATION WINDOW IN" : "APPLICATIONS CURRENTLY CLOSED";
@@ -195,7 +210,7 @@ export default function HomePage() {
         }
       }
 
-      const diff = Math.max(0, targetMs - now);
+      const diff = Math.max(0, targetMs - correctedNow);
       const days = Math.floor(diff / (1000 * 60 * 60 * 24));
       const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
       const minutes = Math.floor((diff / (1000 * 60)) % 60);
@@ -215,7 +230,7 @@ export default function HomePage() {
     calculateTime();
     const timer = setInterval(calculateTime, 1000);
     return () => clearInterval(timer);
-  }, [appConfig]);
+  }, [appConfig, serverClockOffset]);
 
   // VS Code simulation code snippets
   const codeFiles = {
@@ -257,7 +272,7 @@ const agency = new CodeXaAgency({
   mentorship: "Ashu, Deepak, Kishore"
 });
 
-agency.launchRecruitmentBatch("2026-AUG");`,
+agency.launchRecruitmentBatch("2026-SEP");`,
   };
 
   // Live VS Code typing animation in hero
@@ -443,7 +458,7 @@ agency.launchRecruitmentBatch("2026-AUG");`,
                     {countdown.badgeText}
                   </span>
                   <span className="text-slate-300 font-bold">
-                    BATCH: {appConfig?.round?.batch_code || "2026-AUG"}
+                    BATCH: {appConfig?.round?.batch_code || "2026-SEP"}
                   </span>
                 </div>
 
@@ -1265,9 +1280,6 @@ agency.launchRecruitmentBatch("2026-AUG");`,
         </section>
 
       </main>
-
-      {/* AI-Powered Natural Telugu Voice Guide Widget */}
-      <CodeXaVoiceGuide scrollThreshold={350} />
 
       {/* Leadership Profile Detail Modal */}
       <LeadershipDetailModal

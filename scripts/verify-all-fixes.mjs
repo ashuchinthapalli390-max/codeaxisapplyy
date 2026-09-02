@@ -1,10 +1,18 @@
-import http from "http";
+import fs from "node:fs";
+import path from "node:path";
+import Module from "node:module";
+
+// Mock server-only so server-side utility modules can be verified in Node runner
+const origRequire = Module.prototype.require;
+Module.prototype.require = function (id) {
+  if (id === "server-only") return {};
+  return origRequire.apply(this, arguments);
+};
 
 console.log("==================================================");
 console.log("CODEXA APPLY - AUDIT & VERIFICATION TEST SUITE");
 console.log("==================================================");
 
-// We will verify the core modules directly via node imports
 async function runVerification() {
   let passed = 0;
   let failed = 0;
@@ -73,7 +81,7 @@ async function runVerification() {
     assert(MAX_CLIPBOARD_WARNINGS === 5, "Max clipboard warnings threshold is 5");
 
     // 3. Verify Validation Rules
-    const { validateRound, validateAllRounds } = await import("../src/lib/validation.ts");
+    const { validateRound } = await import("../src/lib/validation.ts");
     const round1Valid = validateRound(1, {
       full_name: "Ashu Candidate",
       date_of_birth: "2003-05-12",
@@ -94,10 +102,40 @@ async function runVerification() {
     });
     assert(Object.keys(round5Skip).length === 0, "Round 5 validation passes when selecting 'I Don't Know' without quiz errors");
 
-    // 4. Verify Master Key Auth
+    // 4. Verify Master Key Auth (Strictly rejects hardcoded keys when no env var set)
     const { verifyAdminMasterKey } = await import("../src/lib/admin/verify-master-key.ts");
-    const defaultAuth = verifyAdminMasterKey("CODEXA-ADMIN-2026");
-    assert(defaultAuth === true, "Master key verification succeeds with default passkey");
+    delete process.env.ADMIN_KEY_HASH;
+    delete process.env.ADMIN_SECRET_KEY;
+    delete process.env.ADMIN_PASSKEY;
+
+    assert(verifyAdminMasterKey("161217110311") === false, "Master key verification rejects old hardcoded key 161217110311");
+    assert(verifyAdminMasterKey("CODEXA-ADMIN-2026") === false, "Master key verification rejects arbitrary key when no env set");
+
+    // Test with configured environment passkey
+    process.env.ADMIN_PASSKEY = "TestSecretAdminKey2026!";
+    assert(verifyAdminMasterKey("TestSecretAdminKey2026!") === true, "Master key verification succeeds with configured ADMIN_PASSKEY");
+    assert(verifyAdminMasterKey("WrongKey") === false, "Master key verification rejects invalid key");
+
+    // 5. Verify Session Configuration (30 Days Default)
+    const { SESSION_DAYS, SESSION_MAX_AGE_SECONDS } = await import("../src/lib/admin/session.ts");
+    assert(SESSION_DAYS === 30, `Session default is 30 days (actual: ${SESSION_DAYS})`);
+    assert(SESSION_MAX_AGE_SECONDS === 30 * 24 * 60 * 60, "Session max age in seconds is exactly 30 days");
+
+    // 6. Verify Static Application Voice Guide Audio Asset
+    const staticMp3Path = path.resolve(process.cwd(), "public/audio/voice-guide.mp3");
+    assert(fs.existsSync(staticMp3Path), "Static Telugu Voice Guide MP3 exists in public/audio/voice-guide.mp3");
+    const mp3Stat = fs.statSync(staticMp3Path);
+    assert(mp3Stat.size > 1000, `Static voice guide MP3 has valid non-zero size (${mp3Stat.size} bytes)`);
+
+    // Verify MP3 header sync bytes
+    const mp3Buffer = fs.readFileSync(staticMp3Path);
+    const hasId3OrMpeg = mp3Buffer.subarray(0, 3).toString() === "ID3" || (mp3Buffer[0] === 0xff && (mp3Buffer[1] & 0xe0) === 0xe0);
+    assert(hasId3OrMpeg === true, "Static audio file contains valid MP3 ID3 header or sync frames");
+
+    // 7. Verify Active Round Defaults (2026-SEP)
+    const { getActiveInternshipRound } = await import("../src/lib/storage.ts");
+    const round = await getActiveInternshipRound();
+    assert(round.batch_code === "2026-SEP", `Active round batch code is 2026-SEP (actual: ${round.batch_code})`);
 
     console.log("--------------------------------------------------");
     console.log(`TOTAL CHECKS: ${passed + failed} | PASSED: ${passed} | FAILED: ${failed}`);
