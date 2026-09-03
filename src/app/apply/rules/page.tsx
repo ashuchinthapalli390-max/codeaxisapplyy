@@ -95,7 +95,7 @@ export default function RulesPage() {
           </div>
         )}
 
-        {/* Header with Telugu Voice Listener Notice */}
+        {/* Header with Screening Notice */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-2 text-center sm:text-left">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-red-500/30 bg-red-950/20 text-[10px] font-bold tracking-[0.2em] text-red-400 uppercase">

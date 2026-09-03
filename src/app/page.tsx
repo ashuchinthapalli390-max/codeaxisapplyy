@@ -9,6 +9,7 @@ import CodingBackground from "@/components/CodingBackground";
 import IntroAnimation from "@/components/IntroAnimation";
 import LeadershipDetailModal from "@/components/team/LeadershipDetailModal";
 import { TeamMember, InternshipRound, SiteModule } from "@/types/admin";
+import ImageWithFallback from "@/components/ui/ImageWithFallback";
 import { learningModules, applicationRounds } from "@/config/card-assets";
 import {
   ArrowRight,
@@ -625,7 +626,7 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                 className="tilt-card red-glass rounded-3xl overflow-hidden border border-red-950/80 hover:border-red-500/60 flex flex-col justify-between group transition-all font-mono"
               >
                 <div className="relative aspect-[16/9] w-full overflow-hidden bg-black/80">
-                  <Image
+                  <ImageWithFallback
                     src={mod.image}
                     alt={mod.title}
                     fill
@@ -1048,7 +1049,7 @@ agency.launchRecruitmentBatch("2026-SEP");`,
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {teamMembers
               .filter((m) => m.isVisible !== false && !m.isArchived)
               .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
@@ -1064,11 +1065,18 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                   <div className="space-y-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1 overflow-hidden">
-                        <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 font-mono font-bold uppercase inline-flex items-center gap-1">
-                          <Crown className="w-3 h-3 text-yellow-400" />
-                          <span>{member.roleType}</span>
-                        </span>
-                        <h3 className="text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors truncate">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 font-mono font-bold uppercase inline-flex items-center gap-1">
+                            <Crown className="w-3 h-3 text-yellow-400" />
+                            <span>{member.roleType}</span>
+                          </span>
+                          {member.codename && member.codename.trim() && member.codename.toLowerCase() !== "none" && member.codename.toLowerCase() !== "no codename" && (
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-red-950/90 text-red-400 border border-red-700/60 font-mono font-bold tracking-wider uppercase">
+                              {member.codename}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="text-lg sm:text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors truncate">
                           {member.displayName || member.name}
                         </h3>
                         <div className="text-[11px] font-mono text-slate-400 truncate">{member.designation}</div>

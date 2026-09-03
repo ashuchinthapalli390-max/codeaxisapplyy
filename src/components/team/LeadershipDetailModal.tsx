@@ -82,9 +82,16 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
 
             {/* Names & Taglines */}
             <div className="space-y-1.5 text-center sm:text-left flex-grow">
-              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                {member.displayName || member.name}
-              </h2>
+              <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
+                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                  {member.displayName || member.name}
+                </h2>
+                {member.codename && member.codename.trim() && member.codename.toLowerCase() !== "none" && member.codename.toLowerCase() !== "no codename" && (
+                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-red-950 text-red-400 border border-red-700/60 font-mono font-bold tracking-wider uppercase">
+                    {member.codename}
+                  </span>
+                )}
+              </div>
               <div className="text-xs sm:text-sm font-bold text-red-400">{member.designation}</div>
               {member.secondaryDesignation && (
                 <div className="text-xs text-slate-400">{member.secondaryDesignation}</div>

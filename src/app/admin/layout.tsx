@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import AdminLoginPage from "@/app/admin/login/page";
@@ -33,61 +33,63 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    // Verify session with server
-    fetch("/api/admin/verify-session", { credentials: "include" })
-      .then(async (res) => {
-        if (!isMounted) return;
-        if (res.ok) {
-          const data = await res.json().catch(() => ({}));
-          if (data.authenticated !== false) {
-            setIsAuthenticated(true);
-            if (pathname === "/admin/login" || pathname === "/admin") {
-              router.replace("/admin/dashboard");
-            }
-            return;
-          }
-        }
-        
-        if (res.status === 401) {
-          setIsAuthenticated(false);
-        } else {
-          // If server error or transient status, keep current state (or assume valid if previously logged in)
-          setIsAuthenticated((prev) => (prev === null ? false : prev));
-        }
-      })
-      .catch(() => {
-        if (!isMounted) return;
-        // Offline / network blip: never force-logout an already authenticated session
-        setIsAuthenticated((prev) => (prev === null ? false : prev));
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/verify-session", {
+        credentials: "include",
+        cache: "no-store",
       });
 
-    return () => {
-      isMounted = false;
-    };
-  }, [pathname === "/admin/login"]);
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data.authenticated !== false) {
+          setIsAuthenticated(true);
+          if (pathname === "/admin/login" || pathname === "/admin") {
+            router.replace("/admin/dashboard");
+          }
+          return;
+        }
+      }
 
-  // If on login route explicitly or not yet authenticated, render ONLY the Master Key Terminal Screen
-  if (pathname === "/admin/login" || pathname === "/admin" || isAuthenticated === false) {
-    if (isAuthenticated === true) {
-      return null; // Will redirect via useEffect
+      if (res.status === 401) {
+        setIsAuthenticated(false);
+      } else {
+        // Network blip or 500: preserve current authentication state
+        setIsAuthenticated((prev) => (prev === null ? false : prev));
+      }
+    } catch {
+      // Offline / network blip: never force-logout an already authenticated session
+      setIsAuthenticated((prev) => (prev === null ? false : prev));
     }
+  }, [pathname, router]);
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
+
+  // Handle immediate transition upon successful login
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    router.replace("/admin/dashboard");
+  };
+
+  // If on login route or unauthenticated, show terminal login screen
+  const isLoginRoute = pathname === "/admin/login" || pathname === "/admin";
+  if (isAuthenticated === false || (isLoginRoute && isAuthenticated !== true)) {
     return (
       <div className="min-h-screen bg-[#02040a] text-slate-100 relative font-mono selection:bg-red-600 selection:text-white">
-        <AdminLoginPage
-          onLoginSuccess={() => {
-            setIsAuthenticated(true);
-            router.replace("/admin/dashboard");
-            router.refresh();
-          }}
-        />
+        <AdminLoginPage onLoginSuccess={handleLoginSuccess} />
       </div>
     );
   }
 
-  // While checking session, show clean loading state (0 data leakage)
+  // If authenticated and still on /admin or /admin/login, redirect to dashboard
+  if (isLoginRoute && isAuthenticated === true) {
+    router.replace("/admin/dashboard");
+    return null;
+  }
+
+  // Initial authentication loading state
   if (isAuthenticated === null) {
     return (
       <div className="min-h-screen bg-[#02040a] text-slate-100 flex flex-col items-center justify-center p-6 font-mono">
@@ -109,7 +111,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       // ignore
     }
     setIsAuthenticated(false);
-    router.push("/admin/login");
+    router.replace("/admin/login");
   };
 
   const navItems = [
@@ -132,7 +134,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col font-mono selection:bg-red-600 selection:text-white">
-      
       {/* Top Mobile Bar */}
       <div className="lg:hidden bg-[#06060e] border-b border-red-950/80 px-4 py-3 flex items-center justify-between sticky top-0 z-40">
         <div className="flex items-center space-x-2">
@@ -151,7 +152,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </div>
 
       <div className="flex-grow flex">
-        
         {/* Desktop Sidebar */}
         <aside
           className={`fixed lg:sticky top-0 left-0 bottom-0 w-64 bg-[#05050c]/95 backdrop-blur-xl border-r border-red-950/80 z-40 flex flex-col justify-between p-4 transition-transform duration-300 ${
@@ -173,7 +173,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             {/* Navigation Links */}
             <nav className="space-y-1 overflow-y-auto max-h-[calc(100vh-200px)] pr-1">
               {navItems.map((item) => {
-                const isActive = pathname === item.href || (item.href !== "/admin/dashboard" && pathname.startsWith(item.href));
+                const isActive =
+                  pathname === item.href ||
+                  (item.href !== "/admin/dashboard" && pathname.startsWith(item.href));
                 return (
                   <Link
                     key={item.href}
@@ -220,7 +222,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <main className="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-x-hidden">
           {children}
         </main>
-
       </div>
     </div>
   );

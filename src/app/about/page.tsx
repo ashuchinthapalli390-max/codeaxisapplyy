@@ -85,7 +85,7 @@ export default function AboutPage() {
                 The CodeXa Story & Ecosystem
               </h2>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                Founded by Ashu with operations co-led by Deepak and strategic leadership by Kishore, CodeXa was established to bridge the divide between classroom theory and real-world engineering.
+                Founded by CH. Arshad (SOUTH DEVELOPER) with platform engineering co-led by B. Sanjay (Spideyy !!) and executive leadership by Kishore and G. Bhanu Prasad (Hakai), CodeXa was established to bridge the divide between classroom theory and real-world engineering.
               </p>
               <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                 Our production stack spans full-stack web architectures (Next.js 16, TypeScript, TailwindCSS), cloud relational databases, AI agent workflows (Vibe Coding, Claude Code integrations), and security-hardened recruitment systems.

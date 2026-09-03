@@ -65,6 +65,28 @@ export const learningModules: LearningModuleCard[] = [
     skills: ["Vercel/Cloud Deploy", "CI/CD Pipelines", "Telemetry & Logs", "Performance Optimization", "Live Shipping"],
     image: "/assets/cards/modules/module-04-production-deployment.png",
   },
+  {
+    id: 5,
+    moduleCode: "MOD 05",
+    title: "Production Architecture & Performance",
+    subtitle: "SCALABILITY, CACHING & SYSTEM DESIGN",
+    description:
+      "Design scalable cloud architectures, distributed caching, Redis, database indexing, and optimize Core Web Vitals for maximum performance.",
+    duration: "Weeks 9–10",
+    skills: ["System Architecture", "Redis Caching", "Database Indexing", "Core Web Vitals", "Scalability"],
+    image: "/assets/cards/modules/module-05-performance-seo-core-web-vitals.png",
+  },
+  {
+    id: 6,
+    moduleCode: "MOD 06",
+    title: "Agency Client Capstone Project",
+    subtitle: "REAL-WORLD CODEBASE & CLIENT LAUNCH",
+    description:
+      "Ship an end-to-end production software solution under the supervision of CodeXa technical directors for real client deliverables.",
+    duration: "Weeks 11–12",
+    skills: ["Client Delivery", "Full-Stack System", "Security Auditing", "CI/CD Deployment", "Production Verification"],
+    image: "/assets/cards/modules/module-06-capstone-production-ship.png",
+  },
 ];
 
 export const applicationRounds: ApplicationRoundCard[] = [

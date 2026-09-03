@@ -2,6 +2,7 @@ export interface TeamMember {
   id: string;
   name: string;
   displayName?: string;
+  codename?: string;
   designation: string;
   secondaryDesignation?: string;
   roleType: string; // "Founder" | "Co-Founder" | "CEO" | "CTO" | "COO" | "Core Team" | "Mentor" | "Lead Developer" | custom

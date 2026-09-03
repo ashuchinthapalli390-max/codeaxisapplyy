@@ -19,9 +19,11 @@ import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
 import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, clearApplicationDraft } from "@/lib/integrity";
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Clock,
   BookOpen,
   Bot,
   CheckCircle2,
@@ -344,6 +346,10 @@ export default function ApplicationFormPage() {
   const [submissionStep, setSubmissionStep] = useState<number>(1);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
 
+  // Resume upload states
+  const [isUploadingResume, setIsUploadingResume] = useState(false);
+  const [resumeUploadError, setResumeUploadError] = useState<string | null>(null);
+
   // New project modal / form
   const [newProject, setNewProject] = useState<ProjectEntry>({
     id: "",
@@ -564,7 +570,7 @@ export default function ApplicationFormPage() {
     }));
   };
 
-  const handleResumeUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -576,39 +582,62 @@ export default function ApplicationFormPage() {
     const isValidExt = /\.(pdf|doc|docx)$/i.test(file.name);
 
     if (!validTypes.includes(file.type) && !isValidExt) {
-      alert("Invalid file format. Please upload a PDF, DOC, or DOCX document.");
+      setResumeUploadError("Invalid file format. Please upload a PDF, DOC, or DOCX document.");
+      playWarningTone();
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      alert("File size exceeds 5 MB limit. Please upload a smaller file.");
+      setResumeUploadError("File size exceeds the 5 MB limit. Please upload a smaller file.");
+      playWarningTone();
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64Url = reader.result as string;
-      setFormData((prev) => ({
-        ...prev,
-        resume_url: base64Url,
-        resume_file_name: file.name,
-        resume_file_size: file.size,
-      }));
-      playSuccessSound();
-    };
-    reader.onerror = () => {
-      alert("Failed to read file. Please try again.");
-    };
-    reader.readAsDataURL(file);
+    setIsUploadingResume(true);
+    setResumeUploadError(null);
+
+    try {
+      const uploadData = new FormData();
+      uploadData.append("file", file);
+
+      const res = await fetch("/api/applications/resume", {
+        method: "POST",
+        body: uploadData,
+      });
+
+      const json = await res.json();
+      if (json.success && json.data) {
+        setFormData((prev) => ({
+          ...prev,
+          resume_url: json.data.storagePath,
+          resume_storage_path: json.data.storagePath,
+          resume_file_name: json.data.fileName,
+          resume_file_size: json.data.fileSize,
+          resume_file_type: json.data.fileType,
+        }));
+        playSuccessSound();
+      } else {
+        setResumeUploadError(json.error || "Failed to upload resume to secure storage.");
+        playWarningTone();
+      }
+    } catch {
+      setResumeUploadError("Network error uploading resume to storage. Please retry.");
+      playWarningTone();
+    } finally {
+      setIsUploadingResume(false);
+    }
   };
 
   const handleRemoveResume = () => {
     playButtonClick();
+    setResumeUploadError(null);
     setFormData((prev) => ({
       ...prev,
       resume_url: undefined,
+      resume_storage_path: undefined,
       resume_file_name: undefined,
       resume_file_size: undefined,
+      resume_file_type: undefined,
     }));
   };
 
@@ -1319,7 +1348,20 @@ export default function ApplicationFormPage() {
                     <span className="text-[10px] text-emerald-400 font-normal">Optional &bull; Zero penalty if omitted</span>
                   </div>
 
-                  {formData.resume_url ? (
+                  {resumeUploadError && (
+                    <div className="p-3 rounded-xl bg-red-950/60 border border-red-500/50 text-xs text-red-300 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                      <span>{resumeUploadError}</span>
+                    </div>
+                  )}
+
+                  {isUploadingResume ? (
+                    <div className="p-6 rounded-2xl bg-black/50 border border-red-500/40 flex flex-col items-center justify-center gap-2 text-center">
+                      <Clock className="w-6 h-6 text-red-400 animate-spin" />
+                      <span className="text-xs font-bold text-white">Uploading resume to secure vault...</span>
+                      <span className="text-[10px] text-slate-400">Encrypting and attaching document to dossier</span>
+                    </div>
+                  ) : formData.resume_url ? (
                     <div className="p-4 rounded-2xl bg-black/60 border border-emerald-500/50 flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">

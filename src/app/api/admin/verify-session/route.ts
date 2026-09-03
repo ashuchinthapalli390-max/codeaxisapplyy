@@ -14,11 +14,13 @@ export async function GET(req: NextRequest) {
 
     if (authResult.status === "unauthenticated") {
       const res = NextResponse.json({ authenticated: false, code: "ADMIN_UNAUTHORIZED" }, { status: 401 });
-      // Only delete cookie if confirmed unauthenticated/revoked
-      res.cookies.delete({
-        name: ADMIN_SESSION_COOKIE,
-        path: "/",
-      });
+      // Only delete cookie if confirmed expired or revoked
+      if (authResult.reason === "session_revoked" || authResult.reason === "session_expired") {
+        res.cookies.delete({
+          name: ADMIN_SESSION_COOKIE,
+          path: "/",
+        });
+      }
       return res;
     }
 

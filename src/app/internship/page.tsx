@@ -5,7 +5,7 @@ import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
 import Link from "next/link";
-import Image from "next/image";
+import ImageWithFallback from "@/components/ui/ImageWithFallback";
 import { ArrowRight, CheckCircle2, Code2, Cpu, Database, GitBranch, Globe, Rocket, ShieldCheck, Terminal, Users, Zap } from "lucide-react";
 import { learningModules, LearningModuleCard } from "@/config/card-assets";
 import { SiteModule } from "@/types/admin";
@@ -88,11 +88,11 @@ export default function InternshipPage() {
           </p>
         </div>
 
-        {/* 4 Learning Modules Cards */}
+        {/* 6 Learning Modules Cards */}
         <div className="space-y-8">
           <h2 className="text-xl sm:text-2xl font-black font-mono text-white uppercase border-b border-red-950 pb-3 flex items-center justify-between">
-            <span>8-Week Sprint Roadmap</span>
-            <span className="text-xs text-red-400 font-normal">4 Core Engineering Modules</span>
+            <span>12-Week Sprint Roadmap</span>
+            <span className="text-xs text-red-400 font-normal">6 Core Engineering Modules</span>
           </h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -103,7 +103,7 @@ export default function InternshipPage() {
               >
                 {/* Visual Banner */}
                 <div className="relative aspect-[16/9] w-full overflow-hidden bg-black">
-                  <Image
+                  <ImageWithFallback
                     src={mod.image}
                     alt={mod.title}
                     fill

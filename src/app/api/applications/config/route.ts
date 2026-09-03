@@ -72,12 +72,29 @@ export async function GET() {
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to fetch application config.",
+        error: "Schedule currently unavailable. Please verify connection.",
+        data: {
+          round: {
+            id: "unavailable",
+            title: "CodeXa Developer Internship",
+            batch_code: "2026",
+            status: "CLOSED",
+            raw_status: "CLOSED",
+            opens_at: null,
+            closes_at: null,
+            next_opens_at: null,
+            timezone: "Asia/Kolkata",
+            is_active: false,
+            canApply: false,
+          },
+          schedule_unavailable: true,
+          server_time_ms: Date.now(),
+        },
       },
       {
-        status: 500,
+        status: 200,
         headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         },
       }
     );

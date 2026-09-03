@@ -695,17 +695,28 @@ export default function AdminApplicationsPage() {
                             </Link>
 
                             {/* Resume */}
-                            {app.resume_url && (
-                              <a
-                                href={app.resume_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={playButtonClick}
-                                className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white transition-all"
-                                title="Download Resume"
+                            {Boolean((app as any).resume_storage_path || app.resume_url) && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  playButtonClick();
+                                  try {
+                                    const res = await fetch(`/api/admin/applications/${app.reference_id}/resume`, { credentials: "include" });
+                                    const json = await res.json();
+                                    if (json.success && json.signedUrl) {
+                                      window.open(json.signedUrl, "_blank");
+                                    } else {
+                                      alert(json.error || "Could not generate download link.");
+                                    }
+                                  } catch {
+                                    alert("Network error fetching resume.");
+                                  }
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white transition-all cursor-pointer"
+                                title="Download Resume (Secure Signed URL)"
                               >
                                 <FileText className="w-3.5 h-3.5" />
-                              </a>
+                              </button>
                             )}
 
                             {/* Soft Delete */}

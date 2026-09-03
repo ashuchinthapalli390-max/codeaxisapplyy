@@ -1,214 +1,547 @@
 -- ==============================================================================
--- CODEXA APPLY V2 — SUPABASE POSTGRESQL PRODUCTION SCHEMA
--- Project: CodeXa Apply (Dedicated Project)
--- Region: Mumbai / ap-south-1
+-- CODEXA APPLY V2 — AUTHORITATIVE CANONICAL PRODUCTION SCHEMA
+-- Single Source of Truth for Internship Timing, Applications, Leadership,
+-- Assets, Sessions, Interviews, Emails, Offers, and Security Audit Logs.
 -- ==============================================================================
 
--- Enable UUID extension
-create extension if not exists "uuid-ossp";
+-- 0. Extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 1. APPLICATIONS TABLE (Core Candidate Submissions)
-create table if not exists public.applications (
-  id uuid primary key default gen_random_uuid(),
-  reference_id text not null unique,
-  full_name text not null,
-  date_of_birth text,
-  gender text,
-  email text not null,
-  phone_number text not null,
-  whatsapp_number text,
-  city text,
-  state text,
-  country text default 'India',
-  college_name text,
-  degree text,
-  branch text,
-  graduation_year text,
-  current_year_semester text,
-  cgpa_percentage text,
-  github_profile text,
-  linkedin_profile text,
-  portfolio_website text,
-  other_profiles jsonb default '[]',
-  primary_interest text,
-  primary_role_applied text default 'Full-Stack Developer',
-  experience_level text,
-  total_score numeric(5, 2) default 0,
-  score_band text default 'Review',
-  genuineness_integrity_score numeric(5, 2) default 0,
-  commitment_continuity_score numeric(5, 2) default 0,
-  mindset_habits_score numeric(5, 2) default 0,
-  technical_knowledge_score numeric(5, 2) default 0,
-  learning_potential_score numeric(5, 2) default 0,
-  interview_communication_score numeric(5, 2) default 0,
-  commitment_signal text,
-  skill_authenticity text,
-  status text not null default 'Submitted',
-  admin_notes jsonb default '[]',
-  admin_tags jsonb default '[]',
-  raw_submission jsonb default '{}',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  is_deleted boolean not null default false
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- 1. INTERNSHIP ROUNDS (Application Timing & Dynamic State Engine)
+CREATE TABLE IF NOT EXISTS public.internship_rounds (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  batch_code TEXT NOT NULL,
+  title TEXT NOT NULL DEFAULT 'CodeXa Developer Internship 2026',
+  opens_at TIMESTAMPTZ NOT NULL,
+  closes_at TIMESTAMPTZ NOT NULL,
+  next_opens_at TIMESTAMPTZ NULL,
+  timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+  status_override TEXT NOT NULL DEFAULT 'AUTO',
+  is_active BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  CONSTRAINT chk_internship_rounds_dates CHECK (closes_at > opens_at),
+  CONSTRAINT chk_internship_rounds_next CHECK (next_opens_at IS NULL OR next_opens_at > opens_at),
+  CONSTRAINT chk_internship_rounds_override CHECK (status_override IN ('AUTO', 'OPEN', 'CLOSED', 'PAUSED')),
+  CONSTRAINT chk_internship_rounds_batch CHECK (batch_code != '' AND batch_code = UPPER(TRIM(batch_code)))
 );
 
-create index if not exists applications_ref_idx on public.applications (reference_id);
-create index if not exists applications_email_idx on public.applications (email);
-create index if not exists applications_status_idx on public.applications (status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_internship_rounds_batch ON public.internship_rounds (batch_code);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_internship_rounds_single_active ON public.internship_rounds (is_active) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_internship_rounds_active ON public.internship_rounds (is_active);
+CREATE INDEX IF NOT EXISTS idx_internship_rounds_dates ON public.internship_rounds (opens_at, closes_at);
 
--- 2. APPLICATION STATUS HISTORY TABLE
-create table if not exists public.application_status_history (
-  id uuid primary key default gen_random_uuid(),
-  application_id uuid references public.applications(id) on delete cascade,
-  reference_id text not null,
-  previous_status text,
-  new_status text not null,
-  note text,
-  changed_by text not null default 'System',
-  created_at timestamptz not null default now()
+DROP TRIGGER IF EXISTS trg_internship_rounds_updated_at ON public.internship_rounds;
+CREATE TRIGGER trg_internship_rounds_updated_at
+  BEFORE UPDATE ON public.internship_rounds
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 2. APPLICATIONS TABLE (Full 8-Round Dossier & Score Matrix)
+CREATE TABLE IF NOT EXISTS public.applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference_id TEXT NOT NULL UNIQUE,
+
+  -- Round 1: Personal Profile
+  full_name TEXT NOT NULL,
+  date_of_birth TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone_number TEXT NOT NULL,
+  whatsapp_number TEXT NULL,
+  city TEXT NOT NULL,
+  state TEXT NOT NULL,
+  country TEXT NOT NULL DEFAULT 'India',
+  preferred_name TEXT NULL,
+  discord_username TEXT NULL,
+  instagram_handle TEXT NULL,
+  preferred_language TEXT NOT NULL DEFAULT 'English',
+  hobbies JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+  -- Round 2: Academic Verification
+  college_name TEXT NOT NULL,
+  university_name TEXT NOT NULL,
+  degree TEXT NULL,
+  course TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  academic_year TEXT NOT NULL,
+  semester TEXT NOT NULL,
+  roll_number TEXT NOT NULL,
+  graduation_year TEXT NULL,
+  expected_graduation TEXT NOT NULL,
+  cgpa TEXT NULL,
+  percentage TEXT NULL,
+  cgpa_percentage TEXT NULL,
+  certifications TEXT NULL,
+  achievements TEXT NULL,
+  backlogs TEXT NULL,
+
+  -- Round 3: Developer Presence & Optional Resume
+  coding_start_timeline TEXT NOT NULL,
+  has_built_projects TEXT NOT NULL,
+  hackathon_experience TEXT NOT NULL DEFAULT 'None',
+  internship_experience TEXT NOT NULL DEFAULT 'None',
+  freelancing_experience TEXT NOT NULL DEFAULT 'None',
+  open_source_experience TEXT NOT NULL DEFAULT 'None',
+  team_project_experience TEXT NOT NULL DEFAULT 'None',
+  developer_links JSONB NOT NULL DEFAULT '[]'::jsonb,
+  projects JSONB NOT NULL DEFAULT '[]'::jsonb,
+  github_profile TEXT NULL,
+  linkedin_profile TEXT NULL,
+  portfolio_website TEXT NULL,
+  resume_storage_path TEXT NULL,
+  resume_file_name TEXT NULL,
+  resume_file_size INT NULL,
+  resume_file_type TEXT NULL,
+
+  -- Round 4: Availability & Hardware
+  daily_availability TEXT NOT NULL,
+  available_days JSONB NOT NULL DEFAULT '[]'::jsonb,
+  preferred_timing JSONB NOT NULL DEFAULT '[]'::jsonb,
+  can_attend_meetings TEXT NOT NULL,
+  can_meet_deadlines TEXT NOT NULL,
+  can_communicate_if_unavailable TEXT NOT NULL,
+  academic_constraints TEXT NULL,
+  exam_periods TEXT NULL,
+  laptop_status TEXT NOT NULL,
+  operating_system TEXT NOT NULL,
+  ram_capacity TEXT NOT NULL,
+  internet_stability TEXT NOT NULL,
+  can_run_dev_tools TEXT NOT NULL,
+  processor TEXT NULL,
+  gpu TEXT NULL,
+  storage_type TEXT NULL,
+  laptop_model TEXT NULL,
+  webcam_available TEXT NOT NULL DEFAULT 'Yes',
+  mic_available TEXT NOT NULL DEFAULT 'Yes',
+
+  -- Round 5: Technical Awareness
+  c_level TEXT NOT NULL DEFAULT 'I Don''t Know',
+  c_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  python_level TEXT NOT NULL DEFAULT 'I Don''t Know',
+  python_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  java_level TEXT NOT NULL DEFAULT 'I Don''t Know',
+  java_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  html_level TEXT NOT NULL DEFAULT 'I Don''t Know',
+  html_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  vibe_coding_level TEXT NOT NULL DEFAULT 'Never Used',
+  vibe_coding_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Round 6: Mindset Assessment
+  mindset_answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Round 7: Thought-Process Interview Responses
+  interview_q1_why_codexa TEXT NOT NULL,
+  interview_q2_why_select TEXT NOT NULL,
+  interview_q3_expectations TEXT NOT NULL,
+  interview_q4_strongest_skills TEXT NOT NULL,
+  interview_q5_weakest_area TEXT NOT NULL,
+  interview_q6_describe_project TEXT NOT NULL,
+  interview_q7_difficult_problem TEXT NOT NULL,
+  interview_q8_ai_coding_usage TEXT NOT NULL,
+  interview_q9_college_balance TEXT NOT NULL,
+  interview_q10_future_goal TEXT NOT NULL,
+
+  -- Round 8: Commitments & Declarations
+  commitment_accurate_info BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_independent_work BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_responsible_communication BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_team_rules BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_confidentiality BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_assigned_duties BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_no_guaranteed_employment BOOLEAN NOT NULL DEFAULT TRUE,
+  commitment_accept_policies BOOLEAN NOT NULL DEFAULT TRUE,
+
+  -- Integrity Signals
+  copy_paste_warnings_count INT NOT NULL DEFAULT 0,
+  tab_switch_count INT NOT NULL DEFAULT 0,
+
+  -- 100-Point Scoring Matrix
+  genuineness_integrity_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  commitment_continuity_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  mindset_habits_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  technical_knowledge_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  learning_potential_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  interview_communication_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  total_score NUMERIC(5,2) NOT NULL DEFAULT 0.00,
+  score_band TEXT NOT NULL DEFAULT 'Review',
+  commitment_signal TEXT NOT NULL DEFAULT 'Moderate',
+  skill_authenticity JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Administration & Status
+  status TEXT NOT NULL DEFAULT 'Submitted',
+  admin_notes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  admin_tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+
+  -- Soft Delete & Dummy Flagging
+  is_deleted BOOLEAN NOT NULL DEFAULT false,
+  deleted_at TIMESTAMPTZ NULL,
+  deleted_by TEXT NULL,
+  deletion_reason TEXT NULL,
+  is_test BOOLEAN NOT NULL DEFAULT false,
+
+  -- Snapshot Backup
+  raw_submission JSONB NOT NULL DEFAULT '{}'::jsonb,
+
+  -- Timestamps
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 3. ADMIN SESSIONS TABLE (Zero-plain-token storage)
-create table if not exists public.admin_sessions (
-  id uuid primary key default gen_random_uuid(),
-  token_hash text not null unique,
-  device_label text,
-  user_agent text,
-  ip_hash text,
-  created_at timestamptz not null default now(),
-  last_seen_at timestamptz not null default now(),
-  expires_at timestamptz not null,
-  revoked_at timestamptz
+CREATE INDEX IF NOT EXISTS idx_applications_ref ON public.applications (reference_id);
+CREATE INDEX IF NOT EXISTS idx_applications_email ON public.applications (email);
+CREATE INDEX IF NOT EXISTS idx_applications_status ON public.applications (status);
+CREATE INDEX IF NOT EXISTS idx_applications_created ON public.applications (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applications_deleted ON public.applications (is_deleted);
+CREATE INDEX IF NOT EXISTS idx_applications_is_test ON public.applications (is_test);
+
+DROP TRIGGER IF EXISTS trg_applications_updated_at ON public.applications;
+CREATE TRIGGER trg_applications_updated_at
+  BEFORE UPDATE ON public.applications
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 3. APPLICATION STATUS HISTORY
+CREATE TABLE IF NOT EXISTS public.application_status_history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  application_id UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,
+  reference_id TEXT NOT NULL,
+  previous_status TEXT,
+  new_status TEXT NOT NULL,
+  note TEXT,
+  changed_by TEXT NOT NULL DEFAULT 'System',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 4. ADMIN LOGIN ATTEMPTS (Rate limiting)
-create table if not exists public.admin_login_attempts (
-  id bigint generated by default as identity primary key,
-  identifier_hash text not null,
-  success boolean not null default false,
-  created_at timestamptz not null default now()
+CREATE INDEX IF NOT EXISTS idx_app_status_hist_app ON public.application_status_history (application_id);
+CREATE INDEX IF NOT EXISTS idx_app_status_hist_ref ON public.application_status_history (reference_id);
+
+-- 4. TEAM MEMBERS (Leadership CMS)
+CREATE TABLE IF NOT EXISTS public.team_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  role TEXT NOT NULL,
+  codename TEXT NULL,
+  short_bio TEXT NULL,
+  photo_url TEXT NULL,
+  photo_asset_id UUID NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-create index if not exists admin_login_attempts_idx on public.admin_login_attempts (identifier_hash, created_at);
+CREATE INDEX IF NOT EXISTS idx_team_members_order ON public.team_members (sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_team_members_active ON public.team_members (is_active);
 
--- 5. ADMIN AUDIT LOGS TABLE
-create table if not exists public.admin_audit_logs (
-  id uuid primary key default gen_random_uuid(),
-  action text not null,
-  details text not null,
-  admin_identifier text default 'Master Admin',
-  created_at timestamptz not null default now()
+DROP TRIGGER IF EXISTS trg_team_members_updated_at ON public.team_members;
+CREATE TRIGGER trg_team_members_updated_at
+  BEFORE UPDATE ON public.team_members
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 5. WEBSITE ASSETS METADATA
+CREATE TABLE IF NOT EXISTS public.website_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  storage_bucket TEXT NOT NULL DEFAULT 'website-assets',
+  storage_path TEXT NOT NULL,
+  public_url TEXT NOT NULL,
+  category TEXT NOT NULL,
+  title TEXT NOT NULL,
+  alt_text TEXT NULL,
+  mime_type TEXT NOT NULL,
+  file_size INT NOT NULL,
+  width INT NULL,
+  height INT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  uploaded_by TEXT DEFAULT 'Master Admin',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 6. EMAIL LOGS TABLE
-create table if not exists public.email_logs (
-  id uuid primary key default gen_random_uuid(),
-  application_id uuid references public.applications(id) on delete set null,
-  email_type text not null,
-  recipient text not null,
-  provider_message_id text,
-  status text not null,
-  error_message text,
-  created_at timestamptz not null default now()
+CREATE INDEX IF NOT EXISTS idx_website_assets_category ON public.website_assets (category);
+CREATE INDEX IF NOT EXISTS idx_website_assets_active ON public.website_assets (is_active);
+
+DROP TRIGGER IF EXISTS trg_website_assets_updated_at ON public.website_assets;
+CREATE TRIGGER trg_website_assets_updated_at
+  BEFORE UPDATE ON public.website_assets
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 6. ADMIN SESSIONS (Persistent & Revocable)
+CREATE TABLE IF NOT EXISTS public.admin_sessions (
+  id TEXT PRIMARY KEY,
+  token_hash TEXT UNIQUE NOT NULL,
+  device_label TEXT,
+  user_agent TEXT,
+  ip_address TEXT DEFAULT '127.0.0.1',
+  remember_me BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ NULL
 );
 
--- 7. TEAM PROFILES TABLE (Leadership CMS)
-create table if not exists public.team_profiles (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  designation text not null,
-  role_type text not null default 'Core',
-  bio text,
-  quote text,
-  photo_url text,
-  email text,
-  phone text,
-  whatsapp text,
-  roles jsonb default '[]',
-  skills jsonb default '[]',
-  display_order integer default 0,
-  is_featured boolean default true,
-  is_visible boolean default true,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON public.admin_sessions (token_hash);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON public.admin_sessions (expires_at);
+CREATE INDEX IF NOT EXISTS idx_admin_sessions_revoked ON public.admin_sessions (revoked_at);
+
+-- 7. INTERVIEWS TABLE
+CREATE TABLE IF NOT EXISTS public.interviews (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  application_id UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,
+  reference_id TEXT NOT NULL,
+  applicant_name TEXT NOT NULL,
+  applicant_email TEXT NOT NULL,
+  interview_round TEXT NOT NULL DEFAULT 'Technical & Mindset Review',
+  interview_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata',
+  duration_minutes INT NOT NULL DEFAULT 30,
+  platform TEXT NOT NULL DEFAULT 'Google Meet',
+  meeting_link TEXT NOT NULL,
+  interviewer_name TEXT NOT NULL DEFAULT 'Ashu Chinthapalli',
+  applicant_instructions TEXT NULL,
+  internal_notes TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'Scheduled',
+  invitation_sent BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Seed Initial Leadership Profiles
-insert into public.team_profiles (name, designation, role_type, bio, quote, photo_url, email, whatsapp, roles, skills, display_order)
-values
-(
-  'Ashu',
-  'Founder & Technical Director',
-  'Founder',
-  'Founder of CodeXa Agency. Focuses on AI agent architecture, developer tools, hosting platforms, Discord automation, 3D animated web experiences, secure application portals, and recruitment systems.',
-  'I don''t just write code, I build solutions that create impact.',
-  '/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg',
-  'ashuchinthapalli3900@gmail.com',
-  '+91 88979 01413',
-  '["Founder", "Technical Direction", "AI Architecture", "Product Strategy"]',
-  '["EDITH AI", "CODEXA IDE", "Claude Code API", "Ethical Hacking", "3D Web", "Full-Stack"]',
-  1
-),
-(
-  'Deepak',
-  'Co-Founder & Operations Lead',
-  'Co-Founder',
-  'Co-Founder of CodeXa Agency. Supports the agency through team coordination, community engagement, application guidance, internship communication, and student query resolution.',
-  'Connecting people, supporting progress, and keeping the journey smooth.',
-  '/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg',
-  'contact@codxa-agency.online',
-  '+91 94942 45412',
-  '["Co-Founder", "Agency Operations", "Team Coordination", "Internship Coordination", "Program Support"]',
-  '["Team Coordination", "Operations Management", "Student Support", "Community Building"]',
-  2
-),
-(
-  'Kishore',
-  'Chief Executive Officer (CEO)',
-  'CEO',
-  'CEO of CodeXa Agency. Drives business strategy, agency partnerships, growth initiatives, project coordination, and administration. Oversees operational scaling.',
-  'Scaling execution, driving innovation, and accelerating developer careers.',
-  '/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg',
-  'business@codxa-agency.online',
-  '+91 70758 00951',
-  '["CEO", "Business Strategy", "Growth & Partnerships", "Project Coordination", "Administration"]',
-  '["Business Strategy", "Growth Marketing", "Project Management", "Organizational Leadership"]',
-  3
+CREATE INDEX IF NOT EXISTS idx_interviews_ref ON public.interviews (reference_id);
+CREATE INDEX IF NOT EXISTS idx_interviews_date ON public.interviews (interview_date);
+CREATE INDEX IF NOT EXISTS idx_interviews_status ON public.interviews (status);
+
+DROP TRIGGER IF EXISTS trg_interviews_updated_at ON public.interviews;
+CREATE TRIGGER trg_interviews_updated_at
+  BEFORE UPDATE ON public.interviews
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 8. EMAIL LOGS TABLE
+CREATE TABLE IF NOT EXISTS public.email_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  application_id UUID REFERENCES public.applications(id) ON DELETE SET NULL,
+  email_type TEXT NOT NULL,
+  recipient TEXT NOT NULL,
+  provider_message_id TEXT NULL,
+  idempotency_key TEXT UNIQUE NULL,
+  status TEXT NOT NULL,
+  error_message TEXT NULL,
+  retry_count INT NOT NULL DEFAULT 0,
+  sent_at TIMESTAMPTZ NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_logs_app ON public.email_logs (application_id);
+CREATE INDEX IF NOT EXISTS idx_email_logs_idempotency ON public.email_logs (idempotency_key);
+
+-- 9. OFFER LETTERS TABLE
+CREATE TABLE IF NOT EXISTS public.offer_letters (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  application_id UUID NOT NULL REFERENCES public.applications(id) ON DELETE CASCADE,
+  reference_id TEXT NOT NULL,
+  applicant_name TEXT NOT NULL,
+  applicant_email TEXT NOT NULL,
+  internship_role TEXT NOT NULL DEFAULT 'Full-Stack Developer Intern',
+  batch_code TEXT NOT NULL DEFAULT '2026-SEP',
+  joining_date DATE NOT NULL,
+  duration TEXT NOT NULL DEFAULT '12 Weeks',
+  work_mode TEXT NOT NULL DEFAULT 'Remote',
+  work_location TEXT DEFAULT 'Online / Remote',
+  working_hours TEXT DEFAULT 'Flexible / 3-4 Hours Daily',
+  reporting_person TEXT DEFAULT 'CodeXa Technical Leadership',
+  stipend_status TEXT DEFAULT 'Performance-Based Stipend & Project Incentives',
+  acceptance_deadline DATE NOT NULL,
+  terms_and_conditions TEXT NULL,
+  authorized_person TEXT DEFAULT 'CH. Arshad',
+  designation TEXT DEFAULT 'Founder & Technical Director',
+  pdf_storage_path TEXT NULL,
+  version INT NOT NULL DEFAULT 1,
+  status TEXT NOT NULL DEFAULT 'Offer Sent',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_offer_letters_ref ON public.offer_letters (reference_id);
+CREATE INDEX IF NOT EXISTS idx_offer_letters_status ON public.offer_letters (status);
+
+DROP TRIGGER IF EXISTS trg_offer_letters_updated_at ON public.offer_letters;
+CREATE TRIGGER trg_offer_letters_updated_at
+  BEFORE UPDATE ON public.offer_letters
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- 10. OFFER RESPONSES TABLE (Email-Driven Token Security)
+CREATE TABLE IF NOT EXISTS public.offer_responses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  offer_id UUID NOT NULL REFERENCES public.offer_letters(id) ON DELETE CASCADE,
+  token_hash TEXT UNIQUE NOT NULL,
+  action TEXT NOT NULL, -- 'ACCEPT' or 'REJECT'
+  is_used BOOLEAN NOT NULL DEFAULT false,
+  used_at TIMESTAMPTZ NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  ip_address TEXT NULL,
+  user_agent TEXT NULL,
+  decline_reason TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_offer_resp_token ON public.offer_responses (token_hash);
+CREATE INDEX IF NOT EXISTS idx_offer_resp_offer ON public.offer_responses (offer_id);
+
+-- 11. AUDIT LOGS TABLE
+CREATE TABLE IF NOT EXISTS public.audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  action TEXT NOT NULL,
+  admin_user TEXT NOT NULL DEFAULT 'Master Admin',
+  target_type TEXT NULL,
+  target_id TEXT NULL,
+  details JSONB DEFAULT '{}'::jsonb,
+  ip_address TEXT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON public.audit_logs (action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON public.audit_logs (created_at DESC);
+
+-- 12. SITE SETTINGS TABLE (Agency CMS)
+CREATE TABLE IF NOT EXISTS public.site_settings (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  hero_heading TEXT DEFAULT 'BUILD. LEARN. DEBUG. SHIP.',
+  hero_subtitle TEXT DEFAULT 'DEVELOPER INTERNSHIP 2026',
+  hero_description TEXT DEFAULT 'A practical developer recruitment experience and internship built for students and aspiring engineers who want to build real-world software, master AI-assisted workflows, and ship production applications.',
+  agency_name TEXT DEFAULT 'CodeXa Agency',
+  agency_url TEXT DEFAULT 'https://www.codxa-agency.online',
+  agency_description TEXT DEFAULT 'Building Technology. Building Developers. We build full-stack web platforms, AI solutions, developer tools, and automation systems.',
+  whatsapp_support_number TEXT DEFAULT '+91 88979 01413',
+  founder_email TEXT DEFAULT 'ashuchinthapalli3900@gmail.com',
+  raw_settings JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ==============================================================================
+-- INITIAL SEED DATA
+-- ==============================================================================
+
+-- Seed Active September 2026 Round
+INSERT INTO public.internship_rounds (
+  batch_code,
+  title,
+  opens_at,
+  closes_at,
+  next_opens_at,
+  timezone,
+  status_override,
+  is_active
+) VALUES (
+  '2026-SEP',
+  'CodeXa Developer Internship 2026',
+  '2026-09-01T09:00:00+05:30'::timestamptz,
+  '2026-09-07T23:59:00+05:30'::timestamptz,
+  '2026-09-15T09:00:00+05:30'::timestamptz,
+  'Asia/Kolkata',
+  'AUTO',
+  true
 )
-on conflict do nothing;
+ON CONFLICT (batch_code) DO UPDATE SET
+  opens_at = EXCLUDED.opens_at,
+  closes_at = EXCLUDED.closes_at,
+  next_opens_at = EXCLUDED.next_opens_at,
+  timezone = EXCLUDED.timezone,
+  status_override = EXCLUDED.status_override,
+  is_active = EXCLUDED.is_active,
+  updated_at = NOW();
 
--- 8. SITE SETTINGS & ASSETS METADATA
-create table if not exists public.site_assets (
-  id uuid primary key default gen_random_uuid(),
-  asset_key text not null unique,
-  name text not null,
-  asset_url text not null,
-  asset_type text not null,
-  section text not null,
-  alt_text text,
-  is_active boolean default true,
-  created_at timestamptz default now(),
-  updated_at timestamptz default now()
-);
+-- Seed Canonical Leadership Team Members
+-- CH. Arshad (Founder), B. Sanjay (Co-Founder), Kishore (CEO), G. Bhanu Prasad (CEO)
+INSERT INTO public.team_members (id, name, role, codename, short_bio, photo_url, sort_order, is_active)
+VALUES
+  (
+    '00000000-0000-0000-0000-000000000001',
+    'CH. Arshad',
+    'Founder & Technical Director',
+    'SOUTH DEVELOPER',
+    'Founder of CodeXa Agency. Focuses on full-stack architecture, AI agent systems, developer tooling, and engineering mentorship.',
+    '/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg',
+    1,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000002',
+    'B. Sanjay',
+    'Co-Founder & Platform Lead',
+    'Spideyy !!',
+    'Co-Founder of CodeXa Agency. Directs developer platform workflows, client integrations, team coordination, and student developer support.',
+    '/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg',
+    2,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000003',
+    'Kishore',
+    'Chief Executive Officer',
+    NULL,
+    'CEO at CodeXa Agency. Drives organizational execution, strategic partnerships, operational scalability, and career acceleration for interns.',
+    '/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg',
+    3,
+    true
+  ),
+  (
+    '00000000-0000-0000-0000-000000000004',
+    'G. Bhanu Prasad',
+    'Chief Executive Officer',
+    'Hakai',
+    'CEO at CodeXa Agency. Leads growth strategy, technology direction, talent recruitment pipelines, and industry collaboration.',
+    '/assets/image-assests/4e56a0c0bb365775c6bf2e89d6e5a40e.jpg',
+    4,
+    true
+  )
+ON CONFLICT (id) DO UPDATE SET
+  name = EXCLUDED.name,
+  role = EXCLUDED.role,
+  codename = EXCLUDED.codename,
+  short_bio = EXCLUDED.short_bio,
+  photo_url = EXCLUDED.photo_url,
+  sort_order = EXCLUDED.sort_order,
+  is_active = EXCLUDED.is_active,
+  updated_at = NOW();
 
 -- ==============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
--- Strict server-only access; all applicant operations execute through Next.js server.
 -- ==============================================================================
-alter table public.applications enable row level security;
-alter table public.application_status_history enable row level security;
-alter table public.admin_sessions enable row level security;
-alter table public.admin_login_attempts enable row level security;
-alter table public.admin_audit_logs enable row level security;
-alter table public.email_logs enable row level security;
-alter table public.team_profiles enable row level security;
-alter table public.site_assets enable row level security;
+ALTER TABLE public.internship_rounds ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.applications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.application_status_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.team_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.website_assets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.admin_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.interviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.email_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.offer_letters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.offer_responses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.site_settings ENABLE ROW LEVEL SECURITY;
 
--- Public read-only for public team profiles & site assets if needed by frontend
-create policy "Public can view visible team profiles"
-  on public.team_profiles for select
-  using (is_visible = true);
+-- Public can read visible team members
+DROP POLICY IF EXISTS "Public can view active team members" ON public.team_members;
+CREATE POLICY "Public can view active team members"
+  ON public.team_members FOR SELECT
+  USING (is_active = true);
 
-create policy "Public can view active site assets"
-  on public.site_assets for select
-  using (is_active = true);
+-- Public can read active website assets
+DROP POLICY IF EXISTS "Public can view active website assets" ON public.website_assets;
+CREATE POLICY "Public can view active website assets"
+  ON public.website_assets FOR SELECT
+  USING (is_active = true);
+
+-- Server-side role (service_role) has unrestricted access through Data API
+-- Note: Service role automatically bypasses RLS in Supabase.
+-- Public anon cannot write to any table directly.

@@ -643,7 +643,7 @@ export default function CandidateDetailPage() {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 uppercase block font-bold">Candidate Resume</span>
-                  {candidate.resume_url ? (
+                  {Boolean((candidate as any).resume_storage_path || candidate.resume_url) ? (
                     <div className="text-white font-bold flex items-center gap-2">
                       <span>{candidate.resume_file_name || "Resume_Document.pdf"}</span>
                       {candidate.resume_file_size && (
@@ -653,21 +653,34 @@ export default function CandidateDetailPage() {
                       )}
                     </div>
                   ) : (
-                    <span className="text-slate-400 italic">Resume not provided</span>
+                    <span className="text-slate-400 italic">Resume not provided (Zero penalty)</span>
                   )}
                 </div>
               </div>
 
-              {candidate.resume_url && (
+              {Boolean((candidate as any).resume_storage_path || candidate.resume_url) && (
                 <div className="flex items-center gap-2">
-                  <a
-                    href={candidate.resume_url}
-                    download={candidate.resume_file_name || `${candidate.full_name}_Resume.pdf`}
-                    className="px-3.5 py-1.5 rounded-xl bg-red-600/30 border border-red-500/40 text-red-300 hover:bg-red-600 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all"
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      playButtonClick();
+                      try {
+                        const res = await fetch(`/api/admin/applications/${refId}/resume`, { credentials: "include" });
+                        const json = await res.json();
+                        if (json.success && json.signedUrl) {
+                          window.open(json.signedUrl, "_blank");
+                        } else {
+                          alert(json.error || "Failed to generate download link.");
+                        }
+                      } catch {
+                        alert("Network error fetching resume.");
+                      }
+                    }}
+                    className="px-3.5 py-1.5 rounded-xl bg-red-600/30 border border-red-500/40 text-red-300 hover:bg-red-600 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    <span>Download</span>
-                  </a>
+                    <span>Secure Download</span>
+                  </button>
                 </div>
               )}
             </div>

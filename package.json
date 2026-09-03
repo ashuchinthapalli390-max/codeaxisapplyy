@@ -12,11 +12,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
+    "@types/pg": "^8.23.1",
     "canvas-confetti": "^1.9.4",
     "jspdf": "^4.2.1",
     "lucide-react": "^1.17.0",
     "mysql2": "^3.22.4",
     "next": "16.2.7",
+    "pg": "^8.23.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.22.0",
