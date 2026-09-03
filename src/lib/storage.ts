@@ -647,10 +647,8 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
           .single();
 
         if (updateError) {
-          throw new Error(`Failed to update internship round in Supabase: ${updateError.message}`);
-        }
-
-        if (updatedDb) {
+          console.warn("[Supabase updateInternshipRound Warning]:", updateError.message);
+        } else if (updatedDb) {
           updated.id = String(updatedDb.id);
           updated.updated_at = updatedDb.updated_at;
         }
@@ -662,10 +660,8 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
           .single();
 
         if (insertError) {
-          throw new Error(`Failed to insert internship round into Supabase: ${insertError.message}`);
-        }
-
-        if (insertedDb) {
+          console.warn("[Supabase insertInternshipRound Warning]:", insertError.message);
+        } else if (insertedDb) {
           updated.id = String(insertedDb.id);
           updated.updated_at = insertedDb.updated_at;
         }
@@ -690,9 +686,8 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
         console.warn("[Supabase Settings Sync Notice]:", settingsSyncErr);
       }
     }
-  } catch (err) {
-    console.error("[Supabase saveInternshipRound Exception]:", err);
-    throw err;
+  } catch (err: any) {
+    console.warn("[Supabase saveInternshipRound Exception]:", err?.message || err);
   }
 
   // Update in-memory cache
