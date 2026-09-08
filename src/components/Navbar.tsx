@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Volume2, VolumeX, Menu, X, Terminal, ArrowRight, ShieldCheck } from "lucide-react";
 import { isSoundEnabled, toggleSound, playButtonClick } from "@/lib/audio";
+import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 
 export default function Navbar() {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
+  const { canApply, effectiveStatus } = useApplicationAvailability();
 
   useEffect(() => {
     setSoundOn(isSoundEnabled());
@@ -112,15 +114,22 @@ export default function Navbar() {
             <span>TRACK APPLICATION</span>
           </Link>
 
-          {/* Apply Button */}
-          <Link
-            href="/apply"
-            onClick={playButtonClick}
-            className="btn-red-sweep text-xs font-mono font-black uppercase tracking-widest bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white px-5 py-2.5 rounded-xl border border-red-400/40 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex items-center gap-2"
-          >
-            <span>APPLY NOW</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </Link>
+          {/* Apply Button or Status */}
+          {canApply ? (
+            <Link
+              href="/apply"
+              onClick={playButtonClick}
+              className="btn-red-sweep text-xs font-mono font-black uppercase tracking-widest bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white px-5 py-2.5 rounded-xl border border-red-400/40 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex items-center gap-2"
+            >
+              <span>APPLY NOW</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
+          ) : (
+            <div className="px-4 py-2 rounded-xl border border-red-900/60 bg-red-950/40 text-red-300 text-xs font-mono font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-not-allowed">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span>{effectiveStatus === "OPENING_SOON" ? "OPENING SOON" : "APPLICATIONS CLOSED"}</span>
+            </div>
+          )}
         </div>
 
         {/* Mobile Menu Button */}
@@ -130,7 +139,7 @@ export default function Navbar() {
             onClick={handleSoundToggle}
             className="p-2 rounded-lg border border-red-500/20 bg-red-950/20 text-slate-300"
           >
-            {soundOn ? <Volume2 className="w-4 h-4 text-red-400" /> : <VolumeX className="w-4 h-4" />}
+            {soundOn ? <Volume2 className="w-4 h-4 text-red-400" /> : <VolumeX className="w-4 h-4 text-slate-500" />}
           </button>
           <button
             type="button"
@@ -175,16 +184,22 @@ export default function Navbar() {
           </div>
 
           <div className="pt-2">
-            <Link
-              href="/apply"
-              onClick={() => {
-                playButtonClick();
-                setMobileMenuOpen(false);
-              }}
-              className="w-full text-center block font-mono font-black uppercase text-xs tracking-widest bg-gradient-to-r from-red-600 to-rose-700 text-white py-3.5 rounded-xl border border-red-400/40 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-            >
-              START APPLICATION &rarr;
-            </Link>
+            {canApply ? (
+              <Link
+                href="/apply"
+                onClick={() => {
+                  playButtonClick();
+                  setMobileMenuOpen(false);
+                }}
+                className="w-full text-center block font-mono font-black uppercase text-xs tracking-widest bg-gradient-to-r from-red-600 to-rose-700 text-white py-3.5 rounded-xl border border-red-400/40 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+              >
+                START APPLICATION &rarr;
+              </Link>
+            ) : (
+              <div className="w-full text-center block font-mono font-bold uppercase text-xs tracking-wider bg-red-950/60 text-red-300 border border-red-900 py-3.5 rounded-xl cursor-not-allowed">
+                {effectiveStatus === "OPENING_SOON" ? "APPLICATIONS OPENING SOON" : "APPLICATIONS CLOSED"}
+              </div>
+            )}
           </div>
         </div>
       )}

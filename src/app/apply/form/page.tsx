@@ -18,6 +18,7 @@ import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLeve
 import { validateRound } from "@/lib/validation";
 import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
 import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, clearApplicationDraft } from "@/lib/integrity";
+import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 import {
   AlertCircle,
   AlertTriangle,
@@ -325,6 +326,7 @@ const MINDSET_QUESTIONS = [
 
 export default function ApplicationFormPage() {
   const router = useRouter();
+  const { canApply, effectiveStatus, round } = useApplicationAvailability();
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [formData, setFormData] = useState<ApplicationData>(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -700,6 +702,14 @@ export default function ApplicationFormPage() {
   const handleSubmitFinalApplication = async () => {
     playButtonClick();
 
+    if (!canApply) {
+      setSubmissionError(
+        `Applications for this round are currently ${effectiveStatus.toLowerCase()}. Your draft responses are safely preserved.`
+      );
+      playWarningTone();
+      return;
+    }
+
     // Import and validate all 8 screening rounds
     const { validateAllRounds } = await import("@/lib/validation");
     const validation = validateAllRounds(formData);
@@ -707,9 +717,24 @@ export default function ApplicationFormPage() {
     if (!validation.isValid) {
       setErrors(validation.errors);
       playWarningTone();
-      if (validation.firstInvalidRound && validation.firstInvalidRound !== 8) {
-        setCurrentRound(validation.firstInvalidRound);
-        scrollToTop();
+      if (validation.firstInvalidRound) {
+        if (validation.firstInvalidRound !== currentRound) {
+          setCurrentRound(validation.firstInvalidRound);
+        }
+        setTimeout(() => {
+          const firstErrKey = Object.keys(validation.errors)[0];
+          if (firstErrKey) {
+            const el = document.querySelector(`[name="${firstErrKey}"], #${firstErrKey}`);
+            if (el) {
+              (el as HTMLElement).focus?.();
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+            } else {
+              scrollToTop();
+            }
+          } else {
+            scrollToTop();
+          }
+        }, 150);
       }
       return;
     }
@@ -722,12 +747,22 @@ export default function ApplicationFormPage() {
     const t2 = setTimeout(() => setSubmissionStep(3), 1200);
     const t3 = setTimeout(() => setSubmissionStep(4), 1800);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     try {
+      // Stable client submission attempt key for safe retry and deduplication
+      const clientSubmissionKey =
+        (formData as any).submission_key ||
+        `sub_${(formData.email || "cax").replace(/[^a-zA-Z0-9]/g, "")}_${Date.now()}`;
+
       const res = await fetch("/api/applications/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           ...formData,
+          submission_key: clientSubmissionKey,
           integrity_meta: {
             clipboardWarnings: formData.copy_paste_warnings_count || 0,
             tabSwitchCount: formData.tab_switch_count || 0,
@@ -736,7 +771,8 @@ export default function ApplicationFormPage() {
         }),
       });
 
-      const json = await res.json();
+      clearTimeout(timeoutId);
+      const json = await res.json().catch(() => ({ success: false, error: "Invalid server response." }));
       if (json.success && json.data?.reference_id) {
         setSubmissionStep(5);
         playSuccessSound();
@@ -755,13 +791,17 @@ export default function ApplicationFormPage() {
         );
         playWarningTone();
       }
-    } catch {
+    } catch (err: any) {
+      clearTimeout(timeoutId);
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
       setIsSubmitting(false);
+      const isTimeout = err?.name === "AbortError";
       setSubmissionError(
-        "A network connection issue occurred while submitting. Your draft is completely safe. Please click Retry Submission."
+        isTimeout
+          ? "Request timed out. If your internet is slow, your draft is safely kept. Please click Retry Submission."
+          : "A network connection issue occurred while submitting. Your draft is completely safe. Please click Retry Submission."
       );
       playWarningTone();
     }
@@ -818,6 +858,21 @@ export default function ApplicationFormPage() {
             </div>
           </div>
         </div>
+
+        {/* Availability Warning Banner */}
+        {!canApply && (
+          <div className="mb-6 p-4 rounded-2xl bg-red-950/80 border-2 border-red-500/80 text-red-200 text-xs flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <span className="font-bold uppercase tracking-wider block text-white">
+                Application Window Currently Unavailable ({effectiveStatus})
+              </span>
+              <span>
+                Applications are currently closed or paused. Your draft responses are safely preserved, but new submissions cannot be accepted at this time.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Desktop Split Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
@@ -1982,6 +2037,15 @@ export default function ApplicationFormPage() {
                     />
 
                     <Checkbox
+                      id="c-team-rules"
+                      name="commitment_team_rules"
+                      checked={formData.commitment_team_rules}
+                      onChange={handleInputChange}
+                      error={errors.commitment_team_rules}
+                      label="I agree to adhere to CodeXa team coordination guidelines, sprint milestones, and peer collaboration rules."
+                    />
+
+                    <Checkbox
                       id="c-confidentiality"
                       name="commitment_confidentiality"
                       checked={formData.commitment_confidentiality}
@@ -2047,10 +2111,17 @@ export default function ApplicationFormPage() {
                 <Button3D
                   type="button"
                   variant="primary"
+                  disabled={!canApply || isSubmitting}
                   onClick={handleSubmitFinalApplication}
                   className="py-4 px-9 text-xs font-black uppercase tracking-widest shadow-[0_0_30px_rgba(239,68,68,0.7)]"
                 >
-                  <span>SUBMIT APPLICATION TO CODEXA</span>
+                  <span>
+                    {isSubmitting
+                      ? "SUBMITTING..."
+                      : canApply
+                      ? "SUBMIT APPLICATION TO CODEXA"
+                      : `APPLICATIONS ${effectiveStatus}`}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </Button3D>
               )}

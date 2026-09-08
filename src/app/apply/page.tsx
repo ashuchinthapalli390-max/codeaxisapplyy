@@ -9,8 +9,10 @@ import Image from "next/image";
 import { ArrowRight, CheckCircle2, Clock, FileText, Lock, ShieldCheck, Sparkles, Terminal } from "lucide-react";
 import { playButtonClick } from "@/lib/audio";
 import { applicationRounds } from "@/config/card-assets";
+import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 
 export default function ApplyEntryPage() {
+  const { canApply, effectiveStatus } = useApplicationAvailability();
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 relative flex flex-col justify-between selection:bg-red-600 selection:text-white">
       
@@ -128,16 +130,33 @@ export default function ApplyEntryPage() {
         {/* Action Button */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
           <div className="text-xs text-slate-400">
-            By proceeding, you will review the screening rules and integrity pledge.
+            {canApply
+              ? "By proceeding, you will review the screening rules and integrity pledge."
+              : "Applications are currently not accepting new candidates. You may track an existing application."}
           </div>
-          <Link
-            href="/apply/rules"
-            onClick={playButtonClick}
-            className="btn-red-sweep w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.5)] flex items-center justify-center gap-2"
-          >
-            <span>REVIEW RULES & START</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+          {canApply ? (
+            <Link
+              href="/apply/rules"
+              onClick={playButtonClick}
+              className="btn-red-sweep w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.5)] flex items-center justify-center gap-2"
+            >
+              <span>REVIEW RULES & START</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          ) : (
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <Link
+                href="/status"
+                onClick={playButtonClick}
+                className="w-full sm:w-auto px-6 py-3.5 bg-black/60 border border-slate-800 hover:border-red-500/40 text-slate-300 hover:text-white font-bold text-xs uppercase tracking-wider rounded-2xl text-center"
+              >
+                TRACK APPLICATION
+              </Link>
+              <div className="px-6 py-3.5 bg-red-950/40 border border-red-900/60 text-red-300 font-bold text-xs uppercase tracking-wider rounded-2xl cursor-not-allowed">
+                {effectiveStatus === "OPENING_SOON" ? "OPENING SOON" : "APPLICATIONS CLOSED"}
+              </div>
+            </div>
+          )}
         </div>
 
       </main>

@@ -21,16 +21,36 @@ export async function GET(req: NextRequest) {
       await requireAdmin(req);
     }
 
-    const allMembers = await getTeamMembers(includeArchived);
-
     if (publicOnly) {
-      const publicMembers = allMembers.filter((m) => m.isVisible !== false && !m.isArchived);
-      return NextResponse.json({ success: true, data: publicMembers });
+      const { getPublicTeam } = await import("@/lib/storage");
+      const publicMembers = await getPublicTeam();
+      return NextResponse.json(
+        { success: true, data: publicMembers },
+        {
+          headers: {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          },
+        }
+      );
     }
+
+    const { getAdminTeam } = await import("@/lib/storage");
+    const allMembers = await getAdminTeam();
 
     return NextResponse.json({ success: true, data: allMembers });
   } catch (err) {
     return handleAdminAuthError(err);
+  }
+}
+
+async function triggerTeamCacheInvalidation() {
+  try {
+    const { revalidatePath } = await import("next/cache");
+    revalidatePath("/");
+    revalidatePath("/about");
+    revalidatePath("/api/team");
+  } catch {
+    // non-blocking
   }
 }
 
@@ -45,6 +65,7 @@ export async function POST(req: NextRequest) {
     if (body.action === "reorder" && Array.isArray(body.orderedIds)) {
       await reorderTeamMembers(body.orderedIds);
       await addAuditLog("TEAM_UPDATE", "Updated team leadership display order.");
+      await triggerTeamCacheInvalidation();
       return NextResponse.json({ success: true, message: "Display order saved." });
     }
 
@@ -53,6 +74,7 @@ export async function POST(req: NextRequest) {
       const duplicated = await duplicateTeamMember(body.id);
       if (duplicated) {
         await addAuditLog("TEAM_UPDATE", `Duplicated team profile: ${body.id}`);
+        await triggerTeamCacheInvalidation();
         return NextResponse.json({ success: true, data: duplicated });
       }
       return NextResponse.json({ success: false, error: "Original member not found." }, { status: 404 });
@@ -62,6 +84,7 @@ export async function POST(req: NextRequest) {
     if (body.action === "restore" && body.id) {
       await restoreTeamMember(body.id);
       await addAuditLog("TEAM_UPDATE", `Restored archived team profile: ${body.id}`);
+      await triggerTeamCacheInvalidation();
       return NextResponse.json({ success: true, message: "Profile restored." });
     }
 
@@ -73,6 +96,7 @@ export async function POST(req: NextRequest) {
         "TEAM_UPDATE",
         hard ? `Permanently deleted team member: ${body.id}` : `Archived team member: ${body.id}`
       );
+      await triggerTeamCacheInvalidation();
       return NextResponse.json({ success: true, message: hard ? "Team member deleted." : "Team member archived." });
     }
 
@@ -141,6 +165,7 @@ export async function POST(req: NextRequest) {
 
     await saveTeamMember(member);
     await addAuditLog("TEAM_UPDATE", `Saved leadership member: ${member.name} (${member.designation})`);
+    await triggerTeamCacheInvalidation();
 
     return NextResponse.json({ success: true, data: member });
   } catch (err) {

@@ -102,6 +102,7 @@ export async function POST(req: NextRequest) {
         title: round?.title || "CodeXa Developer Internship 2026",
         batch_code: batchCode,
         status,
+        status_override: status,
         opens_at: opensAt,
         closes_at: closesAt,
         next_opens_at: nextOpensAt,

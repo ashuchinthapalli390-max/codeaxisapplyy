@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Crown,
@@ -26,6 +26,12 @@ interface LeadershipDetailModalProps {
 }
 
 export default function LeadershipDetailModal({ member, isOpen, onClose }: LeadershipDetailModalProps) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [member?.photoUrl]);
+
   if (!isOpen || !member) return null;
 
   const responsibilities = member.responsibilities || member.roles || [];
@@ -63,10 +69,11 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
             
             {/* Profile Avatar / Photo */}
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-black border-2 border-red-500/60 p-1 shadow-[0_0_25px_rgba(239,68,68,0.4)] shrink-0 overflow-hidden relative">
-              {member.photoUrl ? (
+              {member.photoUrl && !imgError ? (
                 <img
                   src={member.photoUrl}
                   alt={member.name}
+                  onError={() => setImgError(true)}
                   style={{
                     objectPosition: `${member.profileObjectPositionX ?? 50}% ${member.profileObjectPositionY ?? 50}%`,
                     transform: `scale(${member.profileScale ?? 1})`,
@@ -74,8 +81,8 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
                   className="w-full h-full object-cover rounded-2xl"
                 />
               ) : (
-                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-red-950 to-black flex items-center justify-center text-2xl font-black text-white">
-                  {member.name.slice(0, 2).toUpperCase()}
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-red-950 to-black flex items-center justify-center text-2xl font-black text-red-300 border border-red-900/60">
+                  {(member.displayName || member.name).slice(0, 2).toUpperCase()}
                 </div>
               )}
             </div>

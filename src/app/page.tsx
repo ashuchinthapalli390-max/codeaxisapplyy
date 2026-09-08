@@ -54,16 +54,24 @@ export default function HomePage() {
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [modules, setModules] = useState<SiteModule[]>([]);
   const [selectedLeaderModal, setSelectedLeaderModal] = useState<TeamMember | null>(null);
+  const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    fetch("/api/admin/team?public=true")
+  const fetchTeamMembers = () => {
+    fetch("/api/team", {
+      cache: "no-store",
+      headers: { "Cache-Control": "no-cache" },
+    })
       .then((res) => res.json())
       .then((json) => {
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setTeamMembers(json.data);
         }
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchTeamMembers();
 
     fetch("/api/modules")
       .then((res) => res.json())
@@ -127,19 +135,30 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchAppConfig();
-    const interval = setInterval(fetchAppConfig, 5000); // 5s live sync
-    window.addEventListener("focus", fetchAppConfig);
+    fetchTeamMembers();
+
+    const interval = setInterval(() => {
+      fetchAppConfig();
+      fetchTeamMembers();
+    }, 5000); // 5s live sync
+
+    const onSync = () => {
+      fetchAppConfig();
+      fetchTeamMembers();
+    };
+
+    window.addEventListener("focus", onSync);
 
     const handleVisibility = () => {
       if (document.visibilityState === "visible") {
-        fetchAppConfig();
+        onSync();
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       clearInterval(interval);
-      window.removeEventListener("focus", fetchAppConfig);
+      window.removeEventListener("focus", onSync);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, []);
@@ -159,22 +178,26 @@ export default function HomePage() {
     const calculateTime = () => {
       const correctedNow = Date.now() + serverClockOffset;
       const round = appConfig?.round;
-
-      const opensAtMs = round?.opens_at
+      const avail = (appConfig as any)?.availability;
+      const opensAtMs = avail?.opensAt
+        ? new Date(avail.opensAt).getTime()
+        : round?.opens_at
         ? new Date(round.opens_at).getTime()
         : new Date("2026-09-01T09:00:00+05:30").getTime();
-      const closesAtMs = round?.closes_at
+      const closesAtMs = avail?.closesAt
+        ? new Date(avail.closesAt).getTime()
+        : round?.closes_at
         ? new Date(round.closes_at).getTime()
         : new Date("2026-09-07T23:59:59+05:30").getTime();
       const nextOpensAtMs = round?.next_opens_at ? new Date(round.next_opens_at).getTime() : null;
 
       // Status derivation
-      const rawStatus = (round as any)?.raw_status || round?.status || "AUTO";
+      const rawStatus = avail?.mode || (round as any)?.raw_status || round?.status || "AUTO";
 
       let status: "OPEN" | "OPENING_SOON" | "CLOSED" = "OPEN";
       let targetMs = closesAtMs;
       let badgeText = "APPLICATION WINDOW CLOSING SOON";
-      let canApply = true;
+      let canApply = avail ? avail.canApply : true;
 
       if (rawStatus === "OPEN") {
         status = "OPEN";
@@ -186,7 +209,7 @@ export default function HomePage() {
         targetMs = opensAtMs;
         badgeText = "APPLICATION WINDOW OPENS IN";
         canApply = false;
-      } else if (rawStatus === "CLOSED") {
+      } else if (rawStatus === "CLOSED" || rawStatus === "PAUSED") {
         status = "CLOSED";
         targetMs = nextOpensAtMs || closesAtMs;
         badgeText = nextOpensAtMs ? "NEXT APPLICATION WINDOW IN" : "APPLICATIONS CURRENTLY CLOSED";
@@ -1083,10 +1106,11 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                       </div>
 
                       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform relative">
-                        {member.photoUrl ? (
+                        {member.photoUrl && !brokenImages[member.id] ? (
                           <img
                             src={member.photoUrl}
                             alt={member.name}
+                            onError={() => setBrokenImages((prev) => ({ ...prev, [member.id]: true }))}
                             style={{
                               objectPosition: `${member.profileObjectPositionX ?? 50}% ${member.profileObjectPositionY ?? 50}%`,
                               transform: `scale(${member.profileScale ?? 1})`,
@@ -1094,8 +1118,8 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                             className="w-full h-full object-cover rounded-xl"
                           />
                         ) : (
-                          <div className="w-full h-full rounded-xl bg-red-950/70 flex items-center justify-center text-lg font-black text-white">
-                            {member.name.slice(0, 2).toUpperCase()}
+                          <div className="w-full h-full rounded-xl bg-gradient-to-br from-red-950 via-slate-900 to-black flex items-center justify-center text-lg font-black text-red-300 border border-red-900/60">
+                            {(member.displayName || member.name).slice(0, 2).toUpperCase()}
                           </div>
                         )}
                       </div>

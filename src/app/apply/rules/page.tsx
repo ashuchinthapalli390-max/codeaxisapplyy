@@ -9,12 +9,14 @@ import Button3D from "@/components/ui/Button3D";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowRight, CheckCircle2, Copy, Eye, Link2, ShieldAlert, Sparkles, Headphones } from "lucide-react";
 import { playButtonClick } from "@/lib/audio";
+import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 
 export default function RulesPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [agreed, setAgreed] = useState(false);
   const [wasReset, setWasReset] = useState(false);
+  const { canApply, effectiveStatus } = useApplicationAvailability();
 
   useEffect(() => {
     if (searchParams?.get("reset") === "integrity_limit") {
@@ -23,7 +25,7 @@ export default function RulesPage() {
   }, [searchParams]);
 
   const handleBegin = () => {
-    if (!agreed) return;
+    if (!agreed || !canApply) return;
     playButtonClick();
     if (typeof window !== "undefined") {
       sessionStorage.setItem("codexa_rules_accepted", "true");
@@ -82,6 +84,19 @@ export default function RulesPage() {
 
       <main className="flex-grow pt-32 pb-20 max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8 text-left font-mono">
         
+        {/* Availability Warning Banner */}
+        {!canApply && (
+          <div className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500/80 text-red-200 text-xs flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 shrink-0" />
+            <div>
+              <span className="font-bold uppercase tracking-wider block text-white">
+                Applications Currently Unavailable ({effectiveStatus})
+              </span>
+              <span>The application window is currently closed or paused. New submissions cannot be started right now.</span>
+            </div>
+          </div>
+        )}
+
         {/* Reset alert banner if redirected after 5th strike */}
         {wasReset && (
           <div className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-200 text-xs flex items-center gap-3 animate-bounce">
@@ -164,11 +179,11 @@ export default function RulesPage() {
           <Button3D
             type="button"
             variant="primary"
-            disabled={!agreed}
+            disabled={!agreed || !canApply}
             onClick={handleBegin}
             className="w-full sm:w-auto px-8 py-4 text-xs font-black uppercase tracking-widest rounded-2xl"
           >
-            <span>BEGIN APPLICATION</span>
+            <span>{canApply ? "BEGIN APPLICATION" : "APPLICATIONS UNAVAILABLE"}</span>
             <ArrowRight className="w-4 h-4" />
           </Button3D>
         </div>

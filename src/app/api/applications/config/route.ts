@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveInternshipRound, getWebsiteSettings } from "@/lib/storage";
+import { resolveApplicationAvailability } from "@/lib/availability";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,39 +13,28 @@ export async function GET() {
     const now = new Date();
     const serverTimeMs = now.getTime();
 
-    const opensAtMs = round?.opens_at ? new Date(round.opens_at).getTime() : 0;
-    const closesAtMs = round?.closes_at ? new Date(round.closes_at).getTime() : 0;
-    const nextOpensAtMs = round?.next_opens_at ? new Date(round.next_opens_at).getTime() : null;
-
-    let computedStatus = round?.status || "AUTO";
-
-    if (round?.status === "AUTO" || !round?.status) {
-      if (opensAtMs > 0 && serverTimeMs < opensAtMs) {
-        computedStatus = "OPENING_SOON";
-      } else if (closesAtMs > 0 && serverTimeMs >= closesAtMs) {
-        computedStatus = "CLOSED";
-      } else if (opensAtMs > 0 && closesAtMs > 0 && serverTimeMs >= opensAtMs && serverTimeMs < closesAtMs) {
-        computedStatus = "OPEN";
-      } else {
-        computedStatus = "OPEN";
-      }
-    }
+    const availability = resolveApplicationAvailability(round, serverTimeMs);
 
     const payload = {
       success: true,
       data: {
         round: {
-          id: round?.id || "round-2026-sep",
+          id: availability.roundId,
           title: round?.title || "CodeXa Developer Internship 2026",
-          batch_code: round?.batch_code || "2026-SEP",
-          status: computedStatus,
-          raw_status: round?.status || "AUTO",
-          opens_at: round?.opens_at || null,
-          closes_at: round?.closes_at || null,
-          next_opens_at: round?.next_opens_at || null,
-          timezone: round?.timezone || "Asia/Kolkata",
+          batch_code: availability.batchCode,
+          status: availability.effectiveStatus,
+          raw_status: availability.mode,
+          opens_at: availability.opensAt,
+          closes_at: availability.closesAt,
+          next_opens_at: availability.nextOpensAt,
+          timezone: availability.timezone,
           is_active: Boolean(round?.is_active),
+          canApply: availability.canApply,
+          reasonCode: availability.reasonCode,
+          isOverride: availability.isOverride,
+          revision: availability.revision,
         },
+        availability,
         settings: {
           heroHeading: settings.heroHeading,
           heroSubtitle: settings.heroSubtitle,

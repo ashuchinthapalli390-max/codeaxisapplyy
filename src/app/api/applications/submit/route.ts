@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApplicationData } from "@/types/application";
 import { calculateApplicationScores } from "@/lib/scoring";
-import { saveApplication } from "@/lib/storage";
+import { saveApplication, getActiveInternshipRound } from "@/lib/storage";
 import { validateAllRounds } from "@/lib/validation";
+import { resolveApplicationAvailability } from "@/lib/availability";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as Partial<ApplicationData>;
+    const body = (await req.json()) as Partial<ApplicationData> & { submission_key?: string };
 
     if (!body || typeof body !== "object") {
       return NextResponse.json(
@@ -17,7 +18,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Server-side validation of screening questions
+    // 1. Authoritative Server Availability Gate
+    const activeRound = await getActiveInternshipRound();
+    const serverTimeMs = Date.now();
+    const availability = resolveApplicationAvailability(activeRound, serverTimeMs);
+
+    if (!availability.canApply) {
+      const isSoon = availability.effectiveStatus === "OPENING_SOON";
+      return NextResponse.json(
+        {
+          success: false,
+          error: isSoon
+            ? "Applications are not open yet. Please check back when the application window begins."
+            : "Applications are currently closed for this round.",
+          reasonCode: availability.reasonCode,
+          effectiveStatus: availability.effectiveStatus,
+          roundId: availability.roundId,
+        },
+        { status: 403 }
+      );
+    }
+
+    // 2. Server-side validation of screening questions
     const validation = validateAllRounds(body);
     if (!validation.isValid) {
       return NextResponse.json(
@@ -31,7 +53,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Compute 100-point scoring model and authenticity signals
+    // 3. Compute 100-point scoring model and authenticity signals
     const scoreReport = calculateApplicationScores(body);
 
     const fullApplicationData: ApplicationData = {
@@ -53,25 +75,29 @@ export async function POST(req: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // 3. Save atomically with collision-safe reference ID
+    // 4. Save atomically with collision-safe reference ID
     const saved = await saveApplication(fullApplicationData);
 
-    // 4. Asynchronously dispatch Resend confirmation email
+    // 5. Asynchronously dispatch Resend confirmation email
     // (Email failure is non-blocking and NEVER deletes or rolls back a saved submission)
+    let emailStatus: "sent" | "failed" | "queued" = "queued";
     try {
       const { sendApplicationReceivedEmail } = await import("@/lib/email/send-application-received");
-      await sendApplicationReceivedEmail({
+      const emailResult = await sendApplicationReceivedEmail({
         name: fullApplicationData.full_name,
         email: fullApplicationData.email,
         referenceId: saved.reference_id,
       });
+      emailStatus = emailResult ? "sent" : "failed";
     } catch (emailErr) {
+      emailStatus = "failed";
       console.warn("[Resend Email Notice]: Application submission saved successfully, but notification email failed to dispatch:", emailErr);
     }
 
     return NextResponse.json({
       success: true,
       message: "Application submitted and registered successfully.",
+      emailStatus,
       data: {
         id: saved.id,
         reference_id: saved.reference_id,

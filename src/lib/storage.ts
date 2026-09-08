@@ -41,10 +41,11 @@ const DEFAULT_INTERNSHIP_ROUND: InternshipRound = {
   id: "round-2026-sep",
   title: "CodeXa Developer Internship 2026",
   batch_code: "2026-SEP",
-  status: "AUTO",
+  status: "OPEN",
+  status_override: "OPEN",
   opens_at: "2026-09-01T09:00:00+05:30",
-  closes_at: "2026-09-07T23:59:59+05:30",
-  next_opens_at: "2026-09-15T09:00:00+05:30",
+  closes_at: "2026-09-25T23:59:59+05:30",
+  next_opens_at: "2026-10-01T09:00:00+05:30",
   timezone: "Asia/Kolkata",
   is_active: true,
   created_at: "2026-09-01T09:00:00.000Z",
@@ -52,13 +53,13 @@ const DEFAULT_INTERNSHIP_ROUND: InternshipRound = {
 };
 
 const DEFAULT_SETTINGS: WebsiteSettings = {
-  applicationStatus: "AUTO",
+  applicationStatus: "OPEN",
   batchCode: "2026-SEP",
   openDate: "2026-09-01",
   openTime: "09:00",
-  closeDate: "2026-09-07",
+  closeDate: "2026-09-25",
   closeTime: "23:59",
-  nextOpenDate: "2026-09-15",
+  nextOpenDate: "2026-10-01",
   nextOpenTime: "09:00",
   timezone: "Asia/Kolkata",
   heroHeading: "BUILD. LEARN. DEBUG. SHIP.",
@@ -241,6 +242,8 @@ const DEFAULT_TEAM: TeamMember[] = [
     skills: ["Platform Engineering", "Developer Operations", "Team Coordination", "CI/CD", "TypeScript"],
     location: "Hyderabad, India",
     preferredContact: "WhatsApp",
+    phone: "7075920852",
+    email: "boddukurisanjay@gmail.com",
     showPhone: false,
     showEmail: false,
     showWhatsapp: false,
@@ -297,6 +300,8 @@ const DEFAULT_TEAM: TeamMember[] = [
     skills: ["Executive Leadership", "Technology Strategy", "Recruitment Pipelines", "Full-Stack Dev", "Talent Mentorship"],
     location: "Hyderabad, India",
     preferredContact: "Email",
+    phone: "8135533212",
+    email: "bhanugorantla18@gmail.com",
     showPhone: false,
     showEmail: false,
     showWhatsapp: false,
@@ -374,12 +379,14 @@ const DEFAULT_SITE_ASSETS: SiteAsset[] = [
   },
 ];
 
-let memoryCache: StoreData | null = null;
+declare global {
+  var __codexa_memory_store: StoreData | undefined;
+}
 
 function ensureStore(): StoreData {
-  if (memoryCache) return memoryCache;
+  if (globalThis.__codexa_memory_store) return globalThis.__codexa_memory_store;
 
-  memoryCache = {
+  globalThis.__codexa_memory_store = {
     applications: [],
     internshipRounds: [{ ...DEFAULT_INTERNSHIP_ROUND }],
     modules: [...DEFAULT_MODULES],
@@ -397,7 +404,7 @@ function ensureStore(): StoreData {
     nextApplicationSequence: 101,
   };
 
-  return memoryCache;
+  return globalThis.__codexa_memory_store;
 }
 
 export function isTestSubmission(app: Partial<ApplicationData>): boolean {
@@ -573,7 +580,7 @@ export async function getActiveInternshipRound(): Promise<InternshipRound> {
           id: String(data.id),
           title: data.title || "CodeXa Developer Internship 2026",
           batch_code: data.batch_code || "2026-SEP",
-          status: (data.status || "AUTO") as any,
+          status: (data.status_override || data.status || "AUTO") as any,
           opens_at: data.opens_at,
           closes_at: data.closes_at,
           next_opens_at: data.next_opens_at,
@@ -618,10 +625,11 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const dbPayload = {
+      const overrideVal = (updated.status || "AUTO").toUpperCase();
+      let dbPayload: any = {
         title: updated.title,
         batch_code: updated.batch_code,
-        status: updated.status,
+        status_override: overrideVal,
         opens_at: updated.opens_at,
         closes_at: updated.closes_at,
         next_opens_at: updated.next_opens_at || null,
@@ -639,28 +647,54 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
         .maybeSingle();
 
       if (existingActive?.id) {
-        const { data: updatedDb, error: updateError } = await supabase
+        let { data: updatedDb, error: updateError } = await supabase
           .from("internship_rounds")
           .update(dbPayload)
           .eq("id", existingActive.id)
           .select()
           .single();
 
+        // If status_override failed because column is named status, retry with status
+        if (updateError && updateError.message.includes("status_override")) {
+          delete dbPayload.status_override;
+          dbPayload.status = overrideVal;
+          const retryRes = await supabase
+            .from("internship_rounds")
+            .update(dbPayload)
+            .eq("id", existingActive.id)
+            .select()
+            .single();
+          updatedDb = retryRes.data;
+          updateError = retryRes.error;
+        }
+
         if (updateError) {
-          console.warn("[Supabase updateInternshipRound Warning]:", updateError.message);
+          console.error("[Supabase updateInternshipRound Error]:", updateError.message);
         } else if (updatedDb) {
           updated.id = String(updatedDb.id);
           updated.updated_at = updatedDb.updated_at;
         }
       } else {
-        const { data: insertedDb, error: insertError } = await supabase
+        let { data: insertedDb, error: insertError } = await supabase
           .from("internship_rounds")
           .insert(dbPayload)
           .select()
           .single();
 
+        if (insertError && insertError.message.includes("status_override")) {
+          delete dbPayload.status_override;
+          dbPayload.status = overrideVal;
+          const retryRes = await supabase
+            .from("internship_rounds")
+            .insert(dbPayload)
+            .select()
+            .single();
+          insertedDb = retryRes.data;
+          insertError = retryRes.error;
+        }
+
         if (insertError) {
-          console.warn("[Supabase insertInternshipRound Warning]:", insertError.message);
+          console.error("[Supabase insertInternshipRound Error]:", insertError.message);
         } else if (insertedDb) {
           updated.id = String(insertedDb.id);
           updated.updated_at = insertedDb.updated_at;
@@ -687,7 +721,7 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
       }
     }
   } catch (err: any) {
-    console.warn("[Supabase saveInternshipRound Exception]:", err?.message || err);
+    console.error("[Supabase saveInternshipRound Exception]:", err?.message || err);
   }
 
   // Update in-memory cache
@@ -872,6 +906,23 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
+    // Idempotency check via client submission_key
+    const subKey = (data as any).submission_key;
+    if (subKey) {
+      const { data: existingByKey } = await supabase
+        .from("applications")
+        .select("id, reference_id")
+        .eq("submission_key", subKey)
+        .maybeSingle();
+
+      if (existingByKey) {
+        return {
+          id: existingByKey.id,
+          reference_id: existingByKey.reference_id,
+        };
+      }
+    }
+
     const { data: inserted, error } = await supabase
       .from("applications")
       .insert(dbPayload)
@@ -879,6 +930,21 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       .single();
 
     if (error) {
+      if (error.code === "23505" || error.message?.includes("duplicate key") || error.message?.includes("reference_id")) {
+        // Query existing by reference_id for safe idempotency
+        const { data: existing } = await supabase
+          .from("applications")
+          .select("id, reference_id")
+          .eq("reference_id", refId)
+          .maybeSingle();
+
+        if (existing) {
+          return {
+            id: existing.id,
+            reference_id: existing.reference_id,
+          };
+        }
+      }
       console.error("[Supabase Application Insert Error]:", error);
       throw new Error(`Database error saving application: ${error.message}`);
     }
@@ -891,6 +957,19 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
 
   // 2. In-memory Mock fallback if Supabase not configured in development
   const store = ensureStore();
+  const subKey = (data as any).submission_key;
+  if (subKey) {
+    const existing = store.applications.find(
+      (a) => (a as any).submission_key === subKey || (data.reference_id && a.reference_id === data.reference_id)
+    );
+    if (existing) {
+      return {
+        id: existing.id || 1,
+        reference_id: existing.reference_id,
+      };
+    }
+  }
+
   const nextId = store.applications.length + 1;
   const applicationRecord: ApplicationData = {
     ...data,
@@ -1324,111 +1403,113 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
 // ----------------- TEAM & LEADERSHIP CMS -----------------
 
 function mapDbRowToTeamMember(row: any): TeamMember {
-  const responsibilities = Array.isArray(row.responsibilities)
+  const details = row.details || {};
+  const designation = row.role || details.designation || row.designation || "Leadership";
+  const roleType = details.roleType || row.role_type || (designation.includes("Founder") ? (designation.includes("Co-") ? "Co-Founder" : "Founder") : designation.includes("CEO") ? "CEO" : "Core Team");
+  const responsibilities = Array.isArray(details.responsibilities)
+    ? details.responsibilities
+    : Array.isArray(row.responsibilities)
     ? row.responsibilities
     : Array.isArray(row.roles)
     ? row.roles
     : [];
+
+  const photo = row.photo_url || row.profile_image_url || details.photoUrl || "";
+
   return {
-    id: row.id,
+    id: String(row.id),
     name: row.name,
-    displayName: row.display_name || row.name,
-    designation: row.designation,
-    secondaryDesignation: row.secondary_designation || "",
-    roleType: row.role_type || "Core Team",
-    department: row.department || "",
-    tagline: row.tagline || "",
-    bio: row.short_bio || row.bio || "",
-    shortBio: row.short_bio || row.bio || "",
-    fullBio: row.full_bio || "",
-    professionalSummary: row.professional_summary || "",
-    quote: row.quote || "",
-    photoUrl: row.profile_image_url || "/assets/image-assests/ashu-chinthapalli.jpg",
-    profileStoragePath: row.profile_storage_path || "",
-    profileObjectPositionX: row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50,
-    profileObjectPositionY: row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50,
-    profileScale: row.profile_scale != null ? Number(row.profile_scale) : 1,
-    backgroundAssetUrl: row.background_asset_url || "",
-    backgroundType: row.background_type || "none",
+    displayName: details.displayName || row.display_name || row.name,
+    designation,
+    secondaryDesignation: details.secondaryDesignation || row.secondary_designation || "",
+    roleType,
+    department: details.department || row.department || "",
+    tagline: details.tagline || row.tagline || "",
+    codename: row.codename != null ? row.codename : (details.codename || ""),
+    bio: row.short_bio || row.bio || details.bio || details.shortBio || "",
+    shortBio: row.short_bio || details.shortBio || row.bio || "",
+    fullBio: details.fullBio || row.full_bio || row.short_bio || row.bio || "",
+    professionalSummary: details.professionalSummary || row.professional_summary || "",
+    quote: details.quote || row.quote || "",
+    photoUrl: photo,
+    profileStoragePath: details.profileStoragePath || row.profile_storage_path || "",
+    profileObjectPositionX: details.profileObjectPositionX != null ? Number(details.profileObjectPositionX) : (row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50),
+    profileObjectPositionY: details.profileObjectPositionY != null ? Number(details.profileObjectPositionY) : (row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50),
+    profileScale: details.profileScale != null ? Number(details.profileScale) : (row.profile_scale != null ? Number(row.profile_scale) : 1),
+    backgroundAssetUrl: details.backgroundAssetUrl || row.background_asset_url || "",
+    backgroundType: details.backgroundType || row.background_type || "none",
     responsibilities,
     roles: responsibilities,
-    skills: Array.isArray(row.skills) ? row.skills : [],
-    email: row.email || "",
-    secondaryEmail: row.secondary_email || "",
-    phone: row.phone || "",
-    whatsapp: row.whatsapp || "",
-    location: row.location || "",
-    preferredContact: row.preferred_contact || "",
-    githubUrl: row.github_url || "",
-    linkedinUrl: row.linkedin_url || "",
-    instagramUrl: row.instagram_url || "",
-    portfolioUrl: row.portfolio_url || "",
-    websiteUrl: row.website_url || "",
-    youtubeUrl: row.youtube_url || "",
-    twitterUrl: row.twitter_url || "",
-    discordUsername: row.discord_username || "",
-    otherLinks: Array.isArray(row.other_links) ? row.other_links : [],
-    showPhone: row.show_phone !== false,
-    showEmail: row.show_email !== false,
-    showWhatsapp: row.show_whatsapp !== false,
-    showSocials: row.show_socials !== false,
-    showContact: row.show_phone !== false || row.show_whatsapp !== false || row.show_email !== false,
-    isFeatured: row.is_featured === true,
-    isVisible: row.is_visible !== false,
-    isArchived: row.is_archived === true,
-    displayOrder: row.display_order != null ? Number(row.display_order) : 0,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    skills: Array.isArray(details.skills) ? details.skills : (Array.isArray(row.skills) ? row.skills : []),
+    email: details.email || row.email || "",
+    secondaryEmail: details.secondaryEmail || row.secondary_email || "",
+    phone: details.phone || row.phone || "",
+    whatsapp: details.whatsapp || row.whatsapp || "",
+    location: details.location || row.location || "Hyderabad, India",
+    preferredContact: details.preferredContact || row.preferred_contact || "Email",
+    githubUrl: details.githubUrl || row.github_url || "",
+    linkedinUrl: details.linkedinUrl || row.linkedin_url || "",
+    instagramUrl: details.instagramUrl || row.instagram_url || "",
+    portfolioUrl: details.portfolioUrl || row.portfolio_url || "",
+    websiteUrl: details.websiteUrl || row.website_url || "",
+    youtubeUrl: details.youtubeUrl || row.youtube_url || "",
+    twitterUrl: details.twitterUrl || row.twitter_url || "",
+    discordUsername: details.discordUsername || row.discord_username || "",
+    otherLinks: Array.isArray(details.otherLinks) ? details.otherLinks : (Array.isArray(row.other_links) ? row.other_links : []),
+    showPhone: details.showPhone ?? (row.show_phone === true),
+    showEmail: details.showEmail ?? (row.show_email === true),
+    showWhatsapp: details.showWhatsapp ?? (row.show_whatsapp === true),
+    showSocials: details.showSocials ?? (row.show_socials !== false),
+    showContact: details.showContact ?? false,
+    isFeatured: details.isFeatured ?? (row.is_featured !== false),
+    isVisible: row.is_active != null ? Boolean(row.is_active) : (row.is_visible !== false),
+    isArchived: Boolean(row.archived_at || row.is_archived || details.isArchived),
+    displayOrder: row.sort_order != null ? Number(row.sort_order) : (row.display_order != null ? Number(row.display_order) : (details.displayOrder ?? 0)),
+    createdAt: row.created_at || details.createdAt,
+    updatedAt: row.updated_at || details.updatedAt,
   };
 }
 
 function mapTeamMemberToDbRow(m: TeamMember): any {
-  const resp = m.responsibilities || m.roles || [];
+  const isVis = m.isVisible !== false && !m.isArchived;
+  const roleName = m.designation || m.roleType || "Leadership";
   return {
     id: m.id,
     name: m.name,
-    display_name: m.displayName || m.name,
-    designation: m.designation,
-    secondary_designation: m.secondaryDesignation || null,
-    role_type: m.roleType || "Core Team",
-    department: m.department || null,
-    tagline: m.tagline || null,
+    role: roleName,
+    codename: m.codename != null && m.codename.trim() !== "" ? m.codename.trim() : null,
     short_bio: m.shortBio || m.bio || null,
-    full_bio: m.fullBio || null,
-    professional_summary: m.professionalSummary || null,
-    quote: m.quote || null,
-    email: m.email || null,
-    secondary_email: m.secondaryEmail || null,
-    phone: m.phone || null,
-    whatsapp: m.whatsapp || null,
-    location: m.location || null,
-    preferred_contact: m.preferredContact || null,
-    github_url: m.githubUrl || null,
-    linkedin_url: m.linkedinUrl || null,
-    instagram_url: m.instagramUrl || null,
-    portfolio_url: m.portfolioUrl || null,
-    website_url: m.websiteUrl || null,
-    youtube_url: m.youtubeUrl || null,
-    twitter_url: m.twitterUrl || null,
-    discord_username: m.discordUsername || null,
-    other_links: m.otherLinks || [],
-    profile_image_url: m.photoUrl,
-    profile_storage_path: m.profileStoragePath || null,
-    profile_object_position_x: m.profileObjectPositionX ?? 50,
-    profile_object_position_y: m.profileObjectPositionY ?? 50,
-    profile_scale: m.profileScale ?? 1,
-    background_asset_url: m.backgroundAssetUrl || null,
-    background_type: m.backgroundType || "none",
-    responsibilities: resp,
-    skills: m.skills || [],
-    display_order: m.displayOrder ?? 0,
-    is_visible: m.isVisible !== false,
-    is_featured: m.isFeatured === true,
-    is_archived: m.isArchived === true,
-    show_phone: m.showPhone !== false,
-    show_email: m.showEmail !== false,
-    show_whatsapp: m.showWhatsapp !== false,
-    show_socials: m.showSocials !== false,
+    photo_url: m.photoUrl || null,
+    sort_order: m.displayOrder ?? 0,
+    is_active: isVis,
+    details: {
+      displayName: m.displayName || m.name,
+      designation: m.designation,
+      secondaryDesignation: m.secondaryDesignation || null,
+      roleType: m.roleType || "Core Team",
+      department: m.department || null,
+      tagline: m.tagline || null,
+      fullBio: m.fullBio || null,
+      professionalSummary: m.professionalSummary || null,
+      quote: m.quote || null,
+      email: m.email || null,
+      phone: m.phone || null,
+      whatsapp: m.whatsapp || null,
+      location: m.location || null,
+      skills: m.skills || [],
+      responsibilities: m.responsibilities || m.roles || [],
+      showPhone: m.showPhone ?? false,
+      showEmail: m.showEmail ?? false,
+      showWhatsapp: m.showWhatsapp ?? false,
+      showSocials: m.showSocials ?? true,
+      profileObjectPositionX: m.profileObjectPositionX ?? 50,
+      profileObjectPositionY: m.profileObjectPositionY ?? 50,
+      profileScale: m.profileScale ?? 1,
+      profileStoragePath: m.profileStoragePath || null,
+      isFeatured: m.isFeatured ?? true,
+      isVisible: m.isVisible !== false,
+      isArchived: m.isArchived === true,
+    },
     updated_at: new Date().toISOString(),
   };
 }
@@ -1438,13 +1519,26 @@ export async function getTeamMembers(includeArchived: boolean = false): Promise<
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      let query = supabase.from("team_profiles").select("*").order("display_order", { ascending: true });
+      // 1. Try canonical team_members table
+      let query = supabase.from("team_members").select("*").order("sort_order", { ascending: true });
       if (!includeArchived) {
-        query = query.eq("is_archived", false);
+        query = query.eq("is_active", true);
       }
       const { data, error } = await query;
       if (data && !error && data.length > 0) {
         return data.map(mapDbRowToTeamMember);
+      }
+
+      // 2. Fallback to team_profiles if team_members is missing or empty
+      if (error && (error.code === "42P01" || error.message.includes("does not exist"))) {
+        let altQuery = supabase.from("team_profiles").select("*").order("display_order", { ascending: true });
+        if (!includeArchived) {
+          altQuery = altQuery.eq("is_archived", false);
+        }
+        const altRes = await altQuery;
+        if (altRes.data && !altRes.error && altRes.data.length > 0) {
+          return altRes.data.map(mapDbRowToTeamMember);
+        }
       }
     }
   } catch (err) {
@@ -1452,8 +1546,27 @@ export async function getTeamMembers(includeArchived: boolean = false): Promise<
   }
 
   const store = ensureStore();
-  const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || !m.isArchived);
+  const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || (!m.isArchived && m.isVisible !== false));
   return list.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+}
+
+export async function getAdminTeam(): Promise<TeamMember[]> {
+  return getTeamMembers(true);
+}
+
+export async function getPublicTeam(): Promise<TeamMember[]> {
+  const members = await getTeamMembers(false);
+  // Return published, non-archived members with only approved public fields
+  return members
+    .filter((m) => m.isVisible !== false && !m.isArchived)
+    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+    .map((m) => ({
+      ...m,
+      // Only expose personal contacts if explicitly enabled
+      phone: m.showPhone ? m.phone : "",
+      email: m.showEmail ? m.email : "",
+      whatsapp: m.showWhatsapp ? m.whatsapp : "",
+    }));
 }
 
 export async function getTeamMemberById(id: string): Promise<TeamMember | null> {
@@ -1461,9 +1574,14 @@ export async function getTeamMemberById(id: string): Promise<TeamMember | null> 
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data, error } = await supabase.from("team_profiles").select("*").eq("id", id).maybeSingle();
+      const { data, error } = await supabase.from("team_members").select("*").eq("id", id).maybeSingle();
       if (data && !error) {
         return mapDbRowToTeamMember(data);
+      }
+      // Fallback check team_profiles
+      const altRes = await supabase.from("team_profiles").select("*").eq("id", id).maybeSingle();
+      if (altRes.data && !altRes.error) {
+        return mapDbRowToTeamMember(altRes.data);
       }
     }
   } catch (err) {
@@ -1497,13 +1615,39 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const row = mapTeamMemberToDbRow(updatedMember);
-      const { error } = await supabase.from("team_profiles").upsert(row, { onConflict: "id" });
-      if (error) {
-        console.warn("[Supabase Team Save Warning]:", error.message);
+
+      // Attempt upsert to canonical team_members table
+      let { error } = await supabase.from("team_members").upsert(row, { onConflict: "id" });
+
+      // If 'details' column is missing in existing schema, strip it and retry base columns
+      if (error && error.message.includes("details")) {
+        const { details, ...baseRow } = row;
+        const retryRes = await supabase.from("team_members").upsert(baseRow, { onConflict: "id" });
+        error = retryRes.error;
+      }
+
+      // If team_members doesn't exist, try legacy team_profiles
+      if (error && (error.code === "42P01" || error.message.includes("does not exist"))) {
+        const legacyRow: any = {
+          id: updatedMember.id,
+          name: updatedMember.name,
+          display_name: updatedMember.displayName || updatedMember.name,
+          designation: updatedMember.designation,
+          role_type: updatedMember.roleType || "Core Team",
+          short_bio: updatedMember.shortBio || updatedMember.bio || null,
+          profile_image_url: updatedMember.photoUrl,
+          display_order: updatedMember.displayOrder ?? 0,
+          is_visible: updatedMember.isVisible !== false,
+          is_archived: updatedMember.isArchived === true,
+          updated_at: now,
+        };
+        await supabase.from("team_profiles").upsert(legacyRow, { onConflict: "id" });
+      } else if (error) {
+        console.error("[Supabase Team Save Error]:", error.message);
       }
     }
   } catch (err) {
-    console.warn("[Supabase Team Save Exception]:", err);
+    console.error("[Supabase Team Save Exception]:", err);
   }
 
   return true;
@@ -1511,17 +1655,28 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
 
 export async function deleteTeamMember(id: string, softDelete: boolean = true): Promise<boolean> {
   const store = ensureStore();
+  const now = new Date().toISOString();
+
   if (softDelete) {
     const member = store.team.find((t) => t.id === id);
     if (member) {
       member.isArchived = true;
       member.isVisible = false;
-      member.updatedAt = new Date().toISOString();
+      member.updatedAt = now;
       try {
         const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
         const supabase = getSupabaseAdmin();
         if (supabase) {
-          await supabase.from("team_profiles").update({ is_archived: true, is_visible: false, updated_at: new Date().toISOString() }).eq("id", id);
+          const { error } = await supabase
+            .from("team_members")
+            .update({ is_active: false, updated_at: now })
+            .eq("id", id);
+          if (error) {
+            await supabase
+              .from("team_profiles")
+              .update({ is_archived: true, is_visible: false, updated_at: now })
+              .eq("id", id);
+          }
         }
       } catch (err) {
         console.warn("[Supabase Team Archive Warning]:", err);
@@ -1533,7 +1688,10 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
       const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
       const supabase = getSupabaseAdmin();
       if (supabase) {
-        await supabase.from("team_profiles").delete().eq("id", id);
+        const { error } = await supabase.from("team_members").delete().eq("id", id);
+        if (error) {
+          await supabase.from("team_profiles").delete().eq("id", id);
+        }
       }
     } catch (err) {
       console.warn("[Supabase Team Delete Warning]:", err);
@@ -1545,18 +1703,28 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
 
 export async function restoreTeamMember(id: string): Promise<boolean> {
   const store = ensureStore();
+  const now = new Date().toISOString();
   const member = (store.team || []).find((t) => t.id === id);
   if (member) {
     member.isArchived = false;
     member.isVisible = true;
-    member.updatedAt = new Date().toISOString();
+    member.updatedAt = now;
   }
 
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      await supabase.from("team_profiles").update({ is_archived: false, is_visible: true, updated_at: new Date().toISOString() }).eq("id", id);
+      const { error } = await supabase
+        .from("team_members")
+        .update({ is_active: true, updated_at: now })
+        .eq("id", id);
+      if (error) {
+        await supabase
+          .from("team_profiles")
+          .update({ is_archived: false, is_visible: true, updated_at: now })
+          .eq("id", id);
+      }
     }
   } catch (err) {
     console.warn("[Supabase Team Restore Warning]:", err);
@@ -1586,11 +1754,12 @@ export async function duplicateTeamMember(id: string): Promise<TeamMember | null
 
 export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean> {
   const store = ensureStore();
+  const now = new Date().toISOString();
   orderedIds.forEach((id, index) => {
     const member = (store.team || []).find((t) => t.id === id);
     if (member) {
       member.displayOrder = index + 1;
-      member.updatedAt = new Date().toISOString();
+      member.updatedAt = now;
     }
   });
 
@@ -1599,7 +1768,16 @@ export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean>
     const supabase = getSupabaseAdmin();
     if (supabase) {
       for (let i = 0; i < orderedIds.length; i++) {
-        await supabase.from("team_profiles").update({ display_order: i + 1, updated_at: new Date().toISOString() }).eq("id", orderedIds[i]);
+        const { error } = await supabase
+          .from("team_members")
+          .update({ sort_order: i + 1, updated_at: now })
+          .eq("id", orderedIds[i]);
+        if (error) {
+          await supabase
+            .from("team_profiles")
+            .update({ display_order: i + 1, updated_at: now })
+            .eq("id", orderedIds[i]);
+        }
       }
     }
   } catch (err) {
