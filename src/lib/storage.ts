@@ -965,7 +965,7 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
     if (existing) {
       return {
         id: existing.id || 1,
-        reference_id: existing.reference_id,
+        reference_id: existing.reference_id || refId,
       };
     }
   }

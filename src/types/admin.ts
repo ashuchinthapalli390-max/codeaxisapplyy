@@ -58,6 +58,7 @@ export interface InternshipRound {
   title: string;
   batch_code: string;
   status: ApplicationWindowStatus;
+  status_override?: string;
   opens_at: string; // ISO 8601 timestamp with offset
   closes_at: string; // ISO 8601 timestamp with offset
   next_opens_at?: string | null;
