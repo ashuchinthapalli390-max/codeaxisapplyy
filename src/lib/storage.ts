@@ -789,17 +789,75 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
   if (supabase) {
     // 3. Check for idempotent retry strictly via submission_token matching this applicant's normalized email
     try {
-      const { data: existingByToken } = await supabase
-        .from("applications")
-        .select("id, reference_id, email, email_normalized, round_id, created_at")
-        .eq("submission_token", submissionToken)
-        .maybeSingle();
+      let existingByToken: any = null;
+
+      // 3a. Try query via top-level column (in case migrated schema exists)
+      try {
+        const { data: byCol, error: colErr } = await supabase
+          .from("applications")
+          .select("id, reference_id, email, created_at")
+          .eq("submission_token", submissionToken)
+          .maybeSingle();
+        if (byCol && !colErr) {
+          existingByToken = byCol;
+        }
+      } catch {
+        // column may not exist in unmigrated database
+      }
+
+      // 3b. Try JSON arrow query on raw_submission
+      if (!existingByToken) {
+        try {
+          const { data: byJson, error: jsonErr } = await supabase
+            .from("applications")
+            .select("id, reference_id, email, created_at, raw_submission")
+            .eq("raw_submission->>submission_token", submissionToken)
+            .maybeSingle();
+          if (byJson && !jsonErr) {
+            existingByToken = byJson;
+          }
+        } catch {
+          // json filter might not be supported in older postgrest
+        }
+      }
+
+      // 3c. Try matching recent applications for this email (guaranteed columns: email, raw_submission)
+      if (!existingByToken && normalizedEmail) {
+        try {
+          const { data: byEmail, error: emailErr } = await supabase
+            .from("applications")
+            .select("id, reference_id, email, created_at, raw_submission")
+            .ilike("email", normalizedEmail)
+            .eq("is_deleted", false)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+          if (byEmail && !emailErr && byEmail.length > 0) {
+            const matchedRow = byEmail.find((r: any) => {
+              const rToken =
+                r.submission_token ||
+                r.raw_submission?.submission_token ||
+                r.raw_submission?.submission_key;
+              return rToken === submissionToken;
+            });
+            if (matchedRow) {
+              existingByToken = matchedRow;
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }
 
       if (existingByToken) {
-        if (
-          existingByToken.email_normalized === normalizedEmail ||
-          existingByToken.email?.toLowerCase().trim() === normalizedEmail
-        ) {
+        const existingEmail = (
+          existingByToken.email_normalized ||
+          existingByToken.email ||
+          existingByToken.raw_submission?.email ||
+          ""
+        ).toLowerCase().trim();
+
+        if (existingEmail === normalizedEmail) {
           return {
             id: existingByToken.id,
             reference_id: existingByToken.reference_id,
@@ -817,18 +875,19 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
     }
 
     // 4. Check if applicant has already submitted for this active round (one submission per email per round)
-    if (roundId && normalizedEmail) {
+    // Real candidate submissions are restricted to one active submission per email
+    const isTest = Boolean(data.is_test ?? isTestSubmission(data));
+    if (!isTest && normalizedEmail) {
       try {
-        const { data: existingInRound } = await supabase
+        const { data: existingApps } = await supabase
           .from("applications")
           .select("id, reference_id")
-          .eq("round_id", roundId)
-          .eq("email_normalized", normalizedEmail)
+          .ilike("email", normalizedEmail)
           .eq("is_deleted", false)
-          .maybeSingle();
+          .limit(1);
 
-        if (existingInRound) {
-          const conflictErr: any = new Error("An application has already been submitted for this email address in this round.");
+        if (existingApps && existingApps.length > 0) {
+          const conflictErr: any = new Error("An application has already been submitted for this email address.");
           conflictErr.statusCode = 409;
           conflictErr.code = "ALREADY_SUBMITTED";
           throw conflictErr;
@@ -953,7 +1012,10 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       skill_authenticity: data.skill_authenticity || {},
 
       answers: data,
-      raw_submission: data,
+      raw_submission: {
+        ...data,
+        submission_token: submissionToken,
+      },
       status: data.status || "Submitted",
       is_test: Boolean(data.is_test ?? isTestSubmission(data)),
       is_test_record: Boolean(data.is_test ?? isTestSubmission(data)),
@@ -1072,6 +1134,7 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
             "status",
             "admin_notes",
             "admin_tags",
+            "submission_token",
             "raw_submission",
             "is_deleted",
             "created_at",
