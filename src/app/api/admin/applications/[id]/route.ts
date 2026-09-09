@@ -67,6 +67,54 @@ export async function POST(
       return NextResponse.json({ success: ok, message: "Note appended." });
     }
 
+    if (action === "resend_confirmation") {
+      const app = await getApplicationByRef(id);
+      if (!app || !app.email) {
+        return NextResponse.json({ success: false, error: "Application record or email not found." }, { status: 404 });
+      }
+
+      const { sendApplicationReceivedEmail } = await import("@/lib/email/send-application-received");
+      let emailStatus = "sent";
+      let emailError: string | null = null;
+      let providerMessageId: string | null = null;
+
+      try {
+        const emailResult: any = await sendApplicationReceivedEmail({
+          name: app.full_name,
+          email: app.email,
+          referenceId: app.reference_id || id,
+        });
+        emailStatus = emailResult ? "sent" : "failed";
+        providerMessageId = emailResult?.data?.id || null;
+      } catch (err: any) {
+        emailStatus = "failed";
+        emailError = err?.message || String(err);
+      }
+
+      try {
+        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+        const supabase = getSupabaseAdmin();
+        if (supabase && app.id) {
+          await supabase.from("email_logs").insert({
+            application_id: app.id,
+            email_type: "APPLICATION_CONFIRMATION_RETRY",
+            recipient: app.email,
+            provider_message_id: providerMessageId,
+            status: emailStatus,
+            error_message: emailError,
+            sent_at: emailStatus === "sent" ? new Date().toISOString() : null,
+          });
+        }
+      } catch (logErr) {
+        console.warn("Failed to log retry email:", logErr);
+      }
+
+      return NextResponse.json({
+        success: emailStatus === "sent",
+        message: emailStatus === "sent" ? "Confirmation email successfully resent." : `Failed to resend email: ${emailError}`,
+      });
+    }
+
     if (action === "restore") {
       const adminIdentifier = (admin as any)?.email || (admin as any)?.id || "admin";
       const ok = await restoreApplication(id, adminIdentifier);

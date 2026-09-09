@@ -8,6 +8,7 @@ import { resolveApplicationAvailability } from "@/lib/availability";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   const requestId = req.headers.get("x-request-id") || `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   try {
@@ -20,7 +21,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    console.info(`[${requestId}] Starting application submission pipeline for email: ${body.email ? String(body.email).slice(0, 3) + '***' : 'unknown'}`);
+    const safeTokenPrefix = String(body.submission_token || body.submission_key || "unknown").slice(0, 12);
+    console.info(JSON.stringify({
+      event: "APPLICATION_SUBMISSION_ATTEMPT",
+      requestId,
+      submissionTokenPrefix: safeTokenPrefix,
+      timestamp: new Date().toISOString(),
+    }));
 
     // 1. Authoritative Server Availability Gate
     const activeRound = await getActiveInternshipRound();
@@ -90,41 +97,108 @@ export async function POST(req: NextRequest) {
     // 5. Asynchronously dispatch Resend confirmation email
     // (Email failure is non-blocking and NEVER deletes or rolls back a saved submission)
     let emailStatus: "sent" | "failed" | "queued" = "queued";
+    let emailError: string | null = null;
+    let providerMessageId: string | null = null;
+
     try {
       const { sendApplicationReceivedEmail } = await import("@/lib/email/send-application-received");
-      const emailResult = await sendApplicationReceivedEmail({
+      const emailResult: any = await sendApplicationReceivedEmail({
         name: fullApplicationData.full_name,
         email: fullApplicationData.email,
         referenceId: saved.reference_id,
       });
       emailStatus = emailResult ? "sent" : "failed";
+      providerMessageId = emailResult?.data?.id || null;
       console.info(`[${requestId}] Confirmation email dispatch status: ${emailStatus}`);
-    } catch (emailErr) {
+    } catch (emailErr: any) {
       emailStatus = "failed";
+      emailError = emailErr?.message || String(emailErr);
       console.warn(`[${requestId}] [Resend Email Notice]: Notification email failed to dispatch (submission preserved):`, emailErr);
     }
 
-    return NextResponse.json({
-      success: true,
-      message: "Application submitted and registered successfully.",
+    // Record delivery metadata tied strictly to newly inserted application UUID
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const supabase = getSupabaseAdmin();
+      if (supabase && saved.id) {
+        await supabase.from("email_logs").insert({
+          application_id: saved.id,
+          email_type: "APPLICATION_CONFIRMATION",
+          recipient: fullApplicationData.email,
+          provider_message_id: providerMessageId,
+          status: emailStatus,
+          error_message: emailError,
+          sent_at: emailStatus === "sent" ? new Date().toISOString() : null,
+        });
+      }
+    } catch (logErr) {
+      console.warn(`[${requestId}] Email log record notice:`, logErr);
+    }
+
+    const durationMs = Date.now() - startTime;
+    console.info(JSON.stringify({
+      event: "APPLICATION_SUBMITTED_SUCCESS",
       requestId,
+      submissionTokenPrefix: String(body?.submission_token || body?.submission_key || "unknown").slice(0, 12),
+      applicationUuid: saved.id,
+      referenceCode: saved.reference_id,
+      roundId: availability.roundId,
+      resultStatus: "SUCCESS",
       emailStatus,
-      data: {
-        id: saved.id,
-        reference_id: saved.reference_id,
-        total_score: scoreReport.total_score,
-        score_band: scoreReport.score_band,
+      durationMs,
+    }));
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: "Application submitted and registered successfully.",
+        requestId,
+        emailStatus,
+        data: {
+          id: saved.id,
+          reference_id: saved.reference_id,
+          applicant_name: fullApplicationData.full_name,
+          submitted_at: saved.submitted_at || new Date().toISOString(),
+          total_score: scoreReport.total_score,
+          score_band: scoreReport.score_band,
+        },
       },
-    });
+      {
+        headers: {
+          "Cache-Control": "private, no-store",
+        },
+      }
+    );
   } catch (error: any) {
-    console.error(`[${requestId}] [Application Submission Error]:`, error);
+    const durationMs = Date.now() - startTime;
+    console.error(JSON.stringify({
+      event: "APPLICATION_SUBMISSION_ERROR",
+      requestId,
+      resultStatus: error?.statusCode === 409 ? "CONFLICT" : "ERROR",
+      supabaseErrorCode: error?.code || null,
+      errorMessage: error?.message || String(error),
+      durationMs,
+    }));
+
+    if (error?.statusCode === 409 || error?.code === "ALREADY_SUBMITTED") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message || "An application has already been submitted for this email address in this round.",
+          code: "ALREADY_SUBMITTED",
+          requestId,
+        },
+        { status: 409, headers: { "Cache-Control": "private, no-store" } }
+      );
+    }
+
     return NextResponse.json(
       {
         success: false,
         error: error?.message || "Failed to process application. Your draft has been preserved. Please retry.",
         requestId,
       },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "private, no-store" } }
     );
   }
 }

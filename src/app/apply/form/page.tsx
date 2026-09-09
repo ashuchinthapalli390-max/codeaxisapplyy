@@ -17,8 +17,18 @@ import ClipboardWarningModal from "@/components/application/ClipboardWarningModa
 import ApplicationResetOverlay from "@/components/application/ApplicationResetOverlay";
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
-import { playButtonClick, playWarningTone, playSuccessSound } from "@/lib/audio";
 import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, clearApplicationDraft } from "@/lib/integrity";
+import {
+  generateDraftId,
+  getActiveSessionDraftId,
+  setActiveSessionDraftId,
+  clearActiveSessionDraftId,
+  purgeLegacyDrafts,
+  saveDraft,
+  clearDraft,
+  findExistingDraft,
+} from "@/lib/autosave";
+import { playButtonClick, playSuccessSound, playWarningTone } from "@/lib/audio";
 import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 import {
   AlertCircle,
@@ -333,7 +343,13 @@ export default function ApplicationFormPage() {
   const [formData, setFormData] = useState<ApplicationData>(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Draft recovery modal
+  // Namespaced Draft Isolation states
+  const [activeDraftId, setActiveDraftId] = useState<string>("");
+  const [detectedDraft, setDetectedDraft] = useState<{
+    draftId: string;
+    data: Partial<ApplicationData>;
+    currentRound: number;
+  } | null>(null);
   const [draftFound, setDraftFound] = useState(false);
   const [draftRound, setDraftRound] = useState(1);
 
@@ -371,31 +387,32 @@ export default function ApplicationFormPage() {
   // Top ref for smooth scrolling
   const formTopRef = useRef<HTMLDivElement | null>(null);
 
-  // Load draft or verify rules acceptance on mount
+  // Initialize draft session on mount with cryptographic draft ID isolation
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const draft = localStorage.getItem("codexa_application_draft");
-      if (draft) {
-        try {
-          const parsed = JSON.parse(draft);
-          if (parsed.full_name || parsed.email || parsed.current_round > 1) {
-            setDraftRound(parsed.current_round || 1);
-            setDraftFound(true);
-          }
-        } catch {
-          // ignore
-        }
+      // 1. Purge legacy unscoped draft keys to prevent cross-applicant preloads
+      purgeLegacyDrafts();
+
+      // 2. Check for an existing saved draft
+      const existing = findExistingDraft();
+      if (existing) {
+        setDetectedDraft(existing);
+        setDraftRound(existing.currentRound || 1);
+        setDraftFound(true);
+      } else {
+        const freshId = getActiveSessionDraftId(true) || generateDraftId();
+        setActiveDraftId(freshId);
+        setActiveSessionDraftId(freshId);
       }
     }
   }, []);
 
-  // Autosave draft whenever formData or currentRound changes
+  // Autosave draft scoped strictly to activeDraftId
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const payload = { ...formData, current_round: currentRound, updated_at: new Date().toISOString() };
-      localStorage.setItem("codexa_application_draft", JSON.stringify(payload));
+    if (activeDraftId && !draftFound && typeof window !== "undefined") {
+      saveDraft(activeDraftId, formData, currentRound);
     }
-  }, [formData, currentRound]);
+  }, [formData, currentRound, activeDraftId, draftFound]);
 
   // Tab switch monitor
   useEffect(() => {
@@ -676,29 +693,33 @@ export default function ApplicationFormPage() {
     scrollToTop();
   };
 
-  const handleRestoreDraft = () => {
-    if (typeof window !== "undefined") {
-      const draft = localStorage.getItem("codexa_application_draft");
-      if (draft) {
-        try {
-          const parsed = JSON.parse(draft);
-          setFormData(parsed);
-          setCurrentRound(parsed.current_round || 1);
-        } catch {
-          // ignore
-        }
-      }
+  const handleContinueDraft = () => {
+    playButtonClick();
+    if (detectedDraft) {
+      setActiveDraftId(detectedDraft.draftId);
+      setActiveSessionDraftId(detectedDraft.draftId);
+      setFormData(detectedDraft.data as ApplicationData);
+      setCurrentRound(detectedDraft.currentRound || 1);
     }
     setDraftFound(false);
   };
 
-  const handleDiscardDraft = () => {
-    if (typeof window !== "undefined") {
-      localStorage.removeItem("codexa_application_draft");
-    }
+  const handleStartNewApplication = () => {
+    playButtonClick();
+    const freshId = generateDraftId();
+    setActiveDraftId(freshId);
+    setActiveSessionDraftId(freshId);
     setFormData(INITIAL_FORM_DATA);
     setCurrentRound(1);
     setDraftFound(false);
+  };
+
+  const handleDeleteSavedDraft = () => {
+    playButtonClick();
+    if (detectedDraft?.draftId) {
+      clearDraft(detectedDraft.draftId);
+    }
+    handleStartNewApplication();
   };
 
   const handleSubmitFinalApplication = async () => {
@@ -750,11 +771,10 @@ export default function ApplicationFormPage() {
     try {
       setSubmissionStep(2); // Transmitting application data to server
 
-      // Stable client submission attempt key for safe retry and deduplication
+      // Stable unique client submission attempt key for safe retry and deduplication
       const clientSubmissionKey =
-        (formData as any).submission_key ||
         (formData as any).submission_token ||
-        `sub_${(formData.email || "cax").replace(/[^a-zA-Z0-9]/g, "")}_${Date.now()}`;
+        `sub_${(formData.email || "cax").replace(/[^a-zA-Z0-9]/g, "")}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
       const res = await fetch("/api/applications/submit", {
         method: "POST",
@@ -762,8 +782,8 @@ export default function ApplicationFormPage() {
         signal: controller.signal,
         body: JSON.stringify({
           ...formData,
-          submission_key: clientSubmissionKey,
           submission_token: clientSubmissionKey,
+          submission_key: clientSubmissionKey,
           integrity_meta: {
             clipboardWarnings: formData.copy_paste_warnings_count || 0,
             tabSwitchCount: formData.tab_switch_count || 0,
@@ -779,16 +799,23 @@ export default function ApplicationFormPage() {
         const ref = json.data.reference_id;
         if (typeof window !== "undefined") {
           try {
-            const dossier = { ...formData, reference_id: ref };
+            const dossier = {
+              ...formData,
+              reference_id: ref,
+              submitted_at: json.data.submitted_at || new Date().toISOString(),
+            };
             sessionStorage.setItem(`codexa_app_submission_${ref}`, JSON.stringify(dossier));
-            sessionStorage.setItem("codexa_last_submitted_app", JSON.stringify(dossier));
           } catch {}
         }
         setTimeout(() => {
           setSubmissionStep(5);
           playSuccessSound();
-          // Clear local draft ONLY after verified database submission success
-          clearApplicationDraft();
+          // Clear ONLY this specific applicant's draft after verified database submission success
+          if (activeDraftId) {
+            clearDraft(activeDraftId);
+            clearApplicationDraft(activeDraftId);
+          }
+          clearActiveSessionDraftId();
           setTimeout(() => {
             router.replace(`/apply/success/${ref}`);
           }, 600);
@@ -2280,7 +2307,7 @@ export default function ApplicationFormPage() {
 
       </main>
 
-      {/* Draft Recovery Modal */}
+      {/* Namespaced Draft Recovery & Isolation Modal */}
       <Modal
         isOpen={draftFound}
         onClose={() => setDraftFound(false)}
@@ -2288,24 +2315,32 @@ export default function ApplicationFormPage() {
       >
         <div className="space-y-4">
           <p className="text-xs text-slate-300 leading-relaxed">
-            We detected a saved screening draft from your previous session (Round 0{draftRound}/08). Would you like to restore your answers or start fresh?
+            We detected a saved screening draft from this browser (Round 0{draftRound}/08). Would you like to continue your saved responses, start a brand-new application, or permanently delete the draft?
           </p>
-          <div className="flex items-center space-x-3 pt-2">
-            <Button3D
-              type="button"
-              variant="secondary"
-              onClick={handleDiscardDraft}
-              className="flex-1 py-3 text-xs"
-            >
-              START FRESH
-            </Button3D>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
             <Button3D
               type="button"
               variant="primary"
-              onClick={handleRestoreDraft}
-              className="flex-1 py-3 text-xs font-bold"
+              onClick={handleContinueDraft}
+              className="py-3 text-xs font-bold"
             >
               CONTINUE DRAFT
+            </Button3D>
+            <Button3D
+              type="button"
+              variant="secondary"
+              onClick={handleStartNewApplication}
+              className="py-3 text-xs"
+            >
+              START NEW
+            </Button3D>
+            <Button3D
+              type="button"
+              variant="ghost"
+              onClick={handleDeleteSavedDraft}
+              className="py-3 text-xs border border-red-900/60 hover:border-red-500 text-rose-300"
+            >
+              DELETE DRAFT
             </Button3D>
           </div>
         </div>

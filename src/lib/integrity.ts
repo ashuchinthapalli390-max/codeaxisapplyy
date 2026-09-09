@@ -110,15 +110,23 @@ export const CLIPBOARD_WARNINGS: Record<number, WarningContent> = {
 /**
  * Completely clears all local application drafts, session flags, and answers.
  */
-export function clearApplicationDraft(): void {
+export function clearApplicationDraft(draftId?: string): void {
   if (typeof window === "undefined") return;
 
   try {
     localStorage.removeItem("codexa_application_draft");
+    localStorage.removeItem("codeaxis_application_draft");
     localStorage.removeItem("codexa_rules_accepted");
     sessionStorage.removeItem("codexa_application_draft");
+    sessionStorage.removeItem("codeaxis_application_draft");
     sessionStorage.removeItem("codexa_rules_accepted");
     sessionStorage.removeItem("codexa_draft_session_id");
+    const resolvedDraftId = draftId || sessionStorage.getItem("codexa:active_draft_id");
+    sessionStorage.removeItem("codexa:active_draft_id");
+
+    if (resolvedDraftId) {
+      localStorage.removeItem(`codexa:application-draft:v2:${resolvedDraftId}`);
+    }
   } catch (err) {
     console.error("Failed to clear application storage:", err);
   }

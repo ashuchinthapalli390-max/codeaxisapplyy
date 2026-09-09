@@ -32,13 +32,10 @@ export default function ApplicationSuccessPage() {
   useEffect(() => {
     playSuccessSound();
 
-    // 1. Immediately read real applicant data from browser sessionStorage
+    // Read session-isolated submission receipt bound strictly to this reference ID
     if (typeof window !== "undefined") {
       try {
-        const cached =
-          sessionStorage.getItem(`codexa_app_submission_${refId}`) ||
-          sessionStorage.getItem("codexa_last_submitted_app") ||
-          sessionStorage.getItem("codexa_application_draft");
+        const cached = sessionStorage.getItem(`codexa_app_submission_${refId}`);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && (parsed.full_name || parsed.email)) {
@@ -47,20 +44,6 @@ export default function ApplicationSuccessPage() {
         }
       } catch {}
     }
-
-    // 2. Query server for verified application details
-    fetch(`/api/applications/track?ref=${encodeURIComponent(refId)}`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          setAppData((prev) => ({
-            ...prev,
-            ...json.data,
-            reference_id: refId,
-          }));
-        }
-      })
-      .catch(() => {});
   }, [refId]);
 
   const handleCopyRef = () => {
@@ -78,10 +61,7 @@ export default function ApplicationSuccessPage() {
     let targetData = appData;
     if (!targetData && typeof window !== "undefined") {
       try {
-        const cached =
-          sessionStorage.getItem(`codexa_app_submission_${refId}`) ||
-          sessionStorage.getItem("codexa_last_submitted_app") ||
-          sessionStorage.getItem("codexa_application_draft");
+        const cached = sessionStorage.getItem(`codexa_app_submission_${refId}`);
         if (cached) {
           targetData = JSON.parse(cached);
         }
@@ -91,16 +71,8 @@ export default function ApplicationSuccessPage() {
     if (targetData && (targetData.full_name || targetData.email)) {
       generateApplicantPDF({ ...targetData, reference_id: refId });
     } else {
-      // If still loading from server, perform immediate fetch and download
-      fetch(`/api/applications/track?ref=${encodeURIComponent(refId)}`)
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success && json.data) {
-            setAppData(json.data);
-            generateApplicantPDF({ ...json.data, reference_id: refId });
-          }
-        })
-        .catch(() => {});
+      // Direct access without current session state -> redirect to secure tracking portal
+      router.push(`/status?ref=${encodeURIComponent(refId)}`);
     }
   };
 

@@ -40,8 +40,14 @@ export interface DeveloperLink {
 }
 
 export interface ApplicationData {
-  id?: number;
+  id?: string | number;
   reference_id?: string;
+  round_id?: string | null;
+  submission_token?: string;
+  submission_key?: string;
+  email_normalized?: string;
+  submitted_at?: string;
+  is_test_record?: boolean;
 
   // Round 1: Personal Information
   full_name: string;
@@ -70,6 +76,7 @@ export interface ApplicationData {
   expected_graduation: string;
   cgpa?: string;
   percentage?: string;
+  cgpa_percentage?: string;
   certifications?: string;
   achievements?: string;
   backlogs?: string;
@@ -178,8 +185,21 @@ export interface ApplicationData {
 
   // Resume
   resume_url?: string;
+  resume_storage_path?: string;
   resume_file_name?: string;
   resume_file_size?: number;
+  resume_file_type?: string;
+
+  // Screening Experience & Goals
+  c_learning_experience?: string;
+  python_learning_experience?: string;
+  java_learning_experience?: string;
+  html_learning_experience?: string;
+  vibe_coding_experience?: string;
+  primary_interest_domain?: string;
+  primary_goal?: string;
+  biggest_challenge?: string;
+  future_vision?: string;
 
   // Interview & Offer Lifecycles
   interview?: InterviewData;
@@ -196,9 +216,7 @@ export interface ApplicationData {
   deleted_by?: string;
   delete_reason?: string;
   deletion_reason?: string;
-  // Submission tokens and schema aliases
-  submission_token?: string;
-  submission_key?: string;
+  // Schema aliases
   github_profile?: string;
   linkedin_profile?: string;
   portfolio_website?: string;

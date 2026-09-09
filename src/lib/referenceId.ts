@@ -1,6 +1,7 @@
+import { randomBytes } from "node:crypto";
 
 /**
- * Format reference ID according to canonical standard: CXA-YYYYMMM-000001
+ * Format reference ID according to numeric sequence standard: CXA-YYYYMMM-000001
  */
 export function formatReferenceId(batchCode: string, sequenceNumber: number): string {
   const cleanBatch = (batchCode || "2026-SEP").toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -9,13 +10,19 @@ export function formatReferenceId(batchCode: string, sequenceNumber: number): st
 }
 
 /**
- * Generates a collision-resistant deterministic fallback reference ID strictly for
- * offline local development when Supabase database is unconfigured.
- * In production, reference generation MUST happen atomically via PostgreSQL sequence.
+ * Generates an unpredictable, cryptographically random, collision-resistant reference code.
+ * Uses high-entropy Crockford-style Base32 characters (avoiding ambiguous 0/O, 1/I).
+ * Format: CXA-{BATCH}-{6 ALPHANUMERIC CHARACTERS}
+ * Examples: CXA-2026SEP-H7KJ9X, CXA-2026SEP-M4T9P2
  */
-let localSequence = 1000;
+const BASE32_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 export function generateReferenceId(batchCode: string = "2026-SEP"): string {
-  localSequence += 1;
-  return formatReferenceId(batchCode, localSequence);
+  const cleanBatch = (batchCode || "2026-SEP").toUpperCase().replace(/[^A-Z0-9]/g, "") || "2026SEP";
+  const bytes = randomBytes(6);
+  let randomSuffix = "";
+  for (let i = 0; i < 6; i++) {
+    randomSuffix += BASE32_ALPHABET[bytes[i] % BASE32_ALPHABET.length];
+  }
+  return `CXA-${cleanBatch}-${randomSuffix}`;
 }

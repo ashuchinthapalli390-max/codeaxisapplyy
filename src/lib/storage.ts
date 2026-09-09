@@ -762,65 +762,90 @@ export async function getInternshipRounds(): Promise<InternshipRound[]> {
 
 // ----------------- APPLICATION SUBMISSION & CRUD (SUPABASE-ONLY) -----------------
 
-export async function saveApplication(data: ApplicationData): Promise<{ id: number | string; reference_id: string }> {
+export async function saveApplication(data: ApplicationData): Promise<{ id: number | string; reference_id: string; email?: string; submitted_at?: string }> {
   // 1. Determine active batch code
   const activeRound = await getActiveInternshipRound();
   const batchCode = activeRound?.batch_code || "2026-SEP";
 
-  // 2. Client submission token for idempotency
+  // 2. Client submission token for idempotency (never trust client-supplied database ID or reference)
+  delete (data as any).id;
+  delete (data as any).reference_id;
+
   const submissionToken =
     (data as any).submission_token ||
     (data as any).submission_key ||
-    `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    `sub_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+  const normalizedEmail = (data.email || "").toLowerCase().trim();
+  const normalizedPhone = (data.phone_number || (data as any).phone || "").replace(/[^0-9+]/g, "").trim();
+
+  const roundId = activeRound?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeRound.id)
+    ? activeRound.id
+    : null;
 
   const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    // 3. Check for idempotent retry via submission_token or submission_key
+    // 3. Check for idempotent retry strictly via submission_token matching this applicant's normalized email
     try {
       const { data: existingByToken } = await supabase
         .from("applications")
-        .select("id, reference_id")
-        .or(`submission_token.eq.${submissionToken},reference_id.eq.${data.reference_id || "NONE"}`)
+        .select("id, reference_id, email, email_normalized, round_id, created_at")
+        .eq("submission_token", submissionToken)
         .maybeSingle();
 
       if (existingByToken) {
-        return {
-          id: existingByToken.id,
-          reference_id: existingByToken.reference_id,
-        };
-      }
-    } catch {
-      // Non-fatal if table doesn't have submission_token yet
-    }
-
-    // 4. Generate reference ID atomically via sequence RPC if not already assigned
-    let refId = data.reference_id?.trim();
-    if (!refId) {
-      try {
-        const { data: rpcRef, error: rpcErr } = await supabase.rpc("generate_reference_id", {
-          p_batch_code: batchCode,
-        });
-        if (!rpcErr && rpcRef && typeof rpcRef === "string") {
-          refId = rpcRef;
+        if (
+          existingByToken.email_normalized === normalizedEmail ||
+          existingByToken.email?.toLowerCase().trim() === normalizedEmail
+        ) {
+          return {
+            id: existingByToken.id,
+            reference_id: existingByToken.reference_id,
+            email: existingByToken.email,
+            submitted_at: existingByToken.created_at,
+          };
+        } else {
+          throw new Error("Invalid submission token for this email address.");
         }
-      } catch {
-        // RPC not defined yet, fallback to client monotonic generator
+      }
+    } catch (tokenErr: any) {
+      if (tokenErr?.message?.includes("Invalid submission token")) {
+        throw tokenErr;
       }
     }
 
-    if (!refId) {
-      refId = generateReferenceId(batchCode);
+    // 4. Check if applicant has already submitted for this active round (one submission per email per round)
+    if (roundId && normalizedEmail) {
+      try {
+        const { data: existingInRound } = await supabase
+          .from("applications")
+          .select("id, reference_id")
+          .eq("round_id", roundId)
+          .eq("email_normalized", normalizedEmail)
+          .eq("is_deleted", false)
+          .maybeSingle();
+
+        if (existingInRound) {
+          const conflictErr: any = new Error("An application has already been submitted for this email address in this round.");
+          conflictErr.statusCode = 409;
+          conflictErr.code = "ALREADY_SUBMITTED";
+          throw conflictErr;
+        }
+      } catch (roundCheckErr: any) {
+        if (roundCheckErr?.statusCode === 409) {
+          throw roundCheckErr;
+        }
+      }
     }
+
+    // 5. Generate fresh cryptographically unguessable reference ID
+    let refId = generateReferenceId(batchCode);
 
     const githubUrl = data.developer_links?.find((l) => l.platform === "GitHub")?.url || (data as any).github_profile;
     const linkedinUrl = data.developer_links?.find((l) => l.platform === "LinkedIn")?.url || (data as any).linkedin_profile;
     const portfolioUrl = data.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url || (data as any).portfolio_website;
-
-    const roundId = activeRound?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeRound.id)
-      ? activeRound.id
-      : null;
 
     const dbPayload: any = {
       reference_id: refId,
@@ -831,10 +856,10 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       applicant_name: data.full_name?.trim() || data.preferred_name?.trim() || "Applicant",
       full_name: data.full_name?.trim() || data.preferred_name?.trim() || "Applicant",
       date_of_birth: data.date_of_birth || "",
-      email: (data.email || "").toLowerCase().trim(),
-      email_normalized: (data.email || "").toLowerCase().trim(),
-      phone: data.phone_number?.trim() || "",
-      phone_number: data.phone_number?.trim() || "",
+      email: normalizedEmail,
+      email_normalized: normalizedEmail,
+      phone: normalizedPhone,
+      phone_number: normalizedPhone,
       whatsapp_number: data.whatsapp_number || null,
       city: data.city || "",
       state: data.state || "",
@@ -848,102 +873,74 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       // Academic details
       college_name: data.college_name || "",
       university_name: data.university_name || "",
-      degree: data.course || "",
-      course: data.course || "",
+      degree: data.course || data.degree || "",
+      course: data.course || data.degree || "",
       branch: data.branch || "",
       academic_year: data.academic_year || "",
       semester: data.semester || "",
       roll_number: data.roll_number || "",
-      graduation_year: data.expected_graduation || (data as any).graduation_year || "",
-      expected_graduation: data.expected_graduation || (data as any).graduation_year || "",
-      cgpa: data.cgpa || null,
-      percentage: data.percentage || null,
-      cgpa_percentage: (data as any).cgpa_percentage || data.cgpa || data.percentage || null,
-      certifications: data.certifications || null,
-      achievements: data.achievements || null,
-      backlogs: data.backlogs || null,
+      expected_graduation: data.expected_graduation || data.graduation_year || "",
+      graduation_year: data.expected_graduation || data.graduation_year || "",
+      cgpa_percentage: data.cgpa || data.percentage || data.cgpa_percentage || "",
+      cgpa: data.cgpa || data.percentage || data.cgpa_percentage || "",
+      percentage: data.percentage || data.cgpa || "",
+      certifications: data.certifications || "",
+      achievements: data.achievements || "",
+      backlogs: data.backlogs || "",
 
-      // Developer presence
+      // Developer presence & portfolio
       coding_start_timeline: data.coding_start_timeline || "",
       has_built_projects: data.has_built_projects || "",
-      hackathon_experience: data.hackathon_experience || "None",
-      internship_experience: data.internship_experience || "None",
-      freelancing_experience: data.freelancing_experience || "None",
-      open_source_experience: data.open_source_experience || "None",
-      team_project_experience: data.team_project_experience || "None",
       developer_links: data.developer_links || [],
       projects: data.projects || [],
       github_profile: githubUrl || null,
       linkedin_profile: linkedinUrl || null,
       portfolio_website: portfolioUrl || null,
-
-      // Resume details
-      resume_path: (data as any).resume_storage_path || data.resume_url || null,
-      resume_storage_path: (data as any).resume_storage_path || data.resume_url || null,
-      resume_file_name: data.resume_file_name || null,
-      resume_file_size: data.resume_file_size ? Number(data.resume_file_size) : null,
+      resume_url: (data as any).resume_url || (data as any).resume_storage_path || null,
+      resume_storage_path: (data as any).resume_storage_path || (data as any).resume_url || null,
+      resume_file_name: (data as any).resume_file_name || null,
+      resume_file_size: (data as any).resume_file_size || null,
       resume_file_type: (data as any).resume_file_type || null,
 
-      // Availability & Hardware
+      // Availability & hardware
       daily_availability: data.daily_availability || "",
       available_days: data.available_days || [],
       preferred_timing: data.preferred_timing || [],
       can_attend_meetings: data.can_attend_meetings || "Yes",
       can_meet_deadlines: data.can_meet_deadlines || "Yes",
-      can_communicate_if_unavailable: data.can_communicate_if_unavailable || "Yes, always",
-      academic_constraints: data.academic_constraints || null,
-      exam_periods: data.exam_periods || null,
+      can_communicate_if_unavailable: data.can_communicate_if_unavailable || "Yes",
       laptop_status: data.laptop_status || "",
       operating_system: data.operating_system || "",
       ram_capacity: data.ram_capacity || "",
       internet_stability: data.internet_stability || "",
       can_run_dev_tools: data.can_run_dev_tools || "Yes",
-      processor: data.processor || null,
-      gpu: data.gpu || null,
-      storage_type: data.storage_type || null,
-      laptop_model: data.laptop_model || null,
 
-      // Technical screening
+      // Technical self-assessment
       c_level: data.c_level || "I Don't Know",
-      c_answers: data.c_answers || {},
       python_level: data.python_level || "I Don't Know",
-      python_answers: data.python_answers || {},
       java_level: data.java_level || "I Don't Know",
-      java_answers: data.java_answers || {},
       html_level: data.html_level || "I Don't Know",
-      html_answers: data.html_answers || {},
-      vibe_coding_level: data.vibe_coding_level || "Never Used",
-      vibe_coding_answers: data.vibe_coding_answers || {},
+      vibe_coding_level: data.vibe_coding_level || "No Exposure",
 
-      mindset_answers: data.mindset_answers || {},
+      // Screening answers
+      c_learning_experience: data.c_learning_experience || "",
+      python_learning_experience: data.python_learning_experience || "",
+      java_learning_experience: data.java_learning_experience || "",
+      html_learning_experience: data.html_learning_experience || "",
+      vibe_coding_experience: data.vibe_coding_experience || "",
+      primary_interest_domain: data.primary_interest_domain || "",
+      primary_goal: data.primary_goal || "",
+      biggest_challenge: data.biggest_challenge || "",
+      future_vision: data.future_vision || "",
 
-      // Interview answers
-      interview_q1_why_codexa: data.interview_q1_why_codexa || "",
-      interview_q2_why_select: data.interview_q2_why_select || "",
-      interview_q3_expectations: data.interview_q3_expectations || "",
-      interview_q4_strongest_skills: data.interview_q4_strongest_skills || "",
-      interview_q5_weakest_area: data.interview_q5_weakest_area || "",
-      interview_q6_describe_project: data.interview_q6_describe_project || "",
-      interview_q7_difficult_problem: data.interview_q7_difficult_problem || "",
-      interview_q8_ai_coding_usage: data.interview_q8_ai_coding_usage || "",
-      interview_q9_college_balance: data.interview_q9_college_balance || "",
-      interview_q10_future_goal: data.interview_q10_future_goal || "",
+      // Integrity & Commitments
+      copy_paste_warnings_count: Number(data.copy_paste_warnings_count || 0),
+      tab_switch_count: Number(data.tab_switch_count || 0),
+      commitment_accurate_info: Boolean(data.commitment_accurate_info ?? true),
+      commitment_independent_work: Boolean(data.commitment_independent_work ?? true),
+      commitment_accept_policies: Boolean(data.commitment_accept_policies ?? true),
 
-      // Commitments
-      commitment_accurate_info: data.commitment_accurate_info ?? true,
-      commitment_independent_work: data.commitment_independent_work ?? true,
-      commitment_responsible_communication: data.commitment_responsible_communication ?? true,
-      commitment_team_rules: data.commitment_team_rules ?? true,
-      commitment_confidentiality: data.commitment_confidentiality ?? true,
-      commitment_assigned_duties: data.commitment_assigned_duties ?? true,
-      commitment_no_guaranteed_employment: data.commitment_no_guaranteed_employment ?? true,
-      commitment_accept_policies: data.commitment_accept_policies ?? true,
-
-      copy_paste_warnings_count: data.copy_paste_warnings_count || 0,
-      tab_switch_count: data.tab_switch_count || 0,
-
-      // Scoring
-      score: Number(data.total_score || 0),
+      // Scores & Analysis
       total_score: Number(data.total_score || 0),
       genuineness_integrity_score: Number(data.genuineness_integrity_score || 0),
       commitment_continuity_score: Number(data.commitment_continuity_score || 0),
@@ -959,54 +956,85 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       raw_submission: data,
       status: data.status || "Submitted",
       is_test: Boolean(data.is_test ?? isTestSubmission(data)),
+      is_test_record: Boolean(data.is_test ?? isTestSubmission(data)),
+      submitted_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
     const currentPayload: Record<string, unknown> = { ...dbPayload };
-    let inserted: { id: string | number; reference_id: string } | null = null;
+    let inserted: { id: string | number; reference_id: string; email?: string; created_at?: string } | null = null;
     let insertError: { message?: string; code?: string } | null = null;
 
     for (let attempt = 0; attempt < 25; attempt++) {
       const { data: resData, error: err } = await supabase
         .from("applications")
         .insert(currentPayload)
-        .select("id, reference_id")
+        .select("id, reference_id, email, created_at, round_id")
         .single();
 
       if (!err && resData) {
-        inserted = resData as { id: string | number; reference_id: string };
+        inserted = resData as { id: string | number; reference_id: string; email?: string; created_at?: string };
         insertError = null;
         break;
       }
 
       insertError = err;
 
-      // Check for duplicate key idempotency
-      if (err?.code === "23505" || err?.message?.includes("duplicate key") || err?.message?.includes("reference_id")) {
-        const { data: existing } = await supabase
-          .from("applications")
-          .select("id, reference_id")
-          .eq("reference_id", refId)
-          .maybeSingle();
+      // Handle duplicate key constraints
+      if (err?.code === "23505" || err?.message?.includes("duplicate key")) {
+        const errMsg = err?.message || "";
 
-        if (existing) {
-          return {
-            id: existing.id,
-            reference_id: existing.reference_id,
-          };
+        // A. Duplicate submission_token -> verify email and return idempotent result
+        if (errMsg.includes("submission_token") || errMsg.includes("idx_applications_token")) {
+          const { data: tokenRow } = await supabase
+            .from("applications")
+            .select("id, reference_id, email, email_normalized, created_at")
+            .eq("submission_token", submissionToken)
+            .maybeSingle();
+
+          if (
+            tokenRow &&
+            (tokenRow.email_normalized === normalizedEmail ||
+              tokenRow.email?.toLowerCase().trim() === normalizedEmail)
+          ) {
+            return {
+              id: tokenRow.id,
+              reference_id: tokenRow.reference_id,
+              email: tokenRow.email,
+              submitted_at: tokenRow.created_at,
+            };
+          }
+          throw new Error("Duplicate submission token for different applicant.");
+        }
+
+        // B. One submission per email per round violation -> return 409
+        if (
+          errMsg.includes("idx_applications_unique_email_round") ||
+          errMsg.includes("email_round") ||
+          errMsg.includes("email_normalized")
+        ) {
+          const conflictErr: any = new Error("An application has already been submitted for this email address in this round.");
+          conflictErr.statusCode = 409;
+          conflictErr.code = "ALREADY_SUBMITTED";
+          throw conflictErr;
+        }
+
+        // C. Rare reference_id collision -> regenerate fresh reference and retry insert! NEVER return existing row!
+        if (errMsg.includes("reference_id") || errMsg.includes("idx_applications_ref")) {
+          refId = generateReferenceId(batchCode);
+          currentPayload.reference_id = refId;
+          console.warn(`[Supabase Reference Collision]: Generated new reference ${refId}, retrying insert...`);
+          continue;
         }
       }
 
       // Check if error is due to missing column in PostgREST schema cache
-      // Example: "Could not find the 'academic_constraints' column of 'applications' in the schema cache"
       const missingColMatch = err?.message?.match(/Could not find the '([^']+)' column/i);
       if (missingColMatch && missingColMatch[1]) {
         const missingCol = missingColMatch[1];
         console.warn(`[Supabase Schema Adaptive Retry]: Column '${missingCol}' missing from table schema (attempt ${attempt + 1}).`);
 
-        // If this is the first attempt failure, immediately collapse all 50+ extended question columns
-        // down to the canonical legacy schema columns that exist in all versions of the applications table!
         if (attempt === 0) {
           console.warn("[Supabase Schema Adaptive Retry]: Collapsing payload to canonical legacy columns in single step...");
           const legacyColumns = new Set([
@@ -1029,42 +1057,75 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
             "github_profile",
             "linkedin_profile",
             "portfolio_website",
-            "other_profiles",
-            "primary_interest",
-            "primary_role_applied",
-            "experience_level",
+            "resume_url",
+            "daily_availability",
+            "available_days",
+            "preferred_timing",
+            "c_level",
+            "python_level",
+            "java_level",
+            "html_level",
+            "vibe_coding_level",
             "total_score",
             "score_band",
+            "commitment_signal",
+            "status",
+            "submission_token",
+            "round_id",
+            "email_normalized",
+            "applicant_name",
+            "course",
+            "academic_year",
+            "semester",
+            "roll_number",
+            "expected_graduation",
+            "cgpa",
+            "percentage",
+            "coding_start_timeline",
+            "has_built_projects",
+            "developer_links",
+            "projects",
+            "laptop_status",
+            "operating_system",
+            "ram_capacity",
+            "internet_stability",
+            "can_run_dev_tools",
+            "can_attend_meetings",
+            "can_meet_deadlines",
+            "can_communicate_if_unavailable",
+            "copy_paste_warnings_count",
+            "tab_switch_count",
+            "commitment_accurate_info",
+            "commitment_independent_work",
+            "commitment_accept_policies",
             "genuineness_integrity_score",
             "commitment_continuity_score",
             "mindset_habits_score",
             "technical_knowledge_score",
             "learning_potential_score",
             "interview_communication_score",
-            "commitment_signal",
             "skill_authenticity",
-            "status",
-            "admin_notes",
-            "admin_tags",
+            "answers",
             "raw_submission",
+            "is_test",
+            "is_test_record",
+            "is_deleted",
+            "submitted_at",
             "created_at",
             "updated_at",
-            "is_deleted",
           ]);
-
           for (const key of Object.keys(currentPayload)) {
             if (!legacyColumns.has(key)) {
               delete currentPayload[key];
             }
           }
         } else {
-          // On subsequent attempts, strip the specific missing column
           delete currentPayload[missingCol];
         }
         continue;
       }
 
-      // Break on any non-recoverable error
+      // Non-recoverable error
       break;
     }
 
@@ -1073,7 +1134,26 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       throw new Error(`Database error saving application: ${insertError?.message || "Insert failed"}`);
     }
 
-    // 5. Asynchronously log initial state to application_status_history
+    // 6. Record 8-round answer set referencing canonical application UUID
+    if (inserted?.id) {
+      try {
+        const answersList = [
+          { application_id: inserted.id, round_number: 1, question_id: "profile", answer: { full_name: data.full_name, email: normalizedEmail, phone: normalizedPhone, city: data.city, state: data.state } },
+          { application_id: inserted.id, round_number: 2, question_id: "academics", answer: { college_name: data.college_name, course: data.course || data.degree, branch: data.branch, academic_year: data.academic_year, cgpa: data.cgpa } },
+          { application_id: inserted.id, round_number: 3, question_id: "portfolio", answer: { coding_start_timeline: data.coding_start_timeline, has_built_projects: data.has_built_projects, projects: data.projects, developer_links: data.developer_links } },
+          { application_id: inserted.id, round_number: 4, question_id: "availability", answer: { daily_availability: data.daily_availability, available_days: data.available_days, preferred_timing: data.preferred_timing, laptop_status: data.laptop_status, operating_system: data.operating_system, ram_capacity: data.ram_capacity } },
+          { application_id: inserted.id, round_number: 5, question_id: "technical", answer: { c_level: data.c_level, python_level: data.python_level, java_level: data.java_level, html_level: data.html_level, vibe_coding_level: data.vibe_coding_level } },
+          { application_id: inserted.id, round_number: 6, question_id: "integrity", answer: { copy_paste_warnings_count: data.copy_paste_warnings_count || 0, tab_switch_count: data.tab_switch_count || 0, commitment_accurate_info: data.commitment_accurate_info } },
+          { application_id: inserted.id, round_number: 7, question_id: "commitments", answer: { commitment_independent_work: data.commitment_independent_work, commitment_accept_policies: data.commitment_accept_policies } },
+          { application_id: inserted.id, round_number: 8, question_id: "scores", answer: { total_score: data.total_score, score_band: data.score_band, commitment_signal: data.commitment_signal } },
+        ];
+        await supabase.from("application_answers").insert(answersList);
+      } catch {
+        // Non-blocking if table is not yet migrated in older environments
+      }
+    }
+
+    // 7. Log initial status history
     if (inserted?.id) {
       try {
         await supabase.from("application_status_history").insert({
@@ -1089,43 +1169,78 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       }
     }
 
-    if (!inserted) {
-      throw new Error("Database error: No record returned from application insert.");
-    }
-
     return {
       id: inserted.id,
       reference_id: inserted.reference_id,
+      email: inserted.email || normalizedEmail,
+      submitted_at: inserted.created_at,
     };
   }
 
-  // Fallback for local development when Supabase is not configured
+  // Production application data must never depend on memoryCache or filesystem fallback
+  const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+  if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+    throw new Error("Database persistence failed. Your draft has been safely preserved. Please click Retry.");
+  }
+
+  // Fallback strictly for local offline development without Supabase credentials
   const store = ensureStore();
-  const subKey = (data as any).submission_key || (data as any).submission_token;
-  if (subKey) {
+  if (submissionToken) {
     const existing = store.applications.find(
-      (a) => (a as any).submission_key === subKey || (data.reference_id && a.reference_id === data.reference_id)
+      (a) => (a as any).submission_token === submissionToken
     );
     if (existing) {
-      return {
-        id: existing.id || 1,
-        reference_id: existing.reference_id || (data.reference_id as string),
-      };
+      if (existing.email?.toLowerCase().trim() === normalizedEmail) {
+        return {
+          id: existing.id || 1,
+          reference_id: existing.reference_id || generateReferenceId(batchCode),
+          email: existing.email,
+          submitted_at: existing.created_at,
+        };
+      }
+      throw new Error("Invalid submission token for this email address.");
     }
   }
 
-  const nextId = store.applications.length + 1;
-  const refId = data.reference_id?.trim() || generateReferenceId(batchCode);
+  if (roundId && normalizedEmail) {
+    const existingInRound = store.applications.find(
+      (a) =>
+        (a as any).round_id === roundId &&
+        a.email?.toLowerCase().trim() === normalizedEmail &&
+        !a.is_deleted
+    );
+    if (existingInRound) {
+      const conflictErr: any = new Error("An application has already been submitted for this email address in this round.");
+      conflictErr.statusCode = 409;
+      conflictErr.code = "ALREADY_SUBMITTED";
+      throw conflictErr;
+    }
+  }
+
+  const cryptoUuid =
+    typeof crypto !== "undefined" && (crypto as any).randomUUID
+      ? (crypto as any).randomUUID()
+      : `app_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const refId = generateReferenceId(batchCode);
   const applicationRecord: ApplicationData = {
     ...data,
-    id: nextId,
+    id: cryptoUuid,
     reference_id: refId,
+    submission_token: submissionToken,
+    round_id: roundId,
+    email: normalizedEmail,
+    email_normalized: normalizedEmail,
+    phone_number: normalizedPhone,
+    is_deleted: false,
+    is_test: Boolean(data.is_test ?? isTestSubmission(data)),
+    is_test_record: Boolean(data.is_test ?? isTestSubmission(data)),
+    submitted_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
   store.applications.unshift(applicationRecord);
 
-  return { id: nextId, reference_id: refId };
+  return { id: cryptoUuid, reference_id: refId, email: normalizedEmail, submitted_at: applicationRecord.created_at };
 }
 
 
@@ -1137,9 +1252,12 @@ export async function getApplicationByRef(refOrId: string): Promise<ApplicationD
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
       const isNum = !isNaN(Number(query));
       let dbQuery = supabase.from("applications").select("*");
-      if (isNum) {
+      if (isUuid) {
+        dbQuery = dbQuery.eq("id", query);
+      } else if (isNum) {
         dbQuery = dbQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
         dbQuery = dbQuery.ilike("reference_id", query);
@@ -1154,18 +1272,27 @@ export async function getApplicationByRef(refOrId: string): Promise<ApplicationD
     console.warn("[getApplicationByRef Supabase Error]:", err);
   }
 
+  const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+  if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+    return null;
+  }
+
   // Fallback to memory
   const store = ensureStore();
   const lowQuery = query.toLowerCase();
   const found = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id) === lowQuery
+    (a) =>
+      a.reference_id?.toLowerCase() === lowQuery ||
+      String(a.id).toLowerCase() === lowQuery
   );
   return found || null;
 }
 
 export async function trackApplication(referenceId: string, email: string): Promise<ApplicationData | null> {
   const refClean = referenceId.trim();
-  const emailClean = email.trim();
+  const emailClean = email.toLowerCase().trim();
+
+  if (!refClean || !emailClean) return null;
 
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
@@ -1187,11 +1314,16 @@ export async function trackApplication(referenceId: string, email: string): Prom
     console.warn("[trackApplication Supabase Error]:", err);
   }
 
+  const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+  if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+    return null;
+  }
+
   const store = ensureStore();
   const found = store.applications.find(
     (a) =>
       a.reference_id?.toLowerCase() === refClean.toLowerCase() &&
-      a.email?.toLowerCase() === emailClean.toLowerCase() &&
+      (a.email?.toLowerCase().trim() === emailClean || (a as any).email_normalized === emailClean) &&
       !a.is_deleted
   );
   return found || null;
@@ -1288,7 +1420,12 @@ export async function getApplications(filters?: {
     console.warn("[getApplications Supabase Error]:", err);
   }
 
-  // Fallback to memory
+  // Fallback to memory strictly when Supabase is unconfigured in local offline dev
+  const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+  if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+    return { applications: [], total: 0 };
+  }
+
   const store = ensureStore();
   let list = [...store.applications];
   if (filters?.view === "trash") {
@@ -1324,6 +1461,7 @@ export async function updateApplicationStatus(
         ? [`[${new Date().toLocaleDateString()}] ${notes.trim()}`, ...existingNotes]
         : existingNotes;
 
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
       const isNum = !isNaN(Number(query));
       let updateQuery = supabase.from("applications").update({
         status: newStatus,
@@ -1331,7 +1469,9 @@ export async function updateApplicationStatus(
         updated_at: now,
       });
 
-      if (isNum) {
+      if (isUuid) {
+        updateQuery = updateQuery.eq("id", query);
+      } else if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
         updateQuery = updateQuery.ilike("reference_id", query);
@@ -1362,7 +1502,7 @@ export async function updateApplicationStatus(
   const store = ensureStore();
   const lowQuery = query.toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id) === lowQuery
+    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id).toLowerCase() === lowQuery
   );
 
   if (!app) return false;
@@ -1386,12 +1526,15 @@ export async function addApplicationNote(refOrId: string, note: string): Promise
       const existing = await getApplicationByRef(query);
       if (existing) {
         const updatedNotes = [`[${new Date().toLocaleString()}] ${note.trim()}`, ...(existing.admin_notes || [])];
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
         const isNum = !isNaN(Number(query));
         let updateQuery = supabase.from("applications").update({
           admin_notes: updatedNotes,
           updated_at: now,
         });
-        if (isNum) {
+        if (isUuid) {
+          updateQuery = updateQuery.eq("id", query);
+        } else if (isNum) {
           updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
         } else {
           updateQuery = updateQuery.ilike("reference_id", query);
@@ -1405,8 +1548,9 @@ export async function addApplicationNote(refOrId: string, note: string): Promise
   }
 
   const store = ensureStore();
+  const lowQuery = query.toLowerCase();
   const app = store.applications.find(
-    (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
+    (a) => a.reference_id?.toLowerCase() === lowQuery || String(a.id).toLowerCase() === lowQuery
   );
   if (!app) return false;
 
@@ -1462,7 +1606,10 @@ export async function deleteApplication(refOrId: string, reason?: string, adminU
     if (err.message && !err.message.includes("is not configured")) {
       throw err;
     }
-    console.warn("[deleteApplication Supabase Warning]:", err);
+    const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+      throw new Error(`Application "${query}" not found or could not be moved to Trash.`);
+    }
   }
 
   const store = ensureStore();
@@ -1597,7 +1744,10 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
     if (err.message && !err.message.includes("is not configured")) {
       throw err;
     }
-    console.warn("[restoreApplication Supabase Warning]:", err);
+    const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+      throw new Error(`Application "${query}" not found or could not be restored from Trash.`);
+    }
   }
 
   const store = ensureStore();
