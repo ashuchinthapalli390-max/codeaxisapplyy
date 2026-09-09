@@ -1011,8 +1011,64 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       const missingColMatch = err?.message?.match(/Could not find the '([^']+)' column/i);
       if (missingColMatch && missingColMatch[1]) {
         const missingCol = missingColMatch[1];
-        console.warn(`[Supabase Schema Adaptive Retry]: Column '${missingCol}' missing from table schema. Stripping and retrying (attempt ${attempt + 1})...`);
-        delete currentPayload[missingCol];
+        console.warn(`[Supabase Schema Adaptive Retry]: Column '${missingCol}' missing from table schema (attempt ${attempt + 1}).`);
+
+        // If this is the first attempt failure, immediately collapse all 50+ extended question columns
+        // down to the canonical legacy schema columns that exist in all versions of the applications table!
+        if (attempt === 0) {
+          console.warn("[Supabase Schema Adaptive Retry]: Collapsing payload to canonical legacy columns in single step...");
+          const legacyColumns = new Set([
+            "reference_id",
+            "full_name",
+            "date_of_birth",
+            "gender",
+            "email",
+            "phone_number",
+            "whatsapp_number",
+            "city",
+            "state",
+            "country",
+            "college_name",
+            "degree",
+            "branch",
+            "graduation_year",
+            "current_year_semester",
+            "cgpa_percentage",
+            "github_profile",
+            "linkedin_profile",
+            "portfolio_website",
+            "other_profiles",
+            "primary_interest",
+            "primary_role_applied",
+            "experience_level",
+            "total_score",
+            "score_band",
+            "genuineness_integrity_score",
+            "commitment_continuity_score",
+            "mindset_habits_score",
+            "technical_knowledge_score",
+            "learning_potential_score",
+            "interview_communication_score",
+            "commitment_signal",
+            "skill_authenticity",
+            "status",
+            "admin_notes",
+            "admin_tags",
+            "raw_submission",
+            "created_at",
+            "updated_at",
+            "is_deleted",
+          ]);
+
+          for (const key of Object.keys(currentPayload)) {
+            if (!legacyColumns.has(key)) {
+              delete currentPayload[key];
+            }
+          }
+        } else {
+          // On subsequent attempts, strip the specific missing column
+          delete currentPayload[missingCol];
+        }
         continue;
       }
 
