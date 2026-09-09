@@ -1787,234 +1787,53 @@ function mapTeamMemberToDbRow(m: TeamMember): any {
 }
 
 export async function getTeamMembers(includeArchived: boolean = false): Promise<TeamMember[]> {
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      let query = supabase.from("team_members").select("*").order("sort_order", { ascending: true });
-      if (!includeArchived) {
-        query = query.or("status.eq.active,is_active.eq.true").is("archived_at", null);
-      }
-      const { data, error } = await query;
-      if (error) {
-        console.error("[Supabase Team Fetch Error]:", error.message);
-        throw new Error(`Failed to query leadership profiles: ${error.message}`);
-      }
-      if (data && data.length > 0) {
-        return data.map(mapDbRowToTeamMember);
-      }
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.warn("[Supabase Team Fetch Warning]:", err);
+  const { getAdminLeadership, getPublicLeadership } = await import("@/lib/leadership/repository");
+  if (includeArchived) {
+    const list = await getAdminLeadership();
+    return list as unknown as TeamMember[];
   }
-
-  const store = ensureStore();
-  const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || (!m.isArchived && m.isVisible !== false));
-  return list.sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0));
+  const list = await getPublicLeadership();
+  return list as unknown as TeamMember[];
 }
 
 export async function getAdminTeam(): Promise<TeamMember[]> {
-  return getTeamMembers(true);
+  const { getAdminLeadership } = await import("@/lib/leadership/repository");
+  const list = await getAdminLeadership();
+  return list as unknown as TeamMember[];
 }
 
 export async function getPublicTeam(): Promise<TeamMember[]> {
-  const members = await getTeamMembers(false);
-  // Return published, non-archived members with only approved public fields
-  return members
-    .filter((m) => (m.status ? m.status === "active" : m.isVisible !== false && !m.isArchived))
-    .sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0))
-    .map((m) => ({
-      ...m,
-      // Only expose personal contacts if explicitly enabled
-      phone: m.showPhone ? m.phone : "",
-      email: m.showEmail ? m.email : "",
-      whatsapp: m.showWhatsapp ? m.whatsapp : "",
-    }));
+  const { getPublicLeadership } = await import("@/lib/leadership/repository");
+  const list = await getPublicLeadership();
+  return list as unknown as TeamMember[];
 }
 
 export async function getTeamMemberById(id: string): Promise<TeamMember | null> {
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      const { data, error } = await supabase.from("team_members").select("*").eq("id", id).maybeSingle();
-      if (error) {
-        throw new Error(`Database error fetching team member: ${error.message}`);
-      }
-      if (data) {
-        return mapDbRowToTeamMember(data);
-      }
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.warn("[Supabase Team Member Fetch Warning]:", err);
-  }
-
-  const store = ensureStore();
-  return (store.team || DEFAULT_TEAM).find((t) => t.id === id) || null;
+  const { getLeadershipMemberById } = await import("@/lib/leadership/repository");
+  const member = await getLeadershipMemberById(id);
+  return member as unknown as TeamMember | null;
 }
 
 export async function saveTeamMember(member: TeamMember): Promise<TeamMember> {
-  const now = new Date().toISOString();
-  const updatedMember: TeamMember = {
-    ...member,
-    updatedAt: now,
-    createdAt: member.createdAt || now,
-    responsibilities: member.responsibilities || member.roles || [],
-    roles: member.responsibilities || member.roles || [],
-  };
-
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      const row = mapTeamMemberToDbRow(updatedMember);
-
-      // Upsert to canonical team_members table
-      const { data, error } = await supabase
-        .from("team_members")
-        .upsert(row, { onConflict: "id" })
-        .select()
-        .single();
-
-      if (error) {
-        console.error("[Supabase Team Save Error]:", error.message);
-        throw new Error(`Database error saving leadership member: ${error.message}`);
-      }
-
-      if (!data) {
-        throw new Error("No record returned after team member update.");
-      }
-
-      return mapDbRowToTeamMember(data);
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.error("[Supabase Team Save Exception]:", err);
-  }
-
-  const store = ensureStore();
-  const idx = store.team.findIndex((t) => t.id === member.id);
-  if (idx >= 0) {
-    store.team[idx] = updatedMember;
-  } else {
-    store.team.push(updatedMember);
-  }
-
-  return updatedMember;
+  const { saveLeadershipMember } = await import("@/lib/leadership/repository");
+  const saved = await saveLeadershipMember(member);
+  return saved as unknown as TeamMember;
 }
 
 export async function deleteTeamMember(id: string, softDelete: boolean = true): Promise<boolean> {
-  const now = new Date().toISOString();
-
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      if (softDelete) {
-        const { data, error } = await supabase
-          .from("team_members")
-          .update({
-            status: "archived",
-            is_active: false,
-            is_archived: true,
-            archived_at: now,
-            updated_at: now,
-          })
-          .eq("id", id)
-          .select();
-
-        if (error) {
-          throw new Error(`Failed to archive leadership member: ${error.message}`);
-        }
-        if (!data || data.length === 0) {
-          throw new Error(`Leadership member with ID ${id} not found.`);
-        }
-        return true;
-      } else {
-        const { error } = await supabase.from("team_members").delete().eq("id", id);
-        if (error) {
-          throw new Error(`Failed to delete leadership member: ${error.message}`);
-        }
-        return true;
-      }
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.warn("[Supabase Team Delete Warning]:", err);
-  }
-
-  const store = ensureStore();
-  if (softDelete) {
-    const member = store.team.find((t) => t.id === id);
-    if (member) {
-      member.isArchived = true;
-      member.isVisible = false;
-      member.status = "archived";
-      member.archived_at = now;
-      member.updatedAt = now;
-    }
-  } else {
-    store.team = store.team.filter((t) => t.id !== id);
-  }
-
-  return true;
+  const { deleteLeadershipMember } = await import("@/lib/leadership/repository");
+  return deleteLeadershipMember(id, softDelete);
 }
 
 export async function restoreTeamMember(id: string): Promise<boolean> {
-  const now = new Date().toISOString();
+  const { restoreLeadershipMember } = await import("@/lib/leadership/repository");
+  await restoreLeadershipMember(id);
+  return true;
+}
 
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      const { data, error } = await supabase
-        .from("team_members")
-        .update({
-          status: "active",
-          is_active: true,
-          is_archived: false,
-          archived_at: null,
-          updated_at: now,
-        })
-        .eq("id", id)
-        .select();
-
-      if (error) {
-        throw new Error(`Failed to restore leadership member: ${error.message}`);
-      }
-      if (!data || data.length === 0) {
-        throw new Error(`Leadership member with ID ${id} not found.`);
-      }
-      return true;
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.warn("[Supabase Team Restore Warning]:", err);
-  }
-
-  const store = ensureStore();
-  const member = store.team.find((t) => t.id === id);
-  if (member) {
-    member.isArchived = false;
-    member.isVisible = true;
-    member.status = "active";
-    member.archived_at = undefined;
-    member.updatedAt = now;
-    return true;
-  }
-  return false;
+export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean> {
+  const { reorderLeadershipMembers } = await import("@/lib/leadership/repository");
+  return reorderLeadershipMembers(orderedIds);
 }
 
 export async function duplicateTeamMember(id: string): Promise<TeamMember | null> {
@@ -2039,45 +1858,6 @@ export async function duplicateTeamMember(id: string): Promise<TeamMember | null
 
   const saved = await saveTeamMember(newMember);
   return saved;
-}
-
-export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean> {
-  const now = new Date().toISOString();
-
-  try {
-    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (isSupabaseConfigured() && supabase) {
-      for (let i = 0; i < orderedIds.length; i++) {
-        const { error } = await supabase
-          .from("team_members")
-          .update({ sort_order: i + 1, updated_at: now })
-          .eq("id", orderedIds[i]);
-
-        if (error) {
-          throw new Error(`Database error updating sort order: ${error.message}`);
-        }
-      }
-      return true;
-    }
-  } catch (err: any) {
-    if (err.message && !err.message.includes("is not configured")) {
-      throw err;
-    }
-    console.warn("[Supabase Team Reorder Warning]:", err);
-  }
-
-  const store = ensureStore();
-  orderedIds.forEach((id, index) => {
-    const member = (store.team || []).find((t) => t.id === id);
-    if (member) {
-      member.displayOrder = index + 1;
-      member.sort_order = index + 1;
-      member.updatedAt = now;
-    }
-  });
-
-  return true;
 }
 
 // ----------------- SITE MODULES CMS -----------------

@@ -74,6 +74,10 @@ export default function HomePage() {
   useEffect(() => {
     fetchTeamMembers();
 
+    const onFocus = () => fetchTeamMembers();
+    window.addEventListener("focus", onFocus);
+    const interval = setInterval(fetchTeamMembers, 5000);
+
     fetch("/api/modules")
       .then((res) => res.json())
       .then((json) => {
@@ -82,6 +86,11 @@ export default function HomePage() {
         }
       })
       .catch(() => {});
+
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearInterval(interval);
+    };
   }, []);
 
   const displayModules = modules.length > 0
@@ -1096,11 +1105,16 @@ agency.launchRecruitmentBatch("2026-SEP");`,
             </p>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {teamMembers
-              .filter((m) => m.isVisible !== false && !m.isArchived)
-              .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
-              .map((member) => (
+          {teamMembers.filter((m) => m.isVisible !== false && !m.isArchived).length === 0 ? (
+            <div className="p-8 rounded-2xl bg-red-950/20 border border-red-500/20 text-center font-mono text-xs text-slate-400">
+              Leadership profiles are synchronizing with the central registry...
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+              {teamMembers
+                .filter((m) => m.isVisible !== false && !m.isArchived)
+                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                .map((member) => (
                 <div
                   key={member.id}
                   onClick={() => {
@@ -1238,7 +1252,8 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                   </div>
                 </div>
               ))}
-          </div>
+            </div>
+          )}
         </section>
 
         {/* =========================================================================

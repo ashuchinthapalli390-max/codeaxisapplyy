@@ -20,20 +20,32 @@ ALTER TABLE public.team_members
   ADD COLUMN IF NOT EXISTS secondary_designation TEXT,
   ADD COLUMN IF NOT EXISTS department TEXT,
   ADD COLUMN IF NOT EXISTS tagline TEXT,
+  ADD COLUMN IF NOT EXISTS short_tagline TEXT,
   ADD COLUMN IF NOT EXISTS short_bio TEXT,
   ADD COLUMN IF NOT EXISTS full_bio TEXT,
   ADD COLUMN IF NOT EXISTS quote TEXT,
   ADD COLUMN IF NOT EXISTS focus_areas JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS image_bucket TEXT DEFAULT 'leadership',
   ADD COLUMN IF NOT EXISTS image_path TEXT,
+  ADD COLUMN IF NOT EXISTS image_alt TEXT,
   ADD COLUMN IF NOT EXISTS crop_x NUMERIC DEFAULT 50,
   ADD COLUMN IF NOT EXISTS crop_y NUMERIC DEFAULT 50,
   ADD COLUMN IF NOT EXISTS crop_scale NUMERIC DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS image_crop_x NUMERIC DEFAULT 50,
+  ADD COLUMN IF NOT EXISTS image_crop_y NUMERIC DEFAULT 50,
+  ADD COLUMN IF NOT EXISTS image_zoom NUMERIC DEFAULT 1,
   ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS whatsapp TEXT,
   ADD COLUMN IF NOT EXISTS whatsapp_url TEXT,
+  ADD COLUMN IF NOT EXISTS linkedin_url TEXT,
+  ADD COLUMN IF NOT EXISTS github_url TEXT,
+  ADD COLUMN IF NOT EXISTS portfolio_url TEXT,
   ADD COLUMN IF NOT EXISTS external_url TEXT,
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active',
   ADD COLUMN IF NOT EXISTS sort_order INT DEFAULT 0,
-  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS is_featured BOOLEAN DEFAULT true,
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS archived_by TEXT;
 
 -- Unique slug constraint where slug is not null
 CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_slug ON public.team_members (slug) WHERE slug IS NOT NULL;
@@ -357,11 +369,16 @@ SET
   is_active = false,
   is_archived = true,
   archived_at = COALESCE(archived_at, NOW()),
+  archived_by = 'migration_reconcile',
   updated_at = NOW()
 WHERE id NOT IN ('team-01', 'team-02', 'team-03', 'team-04')
-  AND status = 'active'
   AND (
-    LOWER(name) IN ('ch. arshad', 'b. sanjay', 'kishore', 'g. bhanu prasad')
+    status = 'active'
+    OR is_active = true
+    OR LOWER(TRIM(COALESCE(name, ''))) IN ('deepak', 'ashu')
+    OR LOWER(TRIM(COALESCE(full_name, ''))) IN ('deepak', 'ashu')
+    OR LOWER(TRIM(COALESCE(display_name, ''))) IN ('deepak', 'ashu')
+    OR LOWER(TRIM(COALESCE(name, ''))) IN ('ch. arshad', 'b. sanjay', 'kishore', 'g. bhanu prasad')
     OR LOWER(COALESCE(codename, '')) IN ('south developer', 'spideyy !!', 'hakai')
   );
 
