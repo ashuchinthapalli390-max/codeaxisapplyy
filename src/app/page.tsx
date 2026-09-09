@@ -45,7 +45,8 @@ import {
 import { playButtonClick } from "@/lib/audio";
 
 export default function HomePage() {
-  const [introViewed, setIntroViewed] = useState(true);
+  const [showIntro, setShowIntro] = useState(false);
+  const [headerVisible, setHeaderVisible] = useState(true);
   const [activeCodeTab, setActiveCodeTab] = useState<"developer" | "future" | "codexa">("developer");
   const [ideTypingCode, setIdeTypingCode] = useState("");
   const [ideTerminalOutput, setIdeTerminalOutput] = useState<string[]>([]);
@@ -163,12 +164,17 @@ export default function HomePage() {
     };
   }, []);
 
-  // Check if intro was already shown in this session
+  // Check if intro was already shown in this session or prefers-reduced-motion
   useEffect(() => {
     if (typeof window !== "undefined") {
+      const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       const viewed = sessionStorage.getItem("codexa_intro_viewed");
-      if (!viewed) {
-        setIntroViewed(false);
+      if (!viewed && !prefersReducedMotion) {
+        setShowIntro(true);
+        setHeaderVisible(false);
+      } else {
+        setShowIntro(false);
+        setHeaderVisible(true);
       }
     }
   }, []);
@@ -380,13 +386,21 @@ agency.launchRecruitmentBatch("2026-SEP");`,
 
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 relative selection:bg-red-600 selection:text-white">
-      {/* Intro Animation (First visit only) */}
-      {!introViewed && <IntroAnimation onComplete={() => setIntroViewed(true)} />}
+      {/* Intro Animation (First visit only, portal overlay) */}
+      {showIntro && (
+        <IntroAnimation
+          onExitStart={() => setHeaderVisible(true)}
+          onComplete={() => {
+            setShowIntro(false);
+            setHeaderVisible(true);
+          }}
+        />
+      )}
 
       {/* Spider-tech Filament Background Canvas */}
       <CodingBackground />
 
-      <Navbar />
+      <Navbar isVisible={headerVisible} />
 
       <main className="relative z-10 space-y-16 sm:space-y-24">
         

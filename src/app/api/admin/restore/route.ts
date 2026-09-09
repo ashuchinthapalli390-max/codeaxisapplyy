@@ -14,7 +14,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Application ID is required." }, { status: 400 });
     }
 
-    const ok = await restoreApplication(id);
+    const admin = await requireAdmin(req);
+    const adminIdentifier = (admin as any)?.email || (admin as any)?.id || "admin";
+    const ok = await restoreApplication(id, adminIdentifier);
     return NextResponse.json({
       success: ok,
       message: "Application restored successfully.",

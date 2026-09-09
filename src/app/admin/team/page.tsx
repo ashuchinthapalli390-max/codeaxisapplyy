@@ -10,6 +10,7 @@ import Button3D from "@/components/ui/Button3D";
 import Modal from "@/components/ui/Modal";
 import ImageCropperModal from "@/components/admin/ImageCropperModal";
 import LeadershipDetailModal from "@/components/team/LeadershipDetailModal";
+import LeadershipEditorModal from "@/components/admin/LeadershipEditorModal";
 import {
   Users,
   Crown,
@@ -122,31 +123,38 @@ export default function AdminTeamPage() {
     fetchTeam();
   }, []);
 
-  const handleOpenEdit = (member: TeamMember) => {
+  const [activeTriggerEl, setActiveTriggerEl] = useState<HTMLElement | null>(null);
+
+  const handleOpenEdit = (member: TeamMember, e?: React.MouseEvent) => {
     playButtonClick();
+    if (e && e.currentTarget) {
+      setActiveTriggerEl(e.currentTarget as HTMLElement);
+    }
     setEditingMember({
       ...member,
       responsibilities: member.responsibilities ? [...member.responsibilities] : (member.roles ? [...member.roles] : []),
-      skills: member.skills ? [...member.skills] : [],
+      skills: member.skills ? [...member.skills] : (member.focus_areas ? [...member.focus_areas] : []),
       otherLinks: member.otherLinks ? [...member.otherLinks] : [],
-      profileObjectPositionX: member.profileObjectPositionX ?? 50,
-      profileObjectPositionY: member.profileObjectPositionY ?? 50,
-      profileScale: member.profileScale ?? 1,
+      profileObjectPositionX: member.profileObjectPositionX ?? member.crop_x ?? 50,
+      profileObjectPositionY: member.profileObjectPositionY ?? member.crop_y ?? 50,
+      profileScale: member.profileScale ?? member.crop_scale ?? 1,
     });
-    setActiveTab("basic");
-    setSaveSuccessMsg(null);
-    setErrorMessage(null);
     setIsEditModalOpen(true);
   };
 
-  const handleAddNewMember = () => {
+  const handleAddNewMember = (e?: React.MouseEvent) => {
     playButtonClick();
+    if (e && e.currentTarget) {
+      setActiveTriggerEl(e.currentTarget as HTMLElement);
+    }
     const newId = `member-${Date.now()}`;
     const newRecord: TeamMember = {
       id: newId,
       name: "",
+      fullName: "",
       displayName: "",
       designation: "",
+      primaryDesignation: "",
       secondaryDesignation: "",
       roleType: "Core Team",
       department: "Engineering",
@@ -160,12 +168,18 @@ export default function AdminTeamPage() {
       profileObjectPositionX: 50,
       profileObjectPositionY: 50,
       profileScale: 1,
+      crop_x: 50,
+      crop_y: 50,
+      crop_scale: 1,
       responsibilities: ["Technical Development", "Team Collaboration"],
+      roles: ["Technical Development", "Team Collaboration"],
       skills: ["Full-Stack", "Next.js", "AI Prompting"],
+      focus_areas: ["Full-Stack", "Next.js", "AI Prompting"],
       email: "",
       secondaryEmail: "",
       phone: "",
       whatsapp: "",
+      whatsapp_url: "",
       location: "India",
       preferredContact: "WhatsApp",
       githubUrl: "",
@@ -173,6 +187,7 @@ export default function AdminTeamPage() {
       instagramUrl: "",
       portfolioUrl: "",
       websiteUrl: "",
+      external_url: "",
       youtubeUrl: "",
       twitterUrl: "",
       discordUsername: "",
@@ -185,54 +200,46 @@ export default function AdminTeamPage() {
       isFeatured: false,
       isVisible: true,
       isArchived: false,
+      status: "active",
       displayOrder: team.length + 1,
+      sort_order: team.length + 1,
     };
     setEditingMember(newRecord);
-    setActiveTab("basic");
-    setSaveSuccessMsg(null);
-    setErrorMessage(null);
     setIsEditModalOpen(true);
   };
 
-  const handleSaveMember = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingMember) return;
-    if (!editingMember.name.trim() || !editingMember.designation.trim()) {
-      setErrorMessage("Full Name and Designation are required.");
-      playWarningTone();
-      return;
+  const handleSaveMemberAsync = async (updatedMember: TeamMember): Promise<boolean> => {
+    const res = await fetch("/api/admin/team", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatedMember),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Server rejected profile update.");
     }
 
-    setIsSaving(true);
-    setErrorMessage(null);
-    setSaveSuccessMsg(null);
-    playButtonClick();
+    const savedMember: TeamMember = json.data || updatedMember;
 
-    try {
-      const res = await fetch("/api/admin/team", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(editingMember),
-      });
-      const json = await res.json();
-      if (json.success) {
-        playSuccessSound();
-        setSaveSuccessMsg("PROFILE SAVED & LIVE ON WEBSITE ✓");
-        setTimeout(() => {
-          setIsEditModalOpen(false);
-          fetchTeam();
-        }, 1200);
-      } else {
-        setErrorMessage(json.error || "Failed to save team member.");
-        playWarningTone();
+    // Immediately update local admin state
+    setTeam((prev) => {
+      const idx = prev.findIndex((m) => m.id === savedMember.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = savedMember;
+        return copy;
       }
-    } catch {
-      setErrorMessage("Network error saving profile. Your form changes have been preserved.");
-      playWarningTone();
-    } finally {
-      setIsSaving(false);
-    }
+      return [...prev, savedMember];
+    });
+
+    setEditingMember(savedMember);
+    setTimeout(() => {
+      setIsEditModalOpen(false);
+      fetchTeam();
+    }, 800);
+
+    return true;
   };
 
   const handleCroppedPhotoSave = async (blob: Blob, previewUrl: string) => {
@@ -261,9 +268,17 @@ export default function AdminTeamPage() {
             ? {
                 ...prev,
                 photoUrl: json.url,
+                image_path: json.storagePath,
                 profileStoragePath: json.storagePath,
               }
             : null
+        );
+        setTeam((prev) =>
+          prev.map((m) =>
+            m.id === editingMember.id
+              ? { ...m, photoUrl: json.url, image_path: json.storagePath, profileStoragePath: json.storagePath }
+              : m
+          )
         );
         playSuccessSound();
       }
@@ -451,7 +466,7 @@ export default function AdminTeamPage() {
 
         <button
           type="button"
-          onClick={handleAddNewMember}
+          onClick={(e) => handleAddNewMember(e)}
           className="btn-red-sweep px-5 py-3 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white text-xs font-black uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(239,68,68,0.4)] border border-red-400/50 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
@@ -640,7 +655,7 @@ export default function AdminTeamPage() {
               <div className="pt-4 border-t border-red-950/80 grid grid-cols-2 gap-2 mt-4">
                 <button
                   type="button"
-                  onClick={() => handleOpenEdit(member)}
+                  onClick={(e) => handleOpenEdit(member, e)}
                   className="py-2 px-3 rounded-xl bg-red-950/50 hover:bg-red-600 border border-red-500/40 text-red-200 hover:text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Edit2 className="w-3.5 h-3.5" />
@@ -704,615 +719,17 @@ export default function AdminTeamPage() {
         </div>
       )}
 
-      {/* Edit / Add Modal (2-Column Studio) */}
+      {/* Edit / Add Modal (Sticky Header/Footer, Single Scroll Region) */}
       {editingMember && (
-        <Modal
+        <LeadershipEditorModal
           isOpen={isEditModalOpen}
           onClose={() => setIsEditModalOpen(false)}
-          title={`Edit Profile: ${editingMember.name || "New Leadership Member"}`}
-        >
-          <form onSubmit={handleSaveMember} className="space-y-6 max-h-[82vh] overflow-y-auto pr-1">
-            
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
-              {/* LEFT COLUMN: Profile Image Studio & Framing */}
-              <div className="lg:col-span-4 space-y-5">
-                <div className="p-4 rounded-2xl bg-black/60 border border-red-950 space-y-4 text-center">
-                  <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider block">
-                    Profile Photo & Framing
-                  </span>
-
-                  {/* Main Preview Box */}
-                  <div className="w-36 h-36 mx-auto rounded-3xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.3)] overflow-hidden relative">
-                    {editingMember.photoUrl ? (
-                      <img
-                        src={editingMember.photoUrl}
-                        alt="Profile Preview"
-                        style={{
-                          objectPosition: `${editingMember.profileObjectPositionX ?? 50}% ${editingMember.profileObjectPositionY ?? 50}%`,
-                          transform: `scale(${editingMember.profileScale ?? 1})`,
-                        }}
-                        className="w-full h-full object-cover rounded-2xl"
-                      />
-                    ) : (
-                      <div className="w-full h-full rounded-2xl bg-red-950/60 flex items-center justify-center text-3xl font-black text-white">
-                        {editingMember.name ? editingMember.name.slice(0, 2).toUpperCase() : "CX"}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Upload Actions */}
-                  <div className="space-y-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        setIsCropperOpen(true);
-                      }}
-                      className="w-full py-2.5 px-3 rounded-xl bg-red-600/30 hover:bg-red-600 border border-red-500/50 text-white text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.3)]"
-                    >
-                      <Crop className="w-3.5 h-3.5" />
-                      <span>UPLOAD / CROP PHOTO</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        setEditingMember({
-                          ...editingMember,
-                          photoUrl: "/logo.jpeg",
-                          profileStoragePath: "",
-                        });
-                      }}
-                      className="w-full py-1.5 px-3 rounded-xl border border-red-950 hover:border-red-500 text-slate-400 hover:text-white text-[10px] font-bold cursor-pointer"
-                    >
-                      RESET TO DEFAULT AVATAR
-                    </button>
-                  </div>
-
-                  {/* Positioning Sliders */}
-                  <div className="space-y-3 pt-3 border-t border-red-950/80 text-left text-xs">
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Horizontal Center ({editingMember.profileObjectPositionX ?? 50}%)</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={editingMember.profileObjectPositionX ?? 50}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            profileObjectPositionX: parseInt(e.target.value, 10),
-                          })
-                        }
-                        className="w-full accent-red-500 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Vertical Center ({editingMember.profileObjectPositionY ?? 50}%)</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={editingMember.profileObjectPositionY ?? 50}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            profileObjectPositionY: parseInt(e.target.value, 10),
-                          })
-                        }
-                        className="w-full accent-red-500 cursor-pointer"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Zoom Scale ({(editingMember.profileScale ?? 1).toFixed(2)}x)</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max="1.5"
-                        step="0.05"
-                        value={editingMember.profileScale ?? 1}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            profileScale: parseFloat(e.target.value),
-                          })
-                        }
-                        className="w-full accent-red-500 cursor-pointer"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Quick Preset Photos */}
-                  <div className="space-y-2 pt-3 border-t border-red-950/80 text-left">
-                    <span className="text-[10px] text-slate-500 block">Preset Assets:</span>
-                    <div className="flex flex-wrap gap-1">
-                      {PHOTO_PRESETS.map((preset) => (
-                        <button
-                          key={preset.url}
-                          type="button"
-                          onClick={() => {
-                            playButtonClick();
-                            setEditingMember({ ...editingMember, photoUrl: preset.url });
-                          }}
-                          className="px-2 py-1 rounded bg-black border border-red-950 text-[10px] text-slate-300 hover:text-white hover:border-red-500 cursor-pointer"
-                        >
-                          {preset.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
-              {/* RIGHT COLUMN: Tabbed Fields */}
-              <div className="lg:col-span-8 space-y-4">
-                
-                {/* Navigation Tabs */}
-                <div className="flex items-center gap-1 overflow-x-auto border-b border-red-950 pb-2">
-                  {[
-                    { id: "basic", label: "Basic Info" },
-                    { id: "bio", label: "Bio & Quote" },
-                    { id: "contact", label: "Contacts & Socials" },
-                    { id: "roles", label: "Roles" },
-                    { id: "skills", label: "Skills" },
-                    { id: "visibility", label: "Visibility" },
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => {
-                        playButtonClick();
-                        setActiveTab(tab.id as any);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                        activeTab === tab.id
-                          ? "bg-red-950 border border-red-500 text-red-300"
-                          : "text-slate-400 hover:text-white hover:bg-red-950/20"
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* TAB 1: BASIC INFORMATION */}
-                {activeTab === "basic" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Input
-                        label="Full Legal Name *"
-                        value={editingMember.name}
-                        onChange={(e) => setEditingMember({ ...editingMember, name: e.target.value })}
-                        placeholder="e.g. Ashu"
-                        required
-                      />
-                      <Input
-                        label="Display Name (Public)"
-                        value={editingMember.displayName || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, displayName: e.target.value })}
-                        placeholder="e.g. Ashu Chinthapalli"
-                      />
-                      <Input
-                        label="Primary Designation *"
-                        value={editingMember.designation}
-                        onChange={(e) => setEditingMember({ ...editingMember, designation: e.target.value })}
-                        placeholder="e.g. Founder & Technical Director"
-                        required
-                      />
-                      <Input
-                        label="Secondary Designation (Optional)"
-                        value={editingMember.secondaryDesignation || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, secondaryDesignation: e.target.value })}
-                        placeholder="e.g. Lead System Architect"
-                      />
-                      <Select
-                        label="Role Type"
-                        value={editingMember.roleType}
-                        onChange={(e) => setEditingMember({ ...editingMember, roleType: e.target.value })}
-                        options={ROLE_OPTIONS}
-                      />
-                      <Input
-                        label="Department"
-                        value={editingMember.department || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, department: e.target.value })}
-                        placeholder="e.g. Core Engineering & Product"
-                      />
-                    </div>
-                    <Input
-                      label="Short Tagline / Catchphrase"
-                      value={editingMember.tagline || ""}
-                      onChange={(e) => setEditingMember({ ...editingMember, tagline: e.target.value })}
-                      placeholder="e.g. Building technology and helping developers grow."
-                    />
-                  </div>
-                )}
-
-                {/* TAB 2: BIO & QUOTES */}
-                {activeTab === "bio" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <Textarea
-                      label="Short Bio (Displays on Card) *"
-                      value={editingMember.shortBio || editingMember.bio}
-                      onChange={(e) =>
-                        setEditingMember({
-                          ...editingMember,
-                          bio: e.target.value,
-                          shortBio: e.target.value,
-                        })
-                      }
-                      rows={3}
-                      placeholder="Brief 2-3 line summary shown on landing card..."
-                      required
-                    />
-                    <Textarea
-                      label="Detailed Full Bio (Displays in Profile Modal)"
-                      value={editingMember.fullBio || ""}
-                      onChange={(e) => setEditingMember({ ...editingMember, fullBio: e.target.value })}
-                      rows={4}
-                      placeholder="Comprehensive background, achievements, and responsibilities..."
-                    />
-                    <Input
-                      label="Personal Leadership Quote"
-                      value={editingMember.quote || ""}
-                      onChange={(e) => setEditingMember({ ...editingMember, quote: e.target.value })}
-                      placeholder="e.g. I don't just write code, I build solutions that create impact."
-                    />
-                    <Textarea
-                      label="Professional Summary / Vision"
-                      value={editingMember.professionalSummary || ""}
-                      onChange={(e) => setEditingMember({ ...editingMember, professionalSummary: e.target.value })}
-                      rows={2}
-                      placeholder="Strategic goals and guiding principles..."
-                    />
-                  </div>
-                )}
-
-                {/* TAB 3: CONTACTS & SOCIALS */}
-                {activeTab === "contact" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <Input
-                        label="Phone Number"
-                        value={editingMember.phone || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, phone: e.target.value })}
-                        placeholder="+91 88979 01413"
-                      />
-                      <Input
-                        label="WhatsApp Number"
-                        value={editingMember.whatsapp || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, whatsapp: e.target.value })}
-                        placeholder="+91 88979 01413"
-                      />
-                      <Input
-                        label="Primary Email"
-                        type="email"
-                        value={editingMember.email || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, email: e.target.value })}
-                        placeholder="founder@codexa-agency.online"
-                      />
-                      <Input
-                        label="Secondary Email"
-                        type="email"
-                        value={editingMember.secondaryEmail || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, secondaryEmail: e.target.value })}
-                        placeholder="personal@gmail.com"
-                      />
-                      <Input
-                        label="Location"
-                        value={editingMember.location || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, location: e.target.value })}
-                        placeholder="Hyderabad, India"
-                      />
-                      <Input
-                        label="GitHub Profile URL"
-                        value={editingMember.githubUrl || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, githubUrl: e.target.value })}
-                        placeholder="https://github.com/..."
-                      />
-                      <Input
-                        label="LinkedIn Profile URL"
-                        value={editingMember.linkedinUrl || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, linkedinUrl: e.target.value })}
-                        placeholder="https://linkedin.com/in/..."
-                      />
-                      <Input
-                        label="Instagram URL"
-                        value={editingMember.instagramUrl || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, instagramUrl: e.target.value })}
-                        placeholder="https://instagram.com/..."
-                      />
-                      <Input
-                        label="Portfolio / Website URL"
-                        value={editingMember.websiteUrl || editingMember.portfolioUrl || ""}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            websiteUrl: e.target.value,
-                            portfolioUrl: e.target.value,
-                          })
-                        }
-                        placeholder="https://codexa-agency.online"
-                      />
-                      <Input
-                        label="Discord Username"
-                        value={editingMember.discordUsername || ""}
-                        onChange={(e) => setEditingMember({ ...editingMember, discordUsername: e.target.value })}
-                        placeholder="username#0000"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 4: ROLES & RESPONSIBILITIES */}
-                {activeTab === "roles" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        label="Add Responsibility"
-                        value={newResponsibility}
-                        onChange={(e) => setNewResponsibility(e.target.value)}
-                        placeholder="e.g. Technical Direction & Program Oversight"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleAddResponsibility}
-                        className="px-4 py-3 rounded-xl bg-red-950 hover:bg-red-600 border border-red-500/40 text-white text-xs font-bold shrink-0 mt-6 cursor-pointer"
-                      >
-                        + ADD
-                      </button>
-                    </div>
-
-                    <div className="space-y-2">
-                      {(editingMember.responsibilities || []).map((resp, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-3 rounded-xl bg-black/60 border border-red-950 text-xs text-slate-200"
-                        >
-                          <span className="flex items-center gap-2">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-red-400" />
-                            <span>{resp}</span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveResponsibility(idx)}
-                            className="text-slate-500 hover:text-red-400 p-1 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 5: SKILLS */}
-                {activeTab === "skills" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        label="Add Skill / Focus Domain"
-                        value={newSkill}
-                        onChange={(e) => setNewSkill(e.target.value)}
-                        placeholder="e.g. Next.js 16, Supabase, AI Systems"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => handleAddSkill()}
-                        className="px-4 py-3 rounded-xl bg-red-950 hover:bg-red-600 border border-red-500/40 text-white text-xs font-bold shrink-0 mt-6 cursor-pointer"
-                      >
-                        + ADD
-                      </button>
-                    </div>
-
-                    {/* Quick suggestions */}
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] text-slate-500 uppercase">Quick Suggestions:</span>
-                      <div className="flex flex-wrap gap-1">
-                        {PRESET_SKILLS.map((sk) => (
-                          <button
-                            key={sk}
-                            type="button"
-                            onClick={() => handleAddSkill(sk)}
-                            className="px-2 py-0.5 rounded bg-black/60 border border-red-950 text-[10px] text-slate-400 hover:text-white hover:border-red-500 cursor-pointer"
-                          >
-                            + {sk}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Current Skills Chips */}
-                    <div className="space-y-2 pt-2 border-t border-red-950">
-                      <span className="text-xs font-bold text-white block">Assigned Skills:</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(editingMember.skills || []).map((sk) => (
-                          <span
-                            key={sk}
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded-xl bg-red-950/60 border border-red-500/40 text-red-200 text-xs font-bold"
-                          >
-                            <span>{sk}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveSkill(sk)}
-                              className="text-red-400 hover:text-white ml-1 cursor-pointer"
-                            >
-                              &times;
-                            </button>
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* TAB 6: PUBLIC VISIBILITY & SETTINGS */}
-                {activeTab === "visibility" && (
-                  <div className="space-y-4 animate-in fade-in duration-150">
-                    <div className="p-4 rounded-2xl bg-black/60 border border-red-950 space-y-3">
-                      <Checkbox
-                        id="vis-live"
-                        checked={editingMember.isVisible !== false}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            isVisible: (e.target as HTMLInputElement).checked,
-                          })
-                        }
-                        label="Visible on Public Website Landing Page"
-                      />
-
-                      <Checkbox
-                        id="vis-featured"
-                        checked={editingMember.isFeatured === true}
-                        onChange={(e) =>
-                          setEditingMember({
-                            ...editingMember,
-                            isFeatured: (e.target as HTMLInputElement).checked,
-                          })
-                        }
-                        label="Highlight as Featured Leadership Card"
-                      />
-
-                      <div className="border-t border-red-950/80 pt-3 space-y-3">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase block">
-                          Public Contact Display Controls:
-                        </span>
-
-                        <Checkbox
-                          id="vis-phone"
-                          checked={editingMember.showPhone !== false}
-                          onChange={(e) =>
-                            setEditingMember({
-                              ...editingMember,
-                              showPhone: (e.target as HTMLInputElement).checked,
-                            })
-                          }
-                          label="Show Call / Phone Button on Public Card"
-                        />
-
-                        <Checkbox
-                          id="vis-whatsapp"
-                          checked={editingMember.showWhatsapp !== false}
-                          onChange={(e) =>
-                            setEditingMember({
-                              ...editingMember,
-                              showWhatsapp: (e.target as HTMLInputElement).checked,
-                            })
-                          }
-                          label="Show WhatsApp Button on Public Card"
-                        />
-
-                        <Checkbox
-                          id="vis-email"
-                          checked={editingMember.showEmail !== false}
-                          onChange={(e) =>
-                            setEditingMember({
-                              ...editingMember,
-                              showEmail: (e.target as HTMLInputElement).checked,
-                            })
-                          }
-                          label="Show Email Button on Public Card"
-                        />
-
-                        <Checkbox
-                          id="vis-socials"
-                          checked={editingMember.showSocials !== false}
-                          onChange={(e) =>
-                            setEditingMember({
-                              ...editingMember,
-                              showSocials: (e.target as HTMLInputElement).checked,
-                            })
-                          }
-                          label="Show GitHub / LinkedIn / Social Buttons"
-                        />
-                      </div>
-
-                      <div className="pt-3 border-t border-red-950/80">
-                        <Input
-                          label="Display Order (Numeric Sort)"
-                          type="number"
-                          value={String(editingMember.displayOrder || 1)}
-                          onChange={(e) =>
-                            setEditingMember({
-                              ...editingMember,
-                              displayOrder: parseInt(e.target.value, 10) || 1,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              </div>
-
-            </div>
-
-            {/* Error / Success Notifications */}
-            {errorMessage && (
-              <div className="p-3.5 rounded-xl bg-red-950/50 border border-red-500 text-xs text-red-200 flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 shrink-0 text-red-400" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {saveSuccessMsg && (
-              <div className="p-3.5 rounded-xl bg-emerald-950/50 border border-emerald-500 text-xs text-emerald-300 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                <span>{saveSuccessMsg}</span>
-              </div>
-            )}
-
-            {/* Bottom Sticky Action Bar */}
-            <div className="pt-4 border-t border-red-950 flex flex-wrap items-center justify-between gap-3 sticky bottom-0 bg-[#070712] py-2">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-red-950 text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
-                >
-                  CANCEL
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    playButtonClick();
-                    setPreviewMember(editingMember);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>PREVIEW CARD</span>
-                </button>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Button3D
-                  type="submit"
-                  variant="primary"
-                  disabled={isSaving}
-                  className="px-8 py-3 text-xs font-black uppercase tracking-widest rounded-xl shadow-[0_0_25px_rgba(239,68,68,0.5)]"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>{isSaving ? "SAVING PROFILE..." : "SAVE CHANGES"}</span>
-                </Button3D>
-              </div>
-            </div>
-
-          </form>
-        </Modal>
+          member={editingMember}
+          onSave={handleSaveMemberAsync}
+          onOpenCropper={() => setIsCropperOpen(true)}
+          onPreview={(m) => setPreviewMember(m)}
+          triggerElement={activeTriggerEl}
+        />
       )}
 
       {/* Image Cropper Modal */}

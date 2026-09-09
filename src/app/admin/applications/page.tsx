@@ -536,10 +536,19 @@ export default function AdminApplicationsPage() {
                 </th>
                 <th className="py-2.5 px-3">REFERENCE</th>
                 <th className="py-2.5 px-3">CANDIDATE</th>
-                <th className="py-2.5 px-3">COLLEGE / ROLL</th>
-                <th className="py-2.5 px-3">SCORE</th>
-                <th className="py-2.5 px-3">COMMITMENT</th>
-                <th className="py-2.5 px-3">INTEGRITY</th>
+                {currentView === "trash" ? (
+                  <>
+                    <th className="py-2.5 px-3">DELETED AT</th>
+                    <th className="py-2.5 px-3">DELETED BY / REASON</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="py-2.5 px-3">COLLEGE / ROLL</th>
+                    <th className="py-2.5 px-3">SCORE</th>
+                    <th className="py-2.5 px-3">COMMITMENT</th>
+                    <th className="py-2.5 px-3">INTEGRITY</th>
+                  </>
+                )}
                 <th className="py-2.5 px-3">STATUS</th>
                 <th className="py-2.5 px-3 text-right">ACTIONS</th>
               </tr>
@@ -570,36 +579,54 @@ export default function AdminApplicationsPage() {
                       <div className="font-bold text-white">{app.full_name}</div>
                       <div className="text-[10px] text-slate-500">{app.email}</div>
                     </td>
-                    <td className="py-3 px-3">
-                      <div className="text-slate-300 truncate max-w-[160px]">{app.college_name}</div>
-                      <div className="text-[10px] text-slate-500">{app.roll_number} ({app.branch})</div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span className="font-black text-white">{app.total_score || 0}</span>
-                      <span className="text-[10px] text-slate-500">/100</span>
-                      <div className="text-[9px] text-slate-400">{app.score_band}</div>
-                    </td>
-                    <td className="py-3 px-3">
-                      <span
-                        className={`text-[9px] px-2 py-0.5 rounded font-bold ${
-                          app.commitment_signal === "Strong"
-                            ? "bg-emerald-950 text-emerald-400"
-                            : app.commitment_signal === "Moderate"
-                            ? "bg-amber-950 text-amber-400"
-                            : "bg-red-950 text-red-400"
-                        }`}
-                      >
-                        {app.commitment_signal || "N/A"}
-                      </span>
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="text-[10px] text-slate-300">
-                        Pastes: <span className={app.copy_paste_warnings_count > 0 ? "text-amber-400 font-bold" : ""}>{app.copy_paste_warnings_count || 0}</span>
-                      </div>
-                      <div className="text-[9px] text-slate-500">
-                        Switches: {app.tab_switch_count || 0}
-                      </div>
-                    </td>
+                    {currentView === "trash" ? (
+                      <>
+                        <td className="py-3 px-3">
+                          <div className="text-slate-300 font-bold">
+                            {app.deleted_at ? new Date(app.deleted_at).toLocaleString("en-IN") : "Recently Deleted"}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="text-amber-400 font-bold">{app.deleted_by || "Admin"}</div>
+                          <div className="text-[10px] text-slate-400 truncate max-w-[200px]">
+                            {app.delete_reason || app.deletion_reason || "Admin soft delete"}
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-3 px-3">
+                          <div className="text-slate-300 truncate max-w-[160px]">{app.college_name}</div>
+                          <div className="text-[10px] text-slate-500">{app.roll_number} ({app.branch})</div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="font-black text-white">{app.total_score || 0}</span>
+                          <span className="text-[10px] text-slate-500">/100</span>
+                          <div className="text-[9px] text-slate-400">{app.score_band}</div>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`text-[9px] px-2 py-0.5 rounded font-bold ${
+                              app.commitment_signal === "Strong"
+                                ? "bg-emerald-950 text-emerald-400"
+                                : app.commitment_signal === "Moderate"
+                                ? "bg-amber-950 text-amber-400"
+                                : "bg-red-950 text-red-400"
+                            }`}
+                          >
+                            {app.commitment_signal || "N/A"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="text-[10px] text-slate-300">
+                            Pastes: <span className={app.copy_paste_warnings_count > 0 ? "text-amber-400 font-bold" : ""}>{app.copy_paste_warnings_count || 0}</span>
+                          </div>
+                          <div className="text-[9px] text-slate-500">
+                            Switches: {app.tab_switch_count || 0}
+                          </div>
+                        </td>
+                      </>
+                    )}
                     <td className="py-3 px-3">
                       {currentView === "trash" ? (
                         <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-bold">

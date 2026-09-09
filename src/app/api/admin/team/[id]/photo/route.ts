@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
 import { getTeamMemberById, saveTeamMember, addAuditLog } from "@/lib/storage";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/admin";
 import { randomBytes } from "node:crypto";
-import { writeFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
 
 const ALLOWED_MIME_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 const MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8 MB
@@ -29,17 +27,32 @@ export async function POST(
     const posX = formData.get("positionX") ? Number(formData.get("positionX")) : undefined;
     const posY = formData.get("positionY") ? Number(formData.get("positionY")) : undefined;
     const scale = formData.get("scale") ? Number(formData.get("scale")) : undefined;
+    const resetCrop = formData.get("resetCrop") === "true";
 
+    // Just resetting or updating crop position/scale without replacing file
     if (!file) {
-      // Just updating position/scale without replacing file
+      if (resetCrop) {
+        member.profileObjectPositionX = 50;
+        member.profileObjectPositionY = 50;
+        member.profileScale = 1;
+        member.crop_x = 50;
+        member.crop_y = 50;
+        member.crop_scale = 1;
+        const saved = await saveTeamMember(member);
+        return NextResponse.json({ success: true, member: saved, message: "Crop position reset to default." });
+      }
+
       if (posX != null || posY != null || scale != null) {
         member.profileObjectPositionX = posX ?? member.profileObjectPositionX ?? 50;
         member.profileObjectPositionY = posY ?? member.profileObjectPositionY ?? 50;
         member.profileScale = scale ?? member.profileScale ?? 1;
-        await saveTeamMember(member);
-        return NextResponse.json({ success: true, member });
+        member.crop_x = member.profileObjectPositionX;
+        member.crop_y = member.profileObjectPositionY;
+        member.crop_scale = member.profileScale;
+        const saved = await saveTeamMember(member);
+        return NextResponse.json({ success: true, member: saved });
       }
-      return NextResponse.json({ success: false, error: "No image file provided." }, { status: 400 });
+      return NextResponse.json({ success: false, error: "No image file or crop parameters provided." }, { status: 400 });
     }
 
     // 2. Validate MIME type
@@ -64,6 +77,28 @@ export async function POST(
       );
     }
 
+    // 4. Supabase Storage must be configured
+    if (!isSupabaseConfigured()) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Supabase Storage is not configured. Please set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Failed to initialize Supabase admin client.",
+        },
+        { status: 500 }
+      );
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
@@ -72,73 +107,75 @@ export async function POST(
     else if (file.type === "image/jpeg") ext = "jpg";
     else if (file.type === "image/avif") ext = "avif";
 
-    const safeFilename = `profile-${Date.now()}-${randomBytes(4).toString("hex")}.${ext}`;
+    const timestamp = Date.now();
+    const safeFilename = `profile-${timestamp}-${randomBytes(6).toString("hex")}.${ext}`;
     const storagePath = `leadership/${id}/${safeFilename}`;
-    let finalUrl = "";
-    let uploadedToSupabase = false;
 
-    // 4. Try Supabase Storage
-    try {
-      const supabase = getSupabaseAdmin();
-      if (supabase) {
-        // Ensure bucket exists or attempt upload
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("leadership")
-          .upload(storagePath, buffer, {
-            contentType: file.type,
-            upsert: true,
-          });
+    console.log(`[Leadership Photo] Uploading to Supabase Storage: ${storagePath} (${buffer.length} bytes)`);
 
-        if (!uploadError && uploadData) {
-          const { data: publicUrlData } = supabase.storage.from("leadership").getPublicUrl(storagePath);
-          if (publicUrlData?.publicUrl) {
-            finalUrl = publicUrlData.publicUrl;
-            uploadedToSupabase = true;
-          }
-        } else if (uploadError) {
-          console.warn("[Supabase Storage Upload Warning]:", uploadError.message);
-        }
-      }
-    } catch (supabaseErr) {
-      console.warn("[Supabase Storage Upload Exception]:", supabaseErr);
+    // 5. Upload strictly to Supabase Storage bucket 'leadership'
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from("leadership")
+      .upload(storagePath, buffer, {
+        contentType: file.type,
+        upsert: true,
+      });
+
+    if (uploadError || !uploadData) {
+      console.error("[Supabase Storage Upload Error]:", uploadError);
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Failed to upload photo to Supabase Storage: ${uploadError?.message || "Unknown error"}`,
+        },
+        { status: 500 }
+      );
     }
 
-    // 5. Fallback to Local Public Directory if Supabase Storage is not active
-    if (!uploadedToSupabase || !finalUrl) {
-      try {
-        const uploadDir = join(process.cwd(), "public", "uploads", "leadership", id);
-        await mkdir(uploadDir, { recursive: true });
-        const filePath = join(uploadDir, safeFilename);
-        await writeFile(filePath, buffer);
-        finalUrl = `/uploads/leadership/${id}/${safeFilename}`;
-      } catch (localErr) {
-        console.warn("[Local File Write Warning]:", localErr);
-        // Fallback to data URI
-        finalUrl = `data:${file.type};base64,${buffer.toString("base64")}`;
-      }
+    const { data: publicUrlData } = supabase.storage.from("leadership").getPublicUrl(storagePath);
+    if (!publicUrlData?.publicUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Could not retrieve public URL for uploaded photo from Supabase Storage.",
+        },
+        { status: 500 }
+      );
     }
 
-    // 6. Clean up old Supabase storage object if replaced successfully
-    const oldStoragePath = member.profileStoragePath;
-    if (uploadedToSupabase && oldStoragePath && oldStoragePath !== storagePath) {
-      try {
-        const supabase = getSupabaseAdmin();
-        if (supabase) {
-          await supabase.storage.from("leadership").remove([oldStoragePath]);
-        }
-      } catch {
-        // Non-blocking cleanup failure
-      }
-    }
+    // Cache-busting URL with timestamp
+    const finalUrl = `${publicUrlData.publicUrl}?v=${timestamp}`;
+    const oldStoragePath = member.profileStoragePath || member.image_path;
 
-    // 7. Update Team Member Record
+    // 6. Update Team Member Record in Supabase
     member.photoUrl = finalUrl;
+    member.image_path = storagePath;
     member.profileStoragePath = storagePath;
-    if (posX != null) member.profileObjectPositionX = posX;
-    if (posY != null) member.profileObjectPositionY = posY;
-    if (scale != null) member.profileScale = scale;
+    if (posX != null) {
+      member.profileObjectPositionX = posX;
+      member.crop_x = posX;
+    }
+    if (posY != null) {
+      member.profileObjectPositionY = posY;
+      member.crop_y = posY;
+    }
+    if (scale != null) {
+      member.profileScale = scale;
+      member.crop_scale = scale;
+    }
 
-    await saveTeamMember(member);
+    const savedMember = await saveTeamMember(member);
+
+    // 7. Clean up old Supabase storage object ONLY AFTER successful database update
+    if (oldStoragePath && oldStoragePath !== storagePath && oldStoragePath.startsWith("leadership/")) {
+      try {
+        await supabase.storage.from("leadership").remove([oldStoragePath]);
+        console.log(`[Leadership Photo] Removed old photo from storage: ${oldStoragePath}`);
+      } catch (cleanErr) {
+        console.warn("[Leadership Photo Old Cleanup Warning]:", cleanErr);
+      }
+    }
+
     await addAuditLog(
       "PROFILE_PHOTO_UPDATED" as any,
       `Updated profile photo for ${member.name} (${member.designation})`
@@ -148,7 +185,62 @@ export async function POST(
       success: true,
       url: finalUrl,
       storagePath,
-      member,
+      member: savedMember,
+    });
+  } catch (err) {
+    return handleAdminAuthError(err);
+  }
+}
+
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    await requireAdmin(req);
+
+    const member = await getTeamMemberById(id);
+    if (!member) {
+      return NextResponse.json({ success: false, error: "Team member not found." }, { status: 404 });
+    }
+
+    const oldStoragePath = member.profileStoragePath || member.image_path;
+    const defaultPlaceholder = "/assets/image-assests/hero.jpeg";
+
+    member.photoUrl = defaultPlaceholder;
+    member.image_path = "";
+    member.profileStoragePath = "";
+    member.profileObjectPositionX = 50;
+    member.profileObjectPositionY = 50;
+    member.profileScale = 1;
+    member.crop_x = 50;
+    member.crop_y = 50;
+    member.crop_scale = 1;
+
+    const savedMember = await saveTeamMember(member);
+
+    // Clean up Supabase storage object
+    if (oldStoragePath && oldStoragePath.startsWith("leadership/")) {
+      const supabase = getSupabaseAdmin();
+      if (supabase) {
+        try {
+          await supabase.storage.from("leadership").remove([oldStoragePath]);
+        } catch (e) {
+          console.warn("[Leadership Photo Remove Storage Warning]:", e);
+        }
+      }
+    }
+
+    await addAuditLog(
+      "PROFILE_PHOTO_DELETED" as any,
+      `Removed profile photo for ${member.name} (${member.designation})`
+    );
+
+    return NextResponse.json({
+      success: true,
+      message: "Profile photo removed.",
+      member: savedMember,
     });
   } catch (err) {
     return handleAdminAuthError(err);

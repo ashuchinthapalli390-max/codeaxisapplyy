@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const ok = await deleteApplication(id, reason);
+    const admin = await requireAdmin(req);
+    const adminIdentifier = (admin as any)?.email || (admin as any)?.id || "admin";
+    const ok = await deleteApplication(id, reason, adminIdentifier);
     return NextResponse.json({
       success: ok,
       message: "Application moved to Trash.",

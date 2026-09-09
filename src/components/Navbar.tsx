@@ -7,7 +7,11 @@ import { Volume2, VolumeX, Menu, X, Terminal, ArrowRight, ShieldCheck } from "lu
 import { isSoundEnabled, toggleSound, playButtonClick } from "@/lib/audio";
 import { useApplicationAvailability } from "@/lib/useApplicationAvailability";
 
-export default function Navbar() {
+interface NavbarProps {
+  isVisible?: boolean;
+}
+
+export default function Navbar({ isVisible = true }: NavbarProps) {
   const pathname = usePathname();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -39,7 +43,12 @@ export default function Navbar() {
 
   return (
     <header
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+      style={{
+        opacity: isVisible ? 1 : 0,
+        visibility: isVisible ? "visible" : "hidden",
+        pointerEvents: isVisible ? "auto" : "none",
+      }}
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
         isScrolled
           ? "bg-[#030712]/90 backdrop-blur-md border-b border-red-500/20 shadow-[0_10px_30px_rgba(0,0,0,0.8)] py-3"
           : "bg-transparent py-5"

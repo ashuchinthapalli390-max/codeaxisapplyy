@@ -1,23 +1,39 @@
 export interface TeamMember {
   id: string;
+  slug?: string;
   name: string;
+  fullName?: string;
+  full_name?: string;
   displayName?: string;
+  display_name?: string;
   codename?: string;
+  code_name?: string;
   designation: string;
+  primaryDesignation?: string;
+  primary_designation?: string;
   secondaryDesignation?: string;
+  secondary_designation?: string;
   roleType: string; // "Founder" | "Co-Founder" | "CEO" | "CTO" | "COO" | "Core Team" | "Mentor" | "Lead Developer" | custom
+  role_type?: string;
   department?: string;
   tagline?: string;
   bio: string;
   shortBio?: string;
+  short_bio?: string;
   fullBio?: string;
+  full_bio?: string;
   professionalSummary?: string;
   quote?: string;
+  focus_areas?: string[];
   photoUrl: string;
+  image_path?: string;
   profileStoragePath?: string;
   profileObjectPositionX?: number; // 0 to 100, default 50
   profileObjectPositionY?: number; // 0 to 100, default 50
   profileScale?: number; // 1.0 to 1.5, default 1
+  crop_x?: number;
+  crop_y?: number;
+  crop_scale?: number;
   backgroundAssetUrl?: string;
   backgroundType?: string;
   responsibilities?: string[];
@@ -26,6 +42,7 @@ export interface TeamMember {
   email?: string;
   secondaryEmail?: string;
   whatsapp?: string;
+  whatsapp_url?: string;
   phone?: string;
   location?: string;
   preferredContact?: string;
@@ -33,6 +50,7 @@ export interface TeamMember {
   linkedinUrl?: string;
   instagramUrl?: string;
   websiteUrl?: string;
+  external_url?: string;
   portfolioUrl?: string;
   youtubeUrl?: string;
   twitterUrl?: string;
@@ -46,7 +64,10 @@ export interface TeamMember {
   isFeatured: boolean;
   isVisible?: boolean;
   isArchived?: boolean;
+  status?: "active" | "hidden" | "archived";
+  sort_order?: number;
   displayOrder: number;
+  archived_at?: string;
   createdAt?: string;
   updatedAt?: string;
 }

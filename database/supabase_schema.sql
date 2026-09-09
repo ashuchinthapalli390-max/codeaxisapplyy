@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS public.applications (
   is_deleted BOOLEAN NOT NULL DEFAULT false,
   deleted_at TIMESTAMPTZ NULL,
   deleted_by TEXT NULL,
+  delete_reason TEXT NULL,
   deletion_reason TEXT NULL,
 
   -- Timestamps
@@ -314,21 +315,44 @@ CREATE INDEX IF NOT EXISTS idx_app_status_hist_ref ON public.application_status_
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.team_members (
   id TEXT PRIMARY KEY,
+  slug TEXT NULL,
   name TEXT NOT NULL,
-  role TEXT NOT NULL,
+  full_name TEXT NULL,
+  display_name TEXT NULL,
+  code_name TEXT NULL,
   codename TEXT NULL,
+  role TEXT NOT NULL,
+  primary_designation TEXT NULL,
+  secondary_designation TEXT NULL,
+  role_type TEXT NOT NULL DEFAULT 'Core Team',
+  department TEXT NULL,
+  tagline TEXT NULL,
   short_bio TEXT NULL,
+  full_bio TEXT NULL,
+  quote TEXT NULL,
+  focus_areas JSONB NOT NULL DEFAULT '[]'::jsonb,
+  image_path TEXT NULL,
   photo_url TEXT NULL,
   photo_asset_id UUID NULL,
+  crop_x NUMERIC NOT NULL DEFAULT 50,
+  crop_y NUMERIC NOT NULL DEFAULT 50,
+  crop_scale NUMERIC NOT NULL DEFAULT 1,
+  email TEXT NULL,
+  whatsapp_url TEXT NULL,
+  external_url TEXT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
   sort_order INT NOT NULL DEFAULT 0,
   is_active BOOLEAN NOT NULL DEFAULT true,
   is_archived BOOLEAN NOT NULL DEFAULT false,
+  archived_at TIMESTAMPTZ NULL,
   details JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_team_members_slug ON public.team_members (slug) WHERE slug IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_team_members_order ON public.team_members (sort_order ASC);
+CREATE INDEX IF NOT EXISTS idx_team_members_status ON public.team_members (status);
 CREATE INDEX IF NOT EXISTS idx_team_members_active ON public.team_members (is_active, is_archived);
 
 DROP TRIGGER IF EXISTS trg_team_members_updated_at ON public.team_members;

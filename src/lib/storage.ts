@@ -408,24 +408,14 @@ function ensureStore(): StoreData {
 export function isTestSubmission(app: Partial<ApplicationData>): boolean {
   if (app.is_test) return true;
   const email = (app.email || "").toLowerCase().trim();
-  const name = (app.full_name || "").toLowerCase().trim();
   const ref = (app.reference_id || "").toLowerCase().trim();
 
-  const testPatterns = [
-    "test",
-    "dummy",
-    "fake",
-    "example.com",
-    "sample",
-    "demo",
-    "sai.krishna.",
-    "john.doe",
-    "asdf",
-    "qwerty",
-    "cax-test-",
-  ];
+  // ONLY verified test markers and explicit test flags - NEVER arbitrary applicant names
+  const testEmailDomains = ["@example.com", "@test.com", "@dummy.com"];
+  const isTestEmail = testEmailDomains.some((d) => email.endsWith(d)) || email.startsWith("test-") || email.startsWith("test_");
+  const isTestRef = ref.startsWith("cax-test-") || ref.startsWith("test-");
 
-  return testPatterns.some((p) => email.includes(p) || name.includes(p) || ref.includes(p));
+  return isTestEmail || isTestRef;
 }
 
 function mapDbRowToApplication(row: any): ApplicationData {
@@ -548,9 +538,11 @@ function mapDbRowToApplication(row: any): ApplicationData {
     status: row.status || raw.status || "Submitted",
     admin_notes: Array.isArray(row.admin_notes) ? row.admin_notes : raw.admin_notes || [],
     admin_tags: Array.isArray(row.admin_tags) ? row.admin_tags : raw.admin_tags || [],
-    is_deleted: Boolean(row.is_deleted),
-    deleted_at: row.deleted_at,
-    deletion_reason: row.deletion_reason || undefined,
+    is_deleted: Boolean(row.is_deleted || row.deleted_at),
+    deleted_at: row.deleted_at || undefined,
+    deleted_by: row.deleted_by || undefined,
+    delete_reason: row.delete_reason || row.deletion_reason || undefined,
+    deletion_reason: row.delete_reason || row.deletion_reason || undefined,
     is_test: Boolean(row.is_test || (raw.email && isTestSubmission(raw))),
     created_at: row.created_at || raw.created_at,
     updated_at: row.updated_at || raw.updated_at,
@@ -1424,30 +1416,52 @@ export async function addApplicationNote(refOrId: string, note: string): Promise
   return true;
 }
 
-export async function deleteApplication(refOrId: string, reason?: string): Promise<boolean> {
+export async function deleteApplication(refOrId: string, reason?: string, adminUser = "Master Admin"): Promise<boolean> {
   const query = refOrId.trim();
   const now = new Date().toISOString();
 
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
-    if (supabase) {
+    if (isSupabaseConfigured() && supabase) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
       const isNum = !isNaN(Number(query));
+
       let updateQuery = supabase.from("applications").update({
         is_deleted: true,
         deleted_at: now,
+        deleted_by: adminUser,
+        delete_reason: reason || "Admin soft delete",
         deletion_reason: reason || "Admin soft delete",
+        updated_at: now,
       });
-      if (isNum) {
+
+      if (isUuid) {
+        updateQuery = updateQuery.eq("id", query);
+      } else if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
-        updateQuery = updateQuery.ilike("reference_id", query);
+        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       }
-      await updateQuery;
-      await addAuditLog("APPLICATION_DELETED", `Application ${query} moved to Trash. Reason: ${reason || "None specified"}`);
+
+      const { data, error } = await updateQuery.select("id, reference_id");
+
+      if (error) {
+        console.error("[deleteApplication Supabase Error]:", error.message);
+        throw new Error(`Database error moving application to Trash: ${error.message}`);
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error(`Application with reference or ID "${query}" not found.`);
+      }
+
+      await addAuditLog("APPLICATION_DELETED", `Application ${data[0].reference_id || query} moved to Trash. Reason: ${reason || "None specified"}`);
       return true;
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
     console.warn("[deleteApplication Supabase Warning]:", err);
   }
 
@@ -1455,11 +1469,16 @@ export async function deleteApplication(refOrId: string, reason?: string): Promi
   const app = store.applications.find(
     (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
   );
-  if (!app) return false;
+  if (!app) {
+    throw new Error(`Application "${query}" not found.`);
+  }
 
   app.is_deleted = true;
   app.deleted_at = now;
+  app.deleted_by = adminUser;
+  app.delete_reason = reason || "Admin soft delete";
   app.deletion_reason = reason || "Admin soft delete";
+  app.updated_at = now;
   await addAuditLog("APPLICATION_DELETED", `Application ${query} moved to Trash.`);
   return true;
 }
@@ -1468,9 +1487,9 @@ export async function permanentDeleteApplication(refOrId: string): Promise<boole
   const query = refOrId.trim();
 
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
-    if (supabase) {
+    if (isSupabaseConfigured() && supabase) {
       const existing = await getApplicationByRef(query);
       const ref = existing?.reference_id || query;
       const appId = existing?.id;
@@ -1490,18 +1509,31 @@ export async function permanentDeleteApplication(refOrId: string): Promise<boole
       }
 
       // 3. Delete application row
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
       const isNum = !isNaN(Number(query));
       let deleteQuery = supabase.from("applications").delete();
-      if (isNum) {
+      if (isUuid) {
+        deleteQuery = deleteQuery.eq("id", query);
+      } else if (isNum) {
         deleteQuery = deleteQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
         deleteQuery = deleteQuery.ilike("reference_id", query);
       }
-      await deleteQuery;
+      const { data, error } = await deleteQuery.select("id, reference_id");
+      if (error) {
+        throw new Error(`Database error permanently deleting application: ${error.message}`);
+      }
+      if (!data || data.length === 0) {
+        throw new Error(`Application with reference or ID "${query}" not found.`);
+      }
+
       await addAuditLog("APPLICATION_PERMANENTLY_DELETED", `Application ${ref} permanently removed from system.`);
       return true;
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
     console.warn("[permanentDeleteApplication Supabase Error]:", err);
   }
 
@@ -1520,29 +1552,51 @@ export async function permanentDeleteApplication(refOrId: string): Promise<boole
   return false;
 }
 
-export async function restoreApplication(refOrId: string): Promise<boolean> {
+export async function restoreApplication(refOrId: string, adminUser: string = "admin"): Promise<boolean> {
   const query = refOrId.trim();
+  const now = new Date().toISOString();
 
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
-    if (supabase) {
+    if (isSupabaseConfigured() && supabase) {
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
       const isNum = !isNaN(Number(query));
+
       let updateQuery = supabase.from("applications").update({
         is_deleted: false,
         deleted_at: null,
+        delete_reason: null,
         deletion_reason: null,
+        updated_at: now,
       });
-      if (isNum) {
+
+      if (isUuid) {
+        updateQuery = updateQuery.eq("id", query);
+      } else if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
-        updateQuery = updateQuery.ilike("reference_id", query);
+        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       }
-      await updateQuery;
-      await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash.`);
+
+      const { data, error } = await updateQuery.select("id, reference_id");
+
+      if (error) {
+        console.error("[restoreApplication Supabase Error]:", error.message);
+        throw new Error(`Database error restoring application from Trash: ${error.message}`);
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error(`Application with reference or ID "${query}" not found.`);
+      }
+
+      await addAuditLog("APPLICATION_RESTORED", `Application ${data[0].reference_id || query} restored from Trash by ${adminUser}.`);
       return true;
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
     console.warn("[restoreApplication Supabase Warning]:", err);
   }
 
@@ -1550,11 +1604,16 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
   const app = store.applications.find(
     (a) => a.reference_id?.toLowerCase() === query.toLowerCase() || String(a.id) === query
   );
-  if (!app) return false;
+  if (!app) {
+    throw new Error(`Application "${query}" not found.`);
+  }
 
   app.is_deleted = false;
   app.deleted_at = undefined;
+  app.deleted_by = undefined;
+  app.delete_reason = undefined;
   app.deletion_reason = undefined;
+  app.updated_at = now;
   await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash.`);
   return true;
 }
@@ -1563,8 +1622,8 @@ export async function restoreApplication(refOrId: string): Promise<boolean> {
 
 function mapDbRowToTeamMember(row: any): TeamMember {
   const details = row.details || {};
-  const designation = row.role || details.designation || row.designation || "Leadership";
-  const roleType = details.roleType || row.role_type || (designation.includes("Founder") ? (designation.includes("Co-") ? "Co-Founder" : "Founder") : designation.includes("CEO") ? "CEO" : "Core Team");
+  const designation = row.primary_designation || row.role || details.designation || row.designation || "Leadership";
+  const roleType = row.role_type || details.roleType || (designation.includes("Founder") ? (designation.includes("Co-") ? "Co-Founder" : "Founder") : designation.includes("CEO") ? "CEO" : "Core Team");
   const responsibilities = Array.isArray(details.responsibilities)
     ? details.responsibilities
     : Array.isArray(row.responsibilities)
@@ -1573,44 +1632,64 @@ function mapDbRowToTeamMember(row: any): TeamMember {
     ? row.roles
     : [];
 
-  const photo = row.photo_url || row.profile_image_url || details.photoUrl || "";
+  const photo = row.image_path || row.photo_url || row.profile_image_url || details.photoUrl || "";
+  const isArch = Boolean(row.archived_at || row.is_archived || details.isArchived || row.status === "archived");
+  const isVis = row.status ? row.status === "active" : (row.is_active != null ? Boolean(row.is_active) : (row.is_visible !== false && !isArch));
+  const status: "active" | "hidden" | "archived" = isArch ? "archived" : (isVis ? "active" : "hidden");
+  const fullName = row.full_name || row.name;
 
   return {
     id: String(row.id),
-    name: row.name,
-    displayName: details.displayName || row.display_name || row.name,
+    slug: row.slug || details.slug || "",
+    name: fullName,
+    full_name: fullName,
+    displayName: details.displayName || row.display_name || fullName,
+    display_name: details.displayName || row.display_name || fullName,
     designation,
+    primary_designation: designation,
     secondaryDesignation: details.secondaryDesignation || row.secondary_designation || "",
+    secondary_designation: details.secondaryDesignation || row.secondary_designation || "",
     roleType,
+    role_type: roleType,
     department: details.department || row.department || "",
     tagline: details.tagline || row.tagline || "",
-    codename: row.codename != null ? row.codename : (details.codename || ""),
+    codename: row.code_name != null ? row.code_name : (row.codename != null ? row.codename : (details.codename || "")),
+    code_name: row.code_name != null ? row.code_name : (row.codename != null ? row.codename : (details.codename || "")),
     bio: row.short_bio || row.bio || details.bio || details.shortBio || "",
     shortBio: row.short_bio || details.shortBio || row.bio || "",
+    short_bio: row.short_bio || details.shortBio || row.bio || "",
     fullBio: details.fullBio || row.full_bio || row.short_bio || row.bio || "",
+    full_bio: details.fullBio || row.full_bio || row.short_bio || row.bio || "",
     professionalSummary: details.professionalSummary || row.professional_summary || "",
     quote: details.quote || row.quote || "",
     photoUrl: photo,
+    image_path: photo,
     profileStoragePath: details.profileStoragePath || row.profile_storage_path || "",
-    profileObjectPositionX: details.profileObjectPositionX != null ? Number(details.profileObjectPositionX) : (row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50),
-    profileObjectPositionY: details.profileObjectPositionY != null ? Number(details.profileObjectPositionY) : (row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50),
-    profileScale: details.profileScale != null ? Number(details.profileScale) : (row.profile_scale != null ? Number(row.profile_scale) : 1),
+    profileObjectPositionX: row.crop_x != null ? Number(row.crop_x) : (details.profileObjectPositionX != null ? Number(details.profileObjectPositionX) : (row.profile_object_position_x != null ? Number(row.profile_object_position_x) : 50)),
+    profileObjectPositionY: row.crop_y != null ? Number(row.crop_y) : (details.profileObjectPositionY != null ? Number(details.profileObjectPositionY) : (row.profile_object_position_y != null ? Number(row.profile_object_position_y) : 50)),
+    profileScale: row.crop_scale != null ? Number(row.crop_scale) : (details.profileScale != null ? Number(details.profileScale) : (row.profile_scale != null ? Number(row.profile_scale) : 1)),
+    crop_x: row.crop_x != null ? Number(row.crop_x) : (details.profileObjectPositionX != null ? Number(details.profileObjectPositionX) : 50),
+    crop_y: row.crop_y != null ? Number(row.crop_y) : (details.profileObjectPositionY != null ? Number(details.profileObjectPositionY) : 50),
+    crop_scale: row.crop_scale != null ? Number(row.crop_scale) : (details.profileScale != null ? Number(details.profileScale) : 1),
     backgroundAssetUrl: details.backgroundAssetUrl || row.background_asset_url || "",
     backgroundType: details.backgroundType || row.background_type || "none",
     responsibilities,
     roles: responsibilities,
-    skills: Array.isArray(details.skills) ? details.skills : (Array.isArray(row.skills) ? row.skills : []),
+    skills: Array.isArray(row.focus_areas) ? row.focus_areas : (Array.isArray(details.skills) ? details.skills : (Array.isArray(row.skills) ? row.skills : [])),
+    focus_areas: Array.isArray(row.focus_areas) ? row.focus_areas : (Array.isArray(details.skills) ? details.skills : (Array.isArray(row.skills) ? row.skills : [])),
     email: details.email || row.email || "",
     secondaryEmail: details.secondaryEmail || row.secondary_email || "",
     phone: details.phone || row.phone || "",
-    whatsapp: details.whatsapp || row.whatsapp || "",
+    whatsapp: details.whatsapp || row.whatsapp_url || row.whatsapp || "",
+    whatsapp_url: row.whatsapp_url || details.whatsapp || row.whatsapp || "",
     location: details.location || row.location || "Hyderabad, India",
     preferredContact: details.preferredContact || row.preferred_contact || "Email",
     githubUrl: details.githubUrl || row.github_url || "",
     linkedinUrl: details.linkedinUrl || row.linkedin_url || "",
     instagramUrl: details.instagramUrl || row.instagram_url || "",
     portfolioUrl: details.portfolioUrl || row.portfolio_url || "",
-    websiteUrl: details.websiteUrl || row.website_url || "",
+    websiteUrl: details.websiteUrl || row.external_url || row.website_url || "",
+    external_url: row.external_url || details.websiteUrl || row.website_url || "",
     youtubeUrl: details.youtubeUrl || row.youtube_url || "",
     twitterUrl: details.twitterUrl || row.twitter_url || "",
     discordUsername: details.discordUsername || row.discord_username || "",
@@ -1621,53 +1700,87 @@ function mapDbRowToTeamMember(row: any): TeamMember {
     showSocials: details.showSocials ?? (row.show_socials !== false),
     showContact: details.showContact ?? false,
     isFeatured: details.isFeatured ?? (row.is_featured !== false),
-    isVisible: row.is_active != null ? Boolean(row.is_active) : (row.is_visible !== false),
-    isArchived: Boolean(row.archived_at || row.is_archived || details.isArchived),
+    isVisible: isVis,
+    isArchived: isArch,
+    status: status,
+    sort_order: row.sort_order != null ? Number(row.sort_order) : (row.display_order != null ? Number(row.display_order) : (details.displayOrder ?? 0)),
     displayOrder: row.sort_order != null ? Number(row.sort_order) : (row.display_order != null ? Number(row.display_order) : (details.displayOrder ?? 0)),
+    archived_at: row.archived_at || (isArch ? (details.archivedAt || row.updated_at) : undefined),
     createdAt: row.created_at || details.createdAt,
     updatedAt: row.updated_at || details.updatedAt,
   };
 }
 
 function mapTeamMemberToDbRow(m: TeamMember): any {
-  const isVis = m.isVisible !== false && !m.isArchived;
-  const roleName = m.designation || m.roleType || "Leadership";
+  const isVis = m.status === "active" ? true : (m.status === "hidden" ? false : (m.isVisible !== false && !m.isArchived));
+  const isArch = m.status === "archived" || m.isArchived === true;
+  const status: "active" | "hidden" | "archived" = isArch ? "archived" : (isVis ? "active" : "hidden");
+  const roleName = m.primary_designation || m.designation || m.roleType || "Leadership";
+  const fullName = m.full_name || m.name;
+  const sortOrder = m.sort_order != null ? Number(m.sort_order) : (m.displayOrder ?? 0);
+
   return {
     id: m.id,
-    name: m.name,
+    slug: m.slug || (fullName ? fullName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") : null),
+    name: fullName,
+    full_name: fullName,
+    display_name: m.displayName || m.display_name || fullName,
+    code_name: m.code_name || m.codename || null,
+    codename: m.code_name || m.codename || null,
     role: roleName,
-    codename: m.codename != null && m.codename.trim() !== "" ? m.codename.trim() : null,
-    short_bio: m.shortBio || m.bio || null,
-    photo_url: m.photoUrl || null,
-    sort_order: m.displayOrder ?? 0,
-    is_active: isVis,
+    primary_designation: m.primary_designation || m.designation || roleName,
+    secondary_designation: m.secondary_designation || m.secondaryDesignation || null,
+    role_type: m.role_type || m.roleType || "Core Team",
+    department: m.department || null,
+    tagline: m.tagline || null,
+    short_bio: m.short_bio || m.shortBio || m.bio || null,
+    full_bio: m.full_bio || m.fullBio || null,
+    quote: m.quote || null,
+    focus_areas: m.focus_areas || m.skills || [],
+    image_path: m.image_path || m.photoUrl || null,
+    photo_url: m.image_path || m.photoUrl || null,
+    crop_x: m.crop_x != null ? Number(m.crop_x) : (m.profileObjectPositionX ?? 50),
+    crop_y: m.crop_y != null ? Number(m.crop_y) : (m.profileObjectPositionY ?? 50),
+    crop_scale: m.crop_scale != null ? Number(m.crop_scale) : (m.profileScale ?? 1),
+    email: m.email || null,
+    whatsapp_url: m.whatsapp_url || m.whatsapp || null,
+    external_url: m.external_url || m.websiteUrl || m.linkedinUrl || null,
+    status: status,
+    sort_order: sortOrder,
+    is_active: status === "active",
+    is_archived: isArch,
+    archived_at: isArch ? (m.archived_at || new Date().toISOString()) : null,
     details: {
-      displayName: m.displayName || m.name,
-      designation: m.designation,
-      secondaryDesignation: m.secondaryDesignation || null,
-      roleType: m.roleType || "Core Team",
+      displayName: m.displayName || m.display_name || fullName,
+      designation: m.designation || roleName,
+      secondaryDesignation: m.secondaryDesignation || m.secondary_designation || null,
+      roleType: m.roleType || m.role_type || "Core Team",
       department: m.department || null,
       tagline: m.tagline || null,
-      fullBio: m.fullBio || null,
+      codename: m.codename || m.code_name || null,
+      shortBio: m.shortBio || m.short_bio || m.bio || null,
+      fullBio: m.fullBio || m.full_bio || null,
       professionalSummary: m.professionalSummary || null,
       quote: m.quote || null,
       email: m.email || null,
       phone: m.phone || null,
-      whatsapp: m.whatsapp || null,
+      whatsapp: m.whatsapp || m.whatsapp_url || null,
       location: m.location || null,
-      skills: m.skills || [],
+      skills: m.skills || m.focus_areas || [],
       responsibilities: m.responsibilities || m.roles || [],
       showPhone: m.showPhone ?? false,
       showEmail: m.showEmail ?? false,
       showWhatsapp: m.showWhatsapp ?? false,
       showSocials: m.showSocials ?? true,
-      profileObjectPositionX: m.profileObjectPositionX ?? 50,
-      profileObjectPositionY: m.profileObjectPositionY ?? 50,
-      profileScale: m.profileScale ?? 1,
+      showContact: m.showContact ?? false,
+      profileObjectPositionX: m.profileObjectPositionX ?? m.crop_x ?? 50,
+      profileObjectPositionY: m.profileObjectPositionY ?? m.crop_y ?? 50,
+      profileScale: m.profileScale ?? m.crop_scale ?? 1,
       profileStoragePath: m.profileStoragePath || null,
       isFeatured: m.isFeatured ?? true,
-      isVisible: m.isVisible !== false,
-      isArchived: m.isArchived === true,
+      isVisible: status === "active",
+      isArchived: isArch,
+      displayOrder: sortOrder,
     },
     updated_at: new Date().toISOString(),
   };
@@ -1675,26 +1788,32 @@ function mapTeamMemberToDbRow(m: TeamMember): any {
 
 export async function getTeamMembers(includeArchived: boolean = false): Promise<TeamMember[]> {
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
-    if (supabase) {
-      // Query canonical team_members table
+    if (isSupabaseConfigured() && supabase) {
       let query = supabase.from("team_members").select("*").order("sort_order", { ascending: true });
       if (!includeArchived) {
-        query = query.eq("is_active", true);
+        query = query.or("status.eq.active,is_active.eq.true").is("archived_at", null);
       }
       const { data, error } = await query;
-      if (data && !error && data.length > 0) {
+      if (error) {
+        console.error("[Supabase Team Fetch Error]:", error.message);
+        throw new Error(`Failed to query leadership profiles: ${error.message}`);
+      }
+      if (data && data.length > 0) {
         return data.map(mapDbRowToTeamMember);
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
     console.warn("[Supabase Team Fetch Warning]:", err);
   }
 
   const store = ensureStore();
   const list = (store.team || DEFAULT_TEAM).filter((m) => includeArchived || (!m.isArchived && m.isVisible !== false));
-  return list.sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0));
+  return list.sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0));
 }
 
 export async function getAdminTeam(): Promise<TeamMember[]> {
@@ -1705,8 +1824,8 @@ export async function getPublicTeam(): Promise<TeamMember[]> {
   const members = await getTeamMembers(false);
   // Return published, non-archived members with only approved public fields
   return members
-    .filter((m) => m.isVisible !== false && !m.isArchived)
-    .sort((a, b) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+    .filter((m) => (m.status ? m.status === "active" : m.isVisible !== false && !m.isArchived))
+    .sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0))
     .map((m) => ({
       ...m,
       // Only expose personal contacts if explicitly enabled
@@ -1718,15 +1837,21 @@ export async function getPublicTeam(): Promise<TeamMember[]> {
 
 export async function getTeamMemberById(id: string): Promise<TeamMember | null> {
   try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
-    if (supabase) {
+    if (isSupabaseConfigured() && supabase) {
       const { data, error } = await supabase.from("team_members").select("*").eq("id", id).maybeSingle();
-      if (data && !error) {
+      if (error) {
+        throw new Error(`Database error fetching team member: ${error.message}`);
+      }
+      if (data) {
         return mapDbRowToTeamMember(data);
       }
     }
-  } catch (err) {
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
     console.warn("[Supabase Team Member Fetch Warning]:", err);
   }
 
@@ -1734,7 +1859,7 @@ export async function getTeamMemberById(id: string): Promise<TeamMember | null> 
   return (store.team || DEFAULT_TEAM).find((t) => t.id === id) || null;
 }
 
-export async function saveTeamMember(member: TeamMember): Promise<boolean> {
+export async function saveTeamMember(member: TeamMember): Promise<TeamMember> {
   const now = new Date().toISOString();
   const updatedMember: TeamMember = {
     ...member,
@@ -1744,6 +1869,37 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
     roles: member.responsibilities || member.roles || [],
   };
 
+  try {
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured() && supabase) {
+      const row = mapTeamMemberToDbRow(updatedMember);
+
+      // Upsert to canonical team_members table
+      const { data, error } = await supabase
+        .from("team_members")
+        .upsert(row, { onConflict: "id" })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("[Supabase Team Save Error]:", error.message);
+        throw new Error(`Database error saving leadership member: ${error.message}`);
+      }
+
+      if (!data) {
+        throw new Error("No record returned after team member update.");
+      }
+
+      return mapDbRowToTeamMember(data);
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
+    console.error("[Supabase Team Save Exception]:", err);
+  }
+
   const store = ensureStore();
   const idx = store.team.findIndex((t) => t.id === member.id);
   if (idx >= 0) {
@@ -1752,92 +1908,110 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
     store.team.push(updatedMember);
   }
 
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase) {
-      const row = mapTeamMemberToDbRow(updatedMember);
-
-      // Upsert to canonical team_members table
-      let { error } = await supabase.from("team_members").upsert(row, { onConflict: "id" });
-
-      // If 'details' column is missing in legacy schema, strip it and retry base columns
-      if (error && error.message.includes("details")) {
-        const { details: _details, ...baseRow } = row;
-        const retryRes = await supabase.from("team_members").upsert(baseRow, { onConflict: "id" });
-        error = retryRes.error;
-      }
-
-      if (error) {
-        console.error("[Supabase Team Save Error]:", error.message);
-      }
-    }
-  } catch (err) {
-    console.error("[Supabase Team Save Exception]:", err);
-  }
-
-  return true;
+  return updatedMember;
 }
 
 export async function deleteTeamMember(id: string, softDelete: boolean = true): Promise<boolean> {
-  const store = ensureStore();
   const now = new Date().toISOString();
 
+  try {
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured() && supabase) {
+      if (softDelete) {
+        const { data, error } = await supabase
+          .from("team_members")
+          .update({
+            status: "archived",
+            is_active: false,
+            is_archived: true,
+            archived_at: now,
+            updated_at: now,
+          })
+          .eq("id", id)
+          .select();
+
+        if (error) {
+          throw new Error(`Failed to archive leadership member: ${error.message}`);
+        }
+        if (!data || data.length === 0) {
+          throw new Error(`Leadership member with ID ${id} not found.`);
+        }
+        return true;
+      } else {
+        const { error } = await supabase.from("team_members").delete().eq("id", id);
+        if (error) {
+          throw new Error(`Failed to delete leadership member: ${error.message}`);
+        }
+        return true;
+      }
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
+    console.warn("[Supabase Team Delete Warning]:", err);
+  }
+
+  const store = ensureStore();
   if (softDelete) {
     const member = store.team.find((t) => t.id === id);
     if (member) {
       member.isArchived = true;
       member.isVisible = false;
+      member.status = "archived";
+      member.archived_at = now;
       member.updatedAt = now;
-      try {
-        const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-        const supabase = getSupabaseAdmin();
-        if (supabase) {
-          await supabase
-            .from("team_members")
-            .update({ is_active: false, updated_at: now })
-            .eq("id", id);
-        }
-      } catch (err) {
-        console.warn("[Supabase Team Archive Warning]:", err);
-      }
     }
   } else {
     store.team = store.team.filter((t) => t.id !== id);
-    try {
-      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-      const supabase = getSupabaseAdmin();
-      if (supabase) {
-        await supabase.from("team_members").delete().eq("id", id);
-      }
-    } catch (err) {
-      console.warn("[Supabase Team Delete Warning]:", err);
-    }
   }
 
   return true;
 }
 
 export async function restoreTeamMember(id: string): Promise<boolean> {
+  const now = new Date().toISOString();
+
+  try {
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured() && supabase) {
+      const { data, error } = await supabase
+        .from("team_members")
+        .update({
+          status: "active",
+          is_active: true,
+          is_archived: false,
+          archived_at: null,
+          updated_at: now,
+        })
+        .eq("id", id)
+        .select();
+
+      if (error) {
+        throw new Error(`Failed to restore leadership member: ${error.message}`);
+      }
+      if (!data || data.length === 0) {
+        throw new Error(`Leadership member with ID ${id} not found.`);
+      }
+      return true;
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
+    console.warn("[Supabase Team Restore Warning]:", err);
+  }
+
   const store = ensureStore();
   const member = store.team.find((t) => t.id === id);
-  const now = new Date().toISOString();
   if (member) {
     member.isArchived = false;
     member.isVisible = true;
+    member.status = "active";
+    member.archived_at = undefined;
     member.updatedAt = now;
-    try {
-      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-      const supabase = getSupabaseAdmin();
-      if (supabase) {
-        await supabase
-          .from("team_members")
-          .update({ is_active: true, updated_at: now })
-          .eq("id", id);
-      }
-    } catch (err) {
-      console.warn("[Supabase Team Restore Warning]:", err);
-    }
     return true;
   }
   return false;
@@ -1845,50 +2019,63 @@ export async function restoreTeamMember(id: string): Promise<boolean> {
 
 export async function duplicateTeamMember(id: string): Promise<TeamMember | null> {
   const store = ensureStore();
-  const existing = store.team.find((t) => t.id === id);
+  const existing = await getTeamMemberById(id);
   if (!existing) return null;
 
   const now = new Date().toISOString();
   const newMember: TeamMember = {
     ...existing,
     id: `team_${Date.now()}`,
+    slug: `${existing.slug || existing.id}-copy-${Date.now()}`,
     name: `${existing.name} (Copy)`,
     displayName: `${existing.displayName || existing.name} (Copy)`,
     isVisible: false,
-    displayOrder: (existing.displayOrder ?? 0) + 1,
+    status: "hidden",
+    sort_order: (existing.sort_order ?? existing.displayOrder ?? 0) + 1,
+    displayOrder: (existing.sort_order ?? existing.displayOrder ?? 0) + 1,
     createdAt: now,
     updatedAt: now,
   };
 
-  await saveTeamMember(newMember);
-  return newMember;
+  const saved = await saveTeamMember(newMember);
+  return saved;
 }
 
 export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean> {
-  const store = ensureStore();
   const now = new Date().toISOString();
+
+  try {
+    const { getSupabaseAdmin, isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    const supabase = getSupabaseAdmin();
+    if (isSupabaseConfigured() && supabase) {
+      for (let i = 0; i < orderedIds.length; i++) {
+        const { error } = await supabase
+          .from("team_members")
+          .update({ sort_order: i + 1, updated_at: now })
+          .eq("id", orderedIds[i]);
+
+        if (error) {
+          throw new Error(`Database error updating sort order: ${error.message}`);
+        }
+      }
+      return true;
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes("is not configured")) {
+      throw err;
+    }
+    console.warn("[Supabase Team Reorder Warning]:", err);
+  }
+
+  const store = ensureStore();
   orderedIds.forEach((id, index) => {
     const member = (store.team || []).find((t) => t.id === id);
     if (member) {
       member.displayOrder = index + 1;
+      member.sort_order = index + 1;
       member.updatedAt = now;
     }
   });
-
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase) {
-      for (let i = 0; i < orderedIds.length; i++) {
-        await supabase
-          .from("team_members")
-          .update({ sort_order: i + 1, updated_at: now })
-          .eq("id", orderedIds[i]);
-      }
-    }
-  } catch (err) {
-    console.warn("[Supabase Team Reorder Warning]:", err);
-  }
 
   return true;
 }

@@ -34,7 +34,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin(req);
+    const admin = await requireAdmin(req);
     const { id } = await params;
     const body = await req.json();
     const { action, status, note, adminUser } = body;
@@ -68,8 +68,9 @@ export async function POST(
     }
 
     if (action === "restore") {
-      const ok = await restoreApplication(id);
-      return NextResponse.json({ success: ok, message: "Application restored." });
+      const adminIdentifier = (admin as any)?.email || (admin as any)?.id || "admin";
+      const ok = await restoreApplication(id, adminIdentifier);
+      return NextResponse.json({ success: ok, message: "Application restored from Trash." });
     }
 
     return NextResponse.json({ success: false, error: "Invalid action specified." }, { status: 400 });
@@ -83,10 +84,21 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdmin(req);
+    const admin = await requireAdmin(req);
     const { id } = await params;
-    const ok = await deleteApplication(id);
-    return NextResponse.json({ success: ok, message: "Application archived / soft-deleted." });
+    const { searchParams } = new URL(req.url);
+    const permanent = searchParams.get("permanent") === "true";
+    const reason = searchParams.get("reason") || undefined;
+    const adminIdentifier = (admin as any)?.email || (admin as any)?.id || "admin";
+
+    if (permanent) {
+      const { permanentDeleteApplication } = await import("@/lib/storage");
+      const ok = await permanentDeleteApplication(id);
+      return NextResponse.json({ success: ok, message: "Application permanently deleted." });
+    }
+
+    const ok = await deleteApplication(id, reason, adminIdentifier);
+    return NextResponse.json({ success: ok, message: "Application moved to Trash." });
   } catch (err) {
     return handleAdminAuthError(err);
   }

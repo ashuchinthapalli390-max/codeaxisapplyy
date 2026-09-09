@@ -193,6 +193,8 @@ export interface ApplicationData {
   duplicate_reason?: string;
   is_deleted?: boolean;
   deleted_at?: string;
+  deleted_by?: string;
+  delete_reason?: string;
   deletion_reason?: string;
   // Submission tokens and schema aliases
   submission_token?: string;

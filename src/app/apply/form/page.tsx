@@ -822,6 +822,59 @@ export default function ApplicationFormPage() {
     return 0;
   };
 
+  if (canApply === false) {
+    const isOpeningSoon = effectiveStatus === "OPENING_SOON";
+    const formattedOpensAt = round?.opens_at
+      ? new Date(round.opens_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "full", timeStyle: "short" })
+      : null;
+
+    return (
+      <div className="min-h-screen bg-[#030712] text-slate-100 relative flex flex-col justify-between selection:bg-red-600 selection:text-white">
+        <CodingBackground />
+        <Navbar />
+
+        <main className="flex-grow flex items-center justify-center px-4 py-28 font-mono z-10">
+          <div className="max-w-xl w-full text-center space-y-6 red-glass p-8 sm:p-12 rounded-3xl border border-red-500/40 shadow-[0_0_50px_rgba(239,68,68,0.2)]">
+            <div className="w-16 h-16 rounded-2xl bg-black border-2 border-red-500/60 p-3 mx-auto flex items-center justify-center text-red-500 shadow-[0_0_25px_rgba(239,68,68,0.4)]">
+              <Clock className="w-8 h-8 animate-pulse text-red-400" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-bold tracking-widest uppercase text-red-400">
+                {isOpeningSoon ? "APPLICATION WINDOW UPCOMING" : "APPLICATION WINDOW CLOSED"}
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wider">
+                {isOpeningSoon ? "Applications Opening Soon" : "Applications Currently Closed"}
+              </h1>
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed max-w-md mx-auto">
+                {isOpeningSoon
+                  ? `The screening portal for Batch 2026 is scheduled to open ${formattedOpensAt ? `on ${formattedOpensAt} (IST)` : "shortly"}. Direct form submissions are locked until the window officially begins.`
+                  : "The official recruitment round has concluded. You can track previously submitted applications or check back for upcoming batch openings."}
+              </p>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-4">
+              <Link
+                href="/"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-black border border-red-950 hover:border-red-500/50 text-slate-300 hover:text-white text-xs font-bold transition-all text-center"
+              >
+                &larr; BACK TO HOME
+              </Link>
+              <Link
+                href="/apply/rules"
+                className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-[0_0_20px_rgba(239,68,68,0.4)] text-center"
+              >
+                VIEW APPLICATION RULES &rarr;
+              </Link>
+            </div>
+          </div>
+        </main>
+
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#030712] text-slate-100 relative flex flex-col justify-between selection:bg-red-600 selection:text-white">
       <CodingBackground />
