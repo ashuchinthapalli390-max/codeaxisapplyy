@@ -971,36 +971,27 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       updated_at: new Date().toISOString(),
     };
 
-    let { data: inserted, error } = await supabase
-      .from("applications")
-      .insert(dbPayload)
-      .select("id, reference_id")
-      .single();
+    const currentPayload: Record<string, unknown> = { ...dbPayload };
+    let inserted: { id: string | number; reference_id: string } | null = null;
+    let insertError: { message?: string; code?: string } | null = null;
 
-    // If error occurs due to extra fields not yet in older table versions, retry with fallback payload
-    if (error && error.message?.includes("column")) {
-      const sanitizedPayload = { ...dbPayload };
-      delete sanitizedPayload.submission_token;
-      delete sanitizedPayload.applicant_name;
-      delete sanitizedPayload.email_normalized;
-      delete sanitizedPayload.phone;
-      delete sanitizedPayload.score;
-      delete sanitizedPayload.answers;
-      delete sanitizedPayload.resume_path;
-
-      const retryRes = await supabase
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const { data: resData, error: err } = await supabase
         .from("applications")
-        .insert(sanitizedPayload)
+        .insert(currentPayload)
         .select("id, reference_id")
         .single();
 
-      inserted = retryRes.data;
-      error = retryRes.error;
-    }
+      if (!err && resData) {
+        inserted = resData as { id: string | number; reference_id: string };
+        insertError = null;
+        break;
+      }
 
-    if (error) {
+      insertError = err;
+
       // Check for duplicate key idempotency
-      if (error.code === "23505" || error.message?.includes("duplicate key") || error.message?.includes("reference_id")) {
+      if (err?.code === "23505" || err?.message?.includes("duplicate key") || err?.message?.includes("reference_id")) {
         const { data: existing } = await supabase
           .from("applications")
           .select("id, reference_id")
@@ -1015,8 +1006,23 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
         }
       }
 
-      console.error("[Supabase Application Insert Error]:", error);
-      throw new Error(`Database error saving application: ${error.message}`);
+      // Check if error is due to missing column in PostgREST schema cache
+      // Example: "Could not find the 'academic_constraints' column of 'applications' in the schema cache"
+      const missingColMatch = err?.message?.match(/Could not find the '([^']+)' column/i);
+      if (missingColMatch && missingColMatch[1]) {
+        const missingCol = missingColMatch[1];
+        console.warn(`[Supabase Schema Adaptive Retry]: Column '${missingCol}' missing from table schema. Stripping and retrying (attempt ${attempt + 1})...`);
+        delete currentPayload[missingCol];
+        continue;
+      }
+
+      // Break on any non-recoverable error
+      break;
+    }
+
+    if (insertError || !inserted) {
+      console.error("[Supabase Application Insert Error]:", insertError);
+      throw new Error(`Database error saving application: ${insertError?.message || "Insert failed"}`);
     }
 
     // 5. Asynchronously log initial state to application_status_history
