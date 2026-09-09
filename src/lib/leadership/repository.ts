@@ -180,10 +180,10 @@ export async function reconcileLeadershipDatabase(): Promise<{
   let inserted = 0;
   let archivedStale = 0;
 
-  // 1. Fetch current rows in team_members
+  // 1. Fetch current rows in team_members using plain select to avoid failing on missing columns
   const { data: existingRows, error: fetchErr } = await supabase
     .from("team_members")
-    .select("id, slug, full_name, display_name, name, status, is_archived, updated_at");
+    .select("*");
 
   if (fetchErr) {
     console.warn("[Leadership Reconcile Warning] Could not inspect table:", fetchErr.message);
@@ -201,15 +201,16 @@ export async function reconcileLeadershipDatabase(): Promise<{
 
     if (isStaleDemo && !alreadyArchived) {
       console.log(`[Leadership Reconcile] Archiving stale profile: ${row.id} (${rowName})`);
+      const updatePayload: Record<string, any> = {
+        is_active: false,
+        archived_at: new Date().toISOString(),
+        archived_by: "reconciliation_archiver",
+      };
+      if (row.status !== undefined) updatePayload.status = "archived";
+      if (row.is_archived !== undefined) updatePayload.is_archived = true;
       await supabase
         .from("team_members")
-        .update({
-          status: "archived",
-          is_active: false,
-          is_archived: true,
-          archived_at: new Date().toISOString(),
-          archived_by: "reconciliation_archiver",
-        })
+        .update(updatePayload)
         .eq("id", row.id);
       archivedStale++;
     }
@@ -248,45 +249,77 @@ export async function reconcileLeadershipDatabase(): Promise<{
 
 /**
  * Public Query: Returns only active, featured members ordered by sort_order
+ * Adaptively handles database schema differences and falls back cleanly to canonical profiles
  */
 export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data, error } = await supabase
-        .from("team_members")
-        .select("*")
-        .or("status.eq.active,is_active.eq.true")
-        .is("archived_at", null)
-        .order("sort_order", { ascending: true });
+      let data: any[] | null = null;
+      let error: any = null;
 
-      if (error) {
-        console.error("[Leadership Repository] Public fetch error:", error.message);
-        throw new LeadershipError(`Database error fetching leadership: ${error.message}`, 500);
-      }
-
-      if (data && data.length > 0) {
-        return (data as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
-      }
-
-      // If database is configured but empty, run self-healing reconciliation once
-      const rec = await reconcileLeadershipDatabase();
-      if (rec.inserted > 0) {
-        const { data: refetched } = await supabase
+      try {
+        const queryRes = await supabase
           .from("team_members")
           .select("*")
           .or("status.eq.active,is_active.eq.true")
           .is("archived_at", null)
           .order("sort_order", { ascending: true });
+        data = queryRes.data;
+        error = queryRes.error;
+      } catch (err: any) {
+        error = err;
+      }
 
-        if (refetched && refetched.length > 0) {
-          return (refetched as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
+      // Adaptive retry if column mismatch (e.g. status or archived_at does not exist in legacy schema)
+      if (error && error.message?.includes("does not exist")) {
+        console.warn("[Leadership Repository] Column mismatch in team_members filter, retrying adaptive select:", error.message);
+        try {
+          const fallbackRes = await supabase.from("team_members").select("*");
+          if (!fallbackRes.error && fallbackRes.data) {
+            data = fallbackRes.data.filter((row: any) => {
+              if (row.archived_at) return false;
+              if (row.is_archived === true) return false;
+              if (row.status && row.status !== "active") return false;
+              if (row.is_active === false) return false;
+              if (row.is_visible === false) return false;
+              return true;
+            });
+            data.sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+            error = null;
+          }
+        } catch (fbErr) {
+          console.warn("[Leadership Repository] Adaptive select failed:", fbErr);
         }
+      }
+
+      if (!error && data && data.length > 0) {
+        return (data as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
+      }
+
+      // If database is configured but empty, run self-healing reconciliation once
+      try {
+        const rec = await reconcileLeadershipDatabase();
+        if (rec.inserted > 0) {
+          const { data: refetched } = await supabase.from("team_members").select("*");
+          if (refetched && refetched.length > 0) {
+            const valid = refetched.filter((row: any) => !row.archived_at && row.status !== "archived" && row.is_active !== false);
+            valid.sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+            return (valid as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
+          }
+        }
+      } catch (recErr) {
+        console.warn("[Leadership Repository] Reconciliation notice:", recErr);
+      }
+
+      if (error) {
+        console.warn("[Leadership Repository] Falling back to canonical profiles due to database error:", error.message);
+        return (CANONICAL_INITIAL_PROFILES as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
       }
     }
   }
 
-  // Fallback ONLY to the 4 canonical profiles if DB is unconfigured in development
+  // Fallback ONLY to the 4 canonical profiles if DB is unconfigured or temporarily unavailable
   return (CANONICAL_INITIAL_PROFILES as TeamMemberDbRow[]).map(mapDbRowToPublicDto);
 }
 
@@ -297,29 +330,50 @@ export async function getAdminLeadership(): Promise<AdminLeadershipDto[]> {
   if (isSupabaseConfigured()) {
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      const { data, error } = await supabase
-        .from("team_members")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      let data: any[] | null = null;
+      let error: any = null;
 
-      if (error) {
-        console.error("[Leadership Repository] Admin fetch error:", error.message);
-        throw new LeadershipError(`Database error querying team members: ${error.message}`, 500);
+      try {
+        const queryRes = await supabase
+          .from("team_members")
+          .select("*")
+          .order("sort_order", { ascending: true });
+        data = queryRes.data;
+        error = queryRes.error;
+      } catch (err: any) {
+        error = err;
       }
 
-      if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         return (data as TeamMemberDbRow[]).map(mapDbRowToAdminDto);
       }
 
-      // Self-healing seed if completely empty
-      await reconcileLeadershipDatabase();
-      const { data: refetched } = await supabase
-        .from("team_members")
-        .select("*")
-        .order("sort_order", { ascending: true });
+      if (error && error.message?.includes("does not exist")) {
+        console.warn("[Leadership Repository] Admin fallback select due to column mismatch:", error.message);
+        try {
+          const retryRes = await supabase.from("team_members").select("*");
+          if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
+            return (retryRes.data as TeamMemberDbRow[]).map(mapDbRowToAdminDto);
+          }
+        } catch (retryErr) {
+          console.warn("[Leadership Repository] Admin retry failed:", retryErr);
+        }
+      }
 
-      if (refetched && refetched.length > 0) {
-        return (refetched as TeamMemberDbRow[]).map(mapDbRowToAdminDto);
+      // Self-healing seed if completely empty
+      try {
+        await reconcileLeadershipDatabase();
+        const { data: refetched } = await supabase.from("team_members").select("*");
+        if (refetched && refetched.length > 0) {
+          return (refetched as TeamMemberDbRow[]).map(mapDbRowToAdminDto);
+        }
+      } catch (recErr) {
+        console.warn("[Leadership Repository] Admin reconciliation notice:", recErr);
+      }
+
+      if (error) {
+        console.warn("[Leadership Repository] Falling back to canonical admin profiles:", error.message);
+        return (CANONICAL_INITIAL_PROFILES as TeamMemberDbRow[]).map(mapDbRowToAdminDto);
       }
     }
   }
