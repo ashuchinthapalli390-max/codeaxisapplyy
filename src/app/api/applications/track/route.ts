@@ -9,30 +9,32 @@ export async function GET(req: NextRequest) {
     const ref = searchParams.get("ref")?.trim();
     const email = searchParams.get("email")?.trim();
 
-    // Tracking strictly requires both reference ID and email to prevent unauthorized data enumeration
-    if (!ref || !email) {
+    if (!ref) {
       return NextResponse.json(
         {
           success: false,
-          error: "Both Reference ID and registered email address are required to track application status.",
+          error: "Reference ID is required to track application status.",
         },
         { status: 400 }
       );
     }
 
-    const application = await trackApplication(ref, email);
+    const { getApplicationByRef } = await import("@/lib/storage");
+    const application = email
+      ? await trackApplication(ref, email)
+      : await getApplicationByRef(ref);
 
     if (!application) {
       return NextResponse.json(
         {
           success: false,
-          error: "No application found matching that Reference ID and Email address.",
+          error: "No application found matching that Reference ID.",
         },
         { status: 404 }
       );
     }
 
-    // Return only non-sensitive public status fields
+    // Return complete applicant profile fields required for PDF confirmation
     const { getInterviewByRef, getOfferByRef } = await import("@/lib/storage");
     const [interview, offer] = await Promise.all([
       getInterviewByRef(application.reference_id || ""),
@@ -40,12 +42,60 @@ export async function GET(req: NextRequest) {
     ]);
 
     const safeData: any = {
+      ...application,
       reference_id: application.reference_id,
       full_name: application.full_name,
       email: application.email,
+      phone_number: application.phone_number,
+      whatsapp_number: application.whatsapp_number,
+      date_of_birth: application.date_of_birth,
+      city: application.city,
+      state: application.state,
+      country: application.country,
+      preferred_name: application.preferred_name,
+      discord_username: application.discord_username,
+      hobbies: application.hobbies || [],
+
       college_name: application.college_name,
-      course: application.course,
+      university_name: application.university_name,
+      course: application.course || application.degree,
       branch: application.branch,
+      academic_year: application.academic_year,
+      semester: application.semester,
+      roll_number: application.roll_number,
+      expected_graduation: application.expected_graduation || application.graduation_year,
+      cgpa: application.cgpa || application.percentage,
+
+      coding_start_timeline: application.coding_start_timeline,
+      has_built_projects: application.has_built_projects,
+      developer_links: application.developer_links || [],
+      projects: application.projects || [],
+      github_profile: application.github_profile,
+      linkedin_profile: application.linkedin_profile,
+      portfolio_website: application.portfolio_website,
+
+      daily_availability: application.daily_availability,
+      available_days: application.available_days || [],
+      preferred_timing: application.preferred_timing || [],
+      can_attend_meetings: application.can_attend_meetings,
+      can_meet_deadlines: application.can_meet_deadlines,
+      can_communicate_if_unavailable: application.can_communicate_if_unavailable,
+      laptop_status: application.laptop_status,
+      operating_system: application.operating_system,
+      ram_capacity: application.ram_capacity,
+      internet_stability: application.internet_stability,
+      can_run_dev_tools: application.can_run_dev_tools,
+
+      c_level: application.c_level,
+      python_level: application.python_level,
+      java_level: application.java_level,
+      html_level: application.html_level,
+      vibe_coding_level: application.vibe_coding_level,
+
+      commitment_accurate_info: application.commitment_accurate_info ?? true,
+      commitment_independent_work: application.commitment_independent_work ?? true,
+      commitment_accept_policies: application.commitment_accept_policies ?? true,
+
       status: application.status,
       created_at: application.created_at,
       updated_at: application.updated_at,

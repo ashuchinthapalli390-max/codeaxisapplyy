@@ -1220,50 +1220,75 @@ export async function getApplications(filters?: {
     const supabase = getSupabaseAdmin();
 
     if (supabase) {
-      let query = supabase.from("applications").select("*", { count: "exact" });
+      // 1. Base query from applications table ordered by created_at
+      let { data, error } = await supabase
+        .from("applications")
+        .select("*")
+        .order("created_at", { ascending: false });
 
-      if (filters?.view === "trash") {
-        query = query.eq("is_deleted", true);
-      } else if (filters?.view === "test") {
-        query = query.eq("is_deleted", false).eq("is_test", true);
-      } else {
-        query = query.eq("is_deleted", false).eq("is_test", false);
+      // Fallback to unordered query if created_at has indexing/type issue
+      if (error) {
+        console.warn("[getApplications Supabase Notice]: Ordered query failed:", error.message, ". Retrying base select...");
+        const retryRes = await supabase.from("applications").select("*");
+        data = retryRes.data;
+        error = retryRes.error;
       }
 
-      if (filters?.search) {
-        const q = filters.search.trim();
-        query = query.or(
-          `full_name.ilike.%${q}%,email.ilike.%${q}%,reference_id.ilike.%${q}%,phone_number.ilike.%${q}%,college_name.ilike.%${q}%,roll_number.ilike.%${q}%`
-        );
-      }
-
-      if (filters?.status && filters.status !== "ALL") {
-        query = query.eq("status", filters.status);
-      }
-
-      if (filters?.scoreBand && filters.scoreBand !== "ALL") {
-        query = query.eq("score_band", filters.scoreBand);
-      }
-
-      if (filters?.commitment && filters.commitment !== "ALL") {
-        query = query.eq("commitment_signal", filters.commitment);
-      }
-
-      if (filters?.college && filters.college !== "ALL") {
-        query = query.eq("college_name", filters.college);
-      }
-
-      query = query.order("created_at", { ascending: false });
-
-      const offset = filters?.offset || 0;
-      const limit = filters?.limit || 100;
-      query = query.range(offset, offset + limit - 1);
-
-      const { data, count, error } = await query;
       if (!error && data) {
+        // 2. Map all rows (extracting full data from raw_submission if needed)
+        let list: ApplicationData[] = data.map(mapDbRowToApplication);
+
+        // 3. View mode filtering (trash, test, active) in memory to guarantee zero schema mismatch
+        if (filters?.view === "trash") {
+          list = list.filter((a) => Boolean(a.is_deleted));
+        } else if (filters?.view === "test") {
+          list = list.filter((a) => !a.is_deleted && (Boolean(a.is_test) || isTestSubmission(a)));
+        } else {
+          list = list.filter((a) => !a.is_deleted && !a.is_test && !isTestSubmission(a));
+        }
+
+        // 4. Search filtering
+        if (filters?.search) {
+          const q = filters.search.trim().toLowerCase();
+          list = list.filter(
+            (a) =>
+              (a.full_name && a.full_name.toLowerCase().includes(q)) ||
+              (a.email && a.email.toLowerCase().includes(q)) ||
+              (a.reference_id && a.reference_id.toLowerCase().includes(q)) ||
+              (a.phone_number && a.phone_number.toLowerCase().includes(q)) ||
+              (a.college_name && a.college_name.toLowerCase().includes(q)) ||
+              (a.roll_number && a.roll_number.toLowerCase().includes(q))
+          );
+        }
+
+        // 5. Status filter
+        if (filters?.status && filters.status !== "ALL") {
+          list = list.filter((a) => a.status === filters.status);
+        }
+
+        // 6. Score band filter
+        if (filters?.scoreBand && filters.scoreBand !== "ALL") {
+          list = list.filter((a) => a.score_band === filters.scoreBand);
+        }
+
+        // 7. Commitment signal filter
+        if (filters?.commitment && filters.commitment !== "ALL") {
+          list = list.filter((a) => a.commitment_signal === filters.commitment);
+        }
+
+        // 8. College filter
+        if (filters?.college && filters.college !== "ALL") {
+          list = list.filter((a) => a.college_name === filters.college);
+        }
+
+        const total = list.length;
+        const offset = filters?.offset || 0;
+        const limit = filters?.limit || 100;
+        const paginated = list.slice(offset, offset + limit);
+
         return {
-          applications: data.map(mapDbRowToApplication),
-          total: count ?? data.length,
+          applications: paginated,
+          total,
         };
       }
     }
@@ -1273,51 +1298,20 @@ export async function getApplications(filters?: {
 
   // Fallback to memory
   const store = ensureStore();
-  let list = store.applications;
+  let list = [...store.applications];
   if (filters?.view === "trash") {
-    list = list.filter((a) => a.is_deleted);
+    list = list.filter((a) => Boolean(a.is_deleted));
   } else if (filters?.view === "test") {
-    list = list.filter((a) => !a.is_deleted && (a.is_test || isTestSubmission(a)));
+    list = list.filter((a) => !a.is_deleted && (Boolean(a.is_test) || isTestSubmission(a)));
   } else {
     list = list.filter((a) => !a.is_deleted && !a.is_test && !isTestSubmission(a));
   }
-
-  if (filters?.search) {
-    const q = filters.search.toLowerCase().trim();
-    list = list.filter(
-      (a) =>
-        a.full_name?.toLowerCase().includes(q) ||
-        a.email?.toLowerCase().includes(q) ||
-        a.reference_id?.toLowerCase().includes(q) ||
-        a.phone_number?.includes(q) ||
-        a.college_name?.toLowerCase().includes(q) ||
-        a.roll_number?.toLowerCase().includes(q)
-    );
-  }
-
-  if (filters?.status && filters.status !== "ALL") {
-    list = list.filter((a) => a.status === filters.status);
-  }
-
-  if (filters?.scoreBand && filters.scoreBand !== "ALL") {
-    list = list.filter((a) => a.score_band === filters.scoreBand);
-  }
-
-  if (filters?.commitment && filters.commitment !== "ALL") {
-    list = list.filter((a) => a.commitment_signal === filters.commitment);
-  }
-
-  if (filters?.college && filters.college !== "ALL") {
-    list = list.filter((a) => a.college_name === filters.college);
-  }
-
-  const total = list.length;
-  const offset = filters?.offset || 0;
-  const limit = filters?.limit || 100;
-  const paged = list.slice(offset, offset + limit);
-
-  return { applications: paged, total };
+  return {
+    applications: list.slice(filters?.offset || 0, (filters?.offset || 0) + (filters?.limit || 100)),
+    total: list.length,
+  };
 }
+
 
 export async function updateApplicationStatus(
   refOrId: string,

@@ -776,13 +776,21 @@ export default function ApplicationFormPage() {
       const json = await res.json().catch(() => ({ success: false, error: "Invalid server response." }));
       if (json.success && json.data?.reference_id) {
         setSubmissionStep(4);
+        const ref = json.data.reference_id;
+        if (typeof window !== "undefined") {
+          try {
+            const dossier = { ...formData, reference_id: ref };
+            sessionStorage.setItem(`codexa_app_submission_${ref}`, JSON.stringify(dossier));
+            sessionStorage.setItem("codexa_last_submitted_app", JSON.stringify(dossier));
+          } catch {}
+        }
         setTimeout(() => {
           setSubmissionStep(5);
           playSuccessSound();
           // Clear local draft ONLY after verified database submission success
           clearApplicationDraft();
           setTimeout(() => {
-            router.replace(`/apply/success/${json.data.reference_id}`);
+            router.replace(`/apply/success/${ref}`);
           }, 600);
         }, 300);
       } else {

@@ -32,12 +32,32 @@ export default function ApplicationSuccessPage() {
   useEffect(() => {
     playSuccessSound();
 
-    // Fetch submitted profile details for PDF generation
+    // 1. Immediately read real applicant data from browser sessionStorage
+    if (typeof window !== "undefined") {
+      try {
+        const cached =
+          sessionStorage.getItem(`codexa_app_submission_${refId}`) ||
+          sessionStorage.getItem("codexa_last_submitted_app") ||
+          sessionStorage.getItem("codexa_application_draft");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && (parsed.full_name || parsed.email)) {
+            setAppData({ ...parsed, reference_id: refId });
+          }
+        }
+      } catch {}
+    }
+
+    // 2. Query server for verified application details
     fetch(`/api/applications/track?ref=${encodeURIComponent(refId)}`)
       .then((res) => res.json())
       .then((json) => {
         if (json.success && json.data) {
-          setAppData(json.data);
+          setAppData((prev) => ({
+            ...prev,
+            ...json.data,
+            reference_id: refId,
+          }));
         }
       })
       .catch(() => {});
@@ -54,80 +74,33 @@ export default function ApplicationSuccessPage() {
 
   const handleDownloadPDF = () => {
     playButtonClick();
-    if (appData) {
-      generateApplicantPDF(appData);
+
+    let targetData = appData;
+    if (!targetData && typeof window !== "undefined") {
+      try {
+        const cached =
+          sessionStorage.getItem(`codexa_app_submission_${refId}`) ||
+          sessionStorage.getItem("codexa_last_submitted_app") ||
+          sessionStorage.getItem("codexa_application_draft");
+        if (cached) {
+          targetData = JSON.parse(cached);
+        }
+      } catch {}
+    }
+
+    if (targetData && (targetData.full_name || targetData.email)) {
+      generateApplicantPDF({ ...targetData, reference_id: refId });
     } else {
-      // Fallback mock applicant data with refId
-      generateApplicantPDF({
-        reference_id: refId,
-        full_name: "CodeXa Applicant",
-        date_of_birth: "2004-01-01",
-        email: "applicant@codexa.dev",
-        phone_number: "+91 90000 00000",
-        city: "City",
-        state: "State",
-        country: "India",
-        hobbies: ["Coding", "AI"],
-        college_name: "Institution",
-        university_name: "University",
-        course: "Engineering",
-        branch: "Computer Science",
-        academic_year: "3",
-        semester: "5",
-        roll_number: "ROLL-001",
-        expected_graduation: "2026",
-        coding_start_timeline: "1-2 years ago",
-        has_built_projects: "Yes",
-        hackathon_experience: "None",
-        internship_experience: "None",
-        freelancing_experience: "None",
-        open_source_experience: "None",
-        team_project_experience: "None",
-        developer_links: [],
-        projects: [],
-        daily_availability: "2–4 hours",
-        available_days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-        preferred_timing: ["Evening"],
-        can_attend_meetings: "Yes",
-        can_meet_deadlines: "Yes",
-        can_communicate_if_unavailable: "Yes",
-        laptop_status: "Own Laptop",
-        operating_system: "Windows",
-        ram_capacity: "16 GB",
-        internet_stability: "Stable",
-        can_run_dev_tools: "Yes",
-        c_level: "Beginner",
-        c_answers: {},
-        python_level: "Beginner",
-        python_answers: {},
-        java_level: "Beginner",
-        java_answers: {},
-        html_level: "Beginner",
-        html_answers: {},
-        vibe_coding_level: "Basic",
-        vibe_coding_answers: {},
-        mindset_answers: {},
-        interview_q1_why_codexa: "",
-        interview_q2_why_select: "",
-        interview_q3_expectations: "",
-        interview_q4_strongest_skills: "",
-        interview_q5_weakest_area: "",
-        interview_q6_describe_project: "",
-        interview_q7_difficult_problem: "",
-        interview_q8_ai_coding_usage: "",
-        interview_q9_college_balance: "",
-        interview_q10_future_goal: "",
-        commitment_accurate_info: true,
-        commitment_independent_work: true,
-        commitment_responsible_communication: true,
-        commitment_team_rules: true,
-        commitment_confidentiality: true,
-        commitment_assigned_duties: true,
-        commitment_no_guaranteed_employment: true,
-        commitment_accept_policies: true,
-        copy_paste_warnings_count: 0,
-        tab_switch_count: 0,
-      });
+      // If still loading from server, perform immediate fetch and download
+      fetch(`/api/applications/track?ref=${encodeURIComponent(refId)}`)
+        .then((res) => res.json())
+        .then((json) => {
+          if (json.success && json.data) {
+            setAppData(json.data);
+            generateApplicantPDF({ ...json.data, reference_id: refId });
+          }
+        })
+        .catch(() => {});
     }
   };
 
