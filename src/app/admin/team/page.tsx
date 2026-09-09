@@ -563,8 +563,22 @@ export default function AdminTeamPage() {
                       </span>
                     )}
 
+                    {(member.verificationStatus || member.verification_status) && (
+                      <span className={`text-[9px] px-2 py-0.5 rounded font-bold border ${
+                        (member.verificationStatus || member.verification_status) === "published"
+                          ? "bg-emerald-950/60 text-emerald-300 border-emerald-800/60"
+                          : (member.verificationStatus || member.verification_status) === "verified"
+                          ? "bg-blue-950/60 text-blue-300 border-blue-800/60"
+                          : (member.verificationStatus || member.verification_status) === "needs_verification"
+                          ? "bg-amber-950/60 text-amber-300 border-amber-800/60"
+                          : "bg-slate-900 text-slate-400 border-slate-700"
+                      }`}>
+                        {(member.verificationStatus || member.verification_status)?.toUpperCase()}
+                      </span>
+                    )}
+
                     <span className="text-[9px] px-2 py-0.5 rounded bg-black/60 text-slate-400 border border-red-950 font-mono">
-                      #{member.displayOrder || index + 1}
+                      #{member.displayOrder || member.sort_order || index + 1}
                     </span>
                   </div>
 
@@ -594,7 +608,7 @@ export default function AdminTeamPage() {
                 {/* Profile Photo + Names */}
                 <div className="flex items-center gap-4">
                   <div className="w-16 h-16 rounded-2xl bg-black border-2 border-red-500/40 p-0.5 shrink-0 overflow-hidden relative shadow-[0_0_15px_rgba(239,68,68,0.25)]">
-                    {member.photoUrl ? (
+                    {member.photoUrl && member.photoUrl !== "/logo.jpeg" ? (
                       <img
                         src={member.photoUrl}
                         alt={member.name}
@@ -605,8 +619,8 @@ export default function AdminTeamPage() {
                         className="w-full h-full object-cover rounded-xl"
                       />
                     ) : (
-                      <div className="w-full h-full rounded-xl bg-red-950/60 flex items-center justify-center text-lg font-black text-white">
-                        {member.name.slice(0, 2).toUpperCase()}
+                      <div className="w-full h-full rounded-xl bg-gradient-to-br from-red-950 to-black flex items-center justify-center text-lg font-black text-red-300">
+                        {(member.displayName || member.name || "CX").slice(0, 2).toUpperCase()}
                       </div>
                     )}
                   </div>
@@ -615,9 +629,14 @@ export default function AdminTeamPage() {
                     <h3 className="text-base font-black text-white truncate group-hover:text-red-400 transition-colors">
                       {member.displayName || member.name}
                     </h3>
-                    <div className="text-xs font-bold text-red-400 truncate">{member.designation}</div>
+                    <div className="text-xs font-bold text-red-400 truncate">
+                      {member.primaryDesignation || member.designation || "Core Team"}
+                    </div>
+                    {member.secondaryDesignation && (
+                      <div className="text-[10px] text-slate-400 truncate">{member.secondaryDesignation}</div>
+                    )}
                     {member.department && (
-                      <div className="text-[10px] text-slate-400 truncate">{member.department}</div>
+                      <div className="text-[10px] text-slate-500 truncate">{member.department}</div>
                     )}
                   </div>
                 </div>

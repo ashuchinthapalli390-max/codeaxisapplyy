@@ -52,24 +52,26 @@ async function testAsync(name, fn) {
 }
 
 async function run() {
-  console.log("▶ [Test 1] Validating Canonical 4 Profiles Definition...");
-  test("Exactly 4 canonical profiles are defined", () => {
-    assert.strictEqual(CANONICAL_INITIAL_PROFILES.length, 4);
+  console.log("▶ [Test 1] Validating Canonical 5 Profiles Definition (including Varun)...");
+  test("Exactly 5 canonical profiles are defined", () => {
+    assert.strictEqual(CANONICAL_INITIAL_PROFILES.length, 5);
   });
 
-  test("Canonical profiles include Arshad, Sanjay, Kishore, Bhanu", () => {
+  test("Canonical profiles include Arshad, Sanjay, Kishore, Bhanu, Varun", () => {
     const names = CANONICAL_INITIAL_PROFILES.map((p) => p.full_name);
     assert(names.includes("CH. Arshad"), "CH. Arshad exists");
     assert(names.includes("B. Sanjay"), "B. Sanjay exists");
     assert(names.includes("Kishore"), "Kishore exists");
     assert(names.includes("G. Bhanu Prasad"), "G. Bhanu Prasad exists");
+    assert(names.includes("Parlapalli Varun"), "Parlapalli Varun exists");
   });
 
-  test("Canonical profiles have deterministic sort_order 1 to 4", () => {
+  test("Canonical profiles have deterministic sort_order 1 to 5", () => {
     assert.strictEqual(CANONICAL_INITIAL_PROFILES[0].sort_order, 1);
     assert.strictEqual(CANONICAL_INITIAL_PROFILES[1].sort_order, 2);
     assert.strictEqual(CANONICAL_INITIAL_PROFILES[2].sort_order, 3);
     assert.strictEqual(CANONICAL_INITIAL_PROFILES[3].sort_order, 4);
+    assert.strictEqual(CANONICAL_INITIAL_PROFILES[4].sort_order, 5);
   });
 
   console.log("\n▶ [Test 2] Input Validation & Sanitization Layer...");

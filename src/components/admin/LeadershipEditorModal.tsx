@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { TeamMember } from "@/types/admin";
+import { TeamMember, ContributionType, TeamMemberContribution } from "@/types/admin";
+import { calculateProfileCompleteness } from "@/lib/leadership/schema";
 import Input from "@/components/ui/Input";
 import Textarea from "@/components/ui/Textarea";
 import Select from "@/components/ui/Select";
@@ -20,6 +21,10 @@ import {
   CheckCircle2,
   RefreshCw,
   AlertTriangle,
+  Award,
+  GraduationCap,
+  Briefcase,
+  ExternalLink,
 } from "lucide-react";
 import { playButtonClick, playSuccessSound, playWarningTone } from "@/lib/audio";
 
@@ -86,9 +91,14 @@ export default function LeadershipEditorModal({
 }: LeadershipEditorModalProps) {
   const [formData, setFormData] = useState<TeamMember>(initialMember);
   const [isDirty, setIsDirty] = useState(false);
-  const [activeTab, setActiveTab] = useState<"basic" | "bio" | "contact" | "roles" | "skills" | "visibility">("basic");
+  const [activeTab, setActiveTab] = useState<"basic" | "bio" | "contact" | "roles" | "skills" | "contributions" | "visibility">("basic");
   const [newResponsibility, setNewResponsibility] = useState("");
   const [newSkill, setNewSkill] = useState("");
+  const [newContribTitle, setNewContribTitle] = useState("");
+  const [newContribType, setNewContribType] = useState<ContributionType>("project");
+  const [newContribProject, setNewContribProject] = useState("");
+  const [newContribUrl, setNewContribUrl] = useState("");
+  const [newContribSummary, setNewContribSummary] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgressMsg, setSaveProgressMsg] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -196,10 +206,28 @@ export default function LeadershipEditorModal({
     e.preventDefault();
     if (isSaving) return;
 
-    if (!formData.name?.trim() || !formData.designation?.trim()) {
+    const primaryDesig = (formData.primaryDesignation || formData.designation || "").trim();
+    if (!formData.name?.trim() || !primaryDesig) {
       setErrorMessage("Full Name and Primary Role/Designation are required.");
       playWarningTone();
       return;
+    }
+
+    const verifStatus = (formData.verificationStatus || formData.verification_status || "draft").toLowerCase();
+    const isPublishing = verifStatus === "published";
+    if (isPublishing) {
+      const focusAreas = formData.focus_areas || formData.skills || [];
+      const resps = formData.responsibilities || formData.roles || [];
+      if (focusAreas.length < 3) {
+        setErrorMessage("At least three focus areas are required before publishing.");
+        playWarningTone();
+        return;
+      }
+      if (resps.length === 0) {
+        setErrorMessage("At least one responsibility is required before publishing.");
+        playWarningTone();
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -209,11 +237,20 @@ export default function LeadershipEditorModal({
     playButtonClick();
 
     try {
-      const ok = await onSave(formData);
+      const completeness = calculateProfileCompleteness(formData);
+      const payload: TeamMember = {
+        ...formData,
+        designation: primaryDesig,
+        primaryDesignation: primaryDesig,
+        profileCompleteness: completeness,
+        profile_completeness: completeness,
+      };
+
+      const ok = await onSave(payload);
       if (ok) {
         setIsDirty(false);
         setSaveProgressMsg(null);
-        setSuccessMessage("Leadership profile saved successfully!");
+        setSuccessMessage("Leadership profile saved successfully to Supabase!");
         playSuccessSound();
       } else {
         setSaveProgressMsg(null);
@@ -224,6 +261,52 @@ export default function LeadershipEditorModal({
       playWarningTone();
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const addContribution = () => {
+    if (!newContribTitle.trim()) return;
+    playButtonClick();
+    const current = formData.contributions || [];
+    const newEntry: TeamMemberContribution = {
+      id: `contrib-${Date.now()}`,
+      team_member_id: formData.id,
+      contribution_type: newContribType,
+      title: newContribTitle.trim(),
+      project_name: newContribProject.trim() || undefined,
+      project_url: newContribUrl.trim() || undefined,
+      summary: newContribSummary.trim() || undefined,
+      verification_status: "verified",
+      is_public: true,
+      display_order: current.length,
+    };
+    setFormData({
+      ...formData,
+      contributions: [...current, newEntry],
+    });
+    setNewContribTitle("");
+    setNewContribProject("");
+    setNewContribUrl("");
+    setNewContribSummary("");
+  };
+
+  const removeContribution = (idx: number) => {
+    playButtonClick();
+    const current = formData.contributions || [];
+    setFormData({
+      ...formData,
+      contributions: current.filter((_, i) => i !== idx),
+    });
+  };
+
+  const updateContribution = (idx: number, patch: Partial<TeamMemberContribution>) => {
+    const current = [...(formData.contributions || [])];
+    if (current[idx]) {
+      current[idx] = { ...current[idx], ...patch };
+      setFormData({
+        ...formData,
+        contributions: current,
+      });
     }
   };
 
@@ -332,7 +415,26 @@ export default function LeadershipEditorModal({
             )}
           </div>
 
-          <div className="flex items-center space-x-2 shrink-0">
+          <div className="flex items-center space-x-3 shrink-0">
+            {/* Completeness Gauge */}
+            {(() => {
+              const comp = calculateProfileCompleteness(formData);
+              return (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1 rounded-xl bg-black/60 border border-red-950/80 text-xs font-mono">
+                  <span className="text-[10px] font-bold text-slate-400">Completeness:</span>
+                  <div className="w-16 h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        comp >= 80 ? "bg-emerald-500" : comp >= 50 ? "bg-amber-500" : "bg-red-500"
+                      }`}
+                      style={{ width: `${comp}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] font-bold text-white">{comp}%</span>
+                </div>
+              );
+            })()}
+
             {isDirty && (
               <span className="sm:hidden text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-600">
                 Edited
@@ -523,7 +625,8 @@ export default function LeadershipEditorModal({
                     { id: "contact", label: "Contacts & Socials" },
                     { id: "roles", label: "Roles & Tasks" },
                     { id: "skills", label: "Focus & Skills" },
-                    { id: "visibility", label: "Visibility & Order" },
+                    { id: "contributions", label: "Contributions" },
+                    { id: "visibility", label: "Visibility & Publish" },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -725,13 +828,45 @@ export default function LeadershipEditorModal({
 
                     <div className="space-y-1">
                       <label className="text-xs font-mono font-bold text-slate-300 block">
-                        Professional Background & Highlights
+                        Leadership Summary & Direction
                       </label>
                       <textarea
                         rows={3}
-                        value={formData.professionalSummary || ""}
-                        onChange={(e) => setFormData({ ...formData, professionalSummary: e.target.value })}
-                        placeholder="Key technical milestones, frameworks engineered, publications..."
+                        value={formData.leadershipSummary || formData.professionalSummary || ""}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            leadershipSummary: e.target.value,
+                            professionalSummary: e.target.value,
+                          })
+                        }
+                        placeholder="Key technical milestones, architecture oversight, leadership direction..."
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-red-950/80 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500 font-mono leading-relaxed resize-y"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-bold text-slate-300 block">
+                        Education & Qualifications Summary
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.educationSummary || ""}
+                        onChange={(e) => setFormData({ ...formData, educationSummary: e.target.value })}
+                        placeholder="e.g. B.Tech in Cybersecurity, 2025–2029, Narasaraopeta Engineering College, JNTU Kakinada"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-red-950/80 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500 font-mono leading-relaxed resize-y"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-mono font-bold text-slate-300 block">
+                        Verified Experience Summary
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={formData.experienceSummary || ""}
+                        onChange={(e) => setFormData({ ...formData, experienceSummary: e.target.value })}
+                        placeholder="e.g. NEC Portal frontend contribution, ByteXL hackathon, CodeBegin Passing of Digital Legacy"
                         className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-red-950/80 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-red-500 font-mono leading-relaxed resize-y"
                       />
                     </div>
@@ -992,10 +1127,175 @@ export default function LeadershipEditorModal({
                   </div>
                 )}
 
+                {/* TAB: CONTRIBUTIONS */}
+                {activeTab === "contributions" && (
+                  <div className="space-y-5 animate-in fade-in duration-150 font-mono">
+                    {/* Add Contribution Sub-form */}
+                    <div className="p-4 rounded-2xl bg-black/50 border border-red-950/80 space-y-3">
+                      <span className="text-xs font-bold text-red-400 uppercase tracking-wider block flex items-center gap-1.5">
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Add Verified Contribution or Project</span>
+                      </span>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-300 block">Contribution Title *</label>
+                          <input
+                            type="text"
+                            value={newContribTitle}
+                            onChange={(e) => setNewContribTitle(e.target.value)}
+                            placeholder="e.g. Core Frontend & UI/UX Architecture"
+                            className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-black/60 border border-red-950/80 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-300 block">Type</label>
+                          <select
+                            value={newContribType}
+                            onChange={(e) => setNewContribType(e.target.value as ContributionType)}
+                            className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-black/60 border border-red-950/80 text-xs text-white focus:outline-none focus:border-red-500 cursor-pointer"
+                          >
+                            <option value="leadership">Leadership</option>
+                            <option value="engineering">Engineering</option>
+                            <option value="product">Product</option>
+                            <option value="design">Design</option>
+                            <option value="operations">Operations</option>
+                            <option value="recruitment">Recruitment</option>
+                            <option value="mentorship">Mentorship</option>
+                            <option value="project">Project</option>
+                            <option value="community">Community</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-300 block">Project Name</label>
+                          <input
+                            type="text"
+                            value={newContribProject}
+                            onChange={(e) => setNewContribProject(e.target.value)}
+                            placeholder="e.g. NEC Portal, CodeXa Apply"
+                            className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-black/60 border border-red-950/80 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-slate-300 block">Project / Repo URL</label>
+                          <input
+                            type="url"
+                            value={newContribUrl}
+                            onChange={(e) => setNewContribUrl(e.target.value)}
+                            placeholder="https://github.com/... or https://..."
+                            className="w-full min-h-[38px] px-3 py-1.5 rounded-xl bg-black/60 border border-red-950/80 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500"
+                          />
+                        </div>
+
+                        <div className="col-span-full space-y-1">
+                          <label className="text-[11px] text-slate-300 block">Summary / Description</label>
+                          <textarea
+                            rows={2}
+                            value={newContribSummary}
+                            onChange={(e) => setNewContribSummary(e.target.value)}
+                            placeholder="Brief verification-backed summary of the contribution..."
+                            className="w-full px-3 py-2 rounded-xl bg-black/60 border border-red-950/80 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-red-500 resize-y"
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={addContribution}
+                        disabled={!newContribTitle.trim()}
+                        className="px-4 py-2 rounded-xl bg-red-950/80 hover:bg-red-600 border border-red-600/50 hover:border-red-400 text-red-200 hover:text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Add Contribution Entry</span>
+                      </button>
+                    </div>
+
+                    {/* Contributions List */}
+                    <div className="space-y-3">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">
+                        Existing Contributions ({formData.contributions?.length || 0})
+                      </span>
+
+                      {(!formData.contributions || formData.contributions.length === 0) ? (
+                        <div className="p-4 rounded-xl bg-black/30 border border-red-950/50 text-center text-xs text-slate-500">
+                          No verified contributions recorded yet. Use the form above to record verified accomplishments.
+                        </div>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {formData.contributions.map((contrib, cIdx) => (
+                            <div
+                              key={contrib.id || cIdx}
+                              className="p-3.5 rounded-2xl bg-black/50 border border-red-950/80 space-y-2.5 text-xs"
+                            >
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-bold text-white flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                                  <span>{contrib.title}</span>
+                                </span>
+                                <div className="flex items-center gap-2">
+                                  <select
+                                    value={contrib.verification_status || "verified"}
+                                    onChange={(e) =>
+                                      updateContribution(cIdx, { verification_status: e.target.value as any })
+                                    }
+                                    className="px-2 py-1 rounded-lg bg-black border border-red-950 text-[10px] text-amber-300 font-bold cursor-pointer"
+                                  >
+                                    <option value="draft">Draft</option>
+                                    <option value="needs_verification">Needs Verification</option>
+                                    <option value="verified">Verified</option>
+                                    <option value="published">Published</option>
+                                  </select>
+
+                                  <label className="flex items-center gap-1.5 text-[10px] text-slate-400 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={contrib.is_public !== false}
+                                      onChange={(e) => updateContribution(cIdx, { is_public: e.target.checked })}
+                                      className="accent-red-500"
+                                    />
+                                    <span>Public</span>
+                                  </label>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => removeContribution(cIdx)}
+                                    aria-label="Remove contribution"
+                                    className="p-1 rounded text-slate-500 hover:text-red-400 cursor-pointer transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {contrib.summary && (
+                                <p className="text-slate-300 text-[11px] leading-relaxed pl-4">{contrib.summary}</p>
+                              )}
+
+                              {(contrib.project_name || contrib.project_url) && (
+                                <div className="flex items-center gap-3 pl-4 text-[10px] text-slate-400">
+                                  {contrib.project_name && <span>Project: <strong className="text-slate-200">{contrib.project_name}</strong></span>}
+                                  {contrib.project_url && (
+                                    <a href={contrib.project_url} target="_blank" rel="noopener noreferrer" className="text-red-400 underline">
+                                      {contrib.project_url}
+                                    </a>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* TAB 6: VISIBILITY & ORDER */}
                 {activeTab === "visibility" && (
                   <div className="space-y-5 animate-in fade-in duration-150 font-mono">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-300 block">
                           Profile Status
@@ -1016,6 +1316,29 @@ export default function LeadershipEditorModal({
                           <option value="active" className="bg-slate-900 text-emerald-300">Active / Published</option>
                           <option value="hidden" className="bg-slate-900 text-amber-300">Hidden from Public</option>
                           <option value="archived" className="bg-slate-900 text-slate-400">Archived</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-300 block">
+                          Verification Status
+                        </label>
+                        <select
+                          value={formData.verificationStatus || formData.verification_status || "published"}
+                          onChange={(e) => {
+                            const val = e.target.value as any;
+                            setFormData({
+                              ...formData,
+                              verificationStatus: val,
+                              verification_status: val,
+                            });
+                          }}
+                          className="w-full min-h-[44px] px-3.5 py-2 rounded-xl bg-black/60 border border-red-950/80 text-sm text-white focus:outline-none focus:border-red-500 cursor-pointer"
+                        >
+                          <option value="published" className="bg-slate-900 text-emerald-300">Published</option>
+                          <option value="verified" className="bg-slate-900 text-blue-300">Verified</option>
+                          <option value="needs_verification" className="bg-slate-900 text-amber-300">Needs Verification</option>
+                          <option value="draft" className="bg-slate-900 text-slate-400">Draft</option>
                         </select>
                       </div>
 

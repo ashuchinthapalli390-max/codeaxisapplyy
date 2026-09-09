@@ -3,7 +3,28 @@
  * Provides unified typing for Supabase team_members table, Public DTO, Admin DTO, and validation.
  */
 
+import { ContributionType, TeamMemberContribution } from "../../types/admin";
+
 export type LeadershipStatus = "active" | "hidden" | "archived";
+export type LeadershipVerificationStatus = "draft" | "needs_verification" | "verified" | "published";
+
+export interface TeamMemberContributionDbRow {
+  id: string;
+  team_member_id: string;
+  contribution_type: ContributionType;
+  title: string;
+  summary: string | null;
+  project_name: string | null;
+  project_url: string | null;
+  repository_url: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  verification_status: LeadershipVerificationStatus;
+  is_public: boolean;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface TeamMemberDbRow {
   id: string;
@@ -19,8 +40,18 @@ export interface TeamMemberDbRow {
   short_tagline: string | null;
   short_bio: string | null;
   full_bio: string | null;
+  leadership_summary: string | null;
   quote: string | null;
+  responsibilities: string[] | null;
   focus_areas: string[] | null;
+  skills: string[] | null;
+  education_summary: string | null;
+  experience_summary: string | null;
+  verification_status: LeadershipVerificationStatus;
+  profile_completeness: number;
+  source_notes: string | null;
+  last_verified_at: string | null;
+  is_public: boolean;
   email: string | null;
   whatsapp: string | null;
   whatsapp_url: string | null;
@@ -49,6 +80,17 @@ export interface TeamMemberDbRow {
   archived_by: string | null;
 }
 
+export interface PublicContributionDto {
+  id: string;
+  contributionType: ContributionType;
+  title: string;
+  summary: string;
+  projectName?: string;
+  projectUrl?: string;
+  repositoryUrl?: string;
+  completedAt?: string;
+}
+
 export interface PublicLeadershipDto {
   id: string;
   slug: string;
@@ -64,9 +106,15 @@ export interface PublicLeadershipDto {
   bio: string;
   shortBio: string;
   fullBio: string;
+  leadershipSummary: string;
   quote: string;
+  responsibilities: string[];
   skills: string[];
   focus_areas: string[];
+  educationSummary?: string;
+  experienceSummary?: string;
+  verificationStatus: LeadershipVerificationStatus;
+  contributions: PublicContributionDto[];
   photoUrl: string;
   image_path: string;
   profileObjectPositionX: number;
@@ -80,6 +128,24 @@ export interface PublicLeadershipDto {
   githubUrl?: string;
   portfolioUrl?: string;
   websiteUrl?: string;
+}
+
+export interface AdminContributionDto {
+  id: string;
+  team_member_id: string;
+  contribution_type: ContributionType;
+  title: string;
+  summary?: string;
+  project_name?: string;
+  project_url?: string;
+  repository_url?: string;
+  started_at?: string;
+  completed_at?: string;
+  verification_status: LeadershipVerificationStatus;
+  is_public: boolean;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AdminLeadershipDto {
@@ -98,12 +164,21 @@ export interface AdminLeadershipDto {
   bio: string;
   shortBio: string;
   fullBio: string;
+  leadershipSummary: string;
   professionalSummary?: string;
+  educationSummary: string;
+  experienceSummary: string;
+  verificationStatus: LeadershipVerificationStatus;
+  profileCompleteness: number;
+  sourceNotes?: string;
+  lastVerifiedAt?: string;
+  isPublic: boolean;
   quote: string;
   skills: string[];
   focus_areas: string[];
   responsibilities: string[];
   roles: string[];
+  contributions: AdminContributionDto[];
   photoUrl: string;
   image_path: string;
   profileStoragePath?: string;
@@ -158,11 +233,20 @@ export interface LeadershipMutationInput {
   tagline?: string;
   shortBio?: string;
   fullBio?: string;
+  leadershipSummary?: string;
   quote?: string;
   skills?: string[];
   focus_areas?: string[];
   responsibilities?: string[];
   roles?: string[];
+  educationSummary?: string;
+  experienceSummary?: string;
+  verificationStatus?: LeadershipVerificationStatus;
+  profileCompleteness?: number;
+  sourceNotes?: string;
+  lastVerifiedAt?: string;
+  isPublic?: boolean;
+  contributions?: AdminContributionDto[];
   photoUrl?: string;
   image_path?: string;
   profileStoragePath?: string;
@@ -190,29 +274,67 @@ export interface LeadershipMutationInput {
   updatedAt?: string;
 }
 
+/**
+ * Calculates profile completeness percentage (0 - 100) based on verified required fields
+ */
+export function calculateProfileCompleteness(input: Partial<LeadershipMutationInput>): number {
+  let score = 0;
+  if (input.name || input.fullName) score += 10;
+  if (input.primaryDesignation || input.designation) score += 15;
+  if (input.roleType) score += 5;
+  if (input.department) score += 5;
+  if (input.shortBio && input.shortBio.length >= 20) score += 15;
+  if (input.fullBio && input.fullBio.length >= 40) score += 10;
+  if (input.leadershipSummary && input.leadershipSummary.length >= 20) score += 10;
+
+  const resps = input.responsibilities || input.roles || [];
+  if (resps.length >= 3) score += 10;
+  else if (resps.length >= 1) score += 5;
+
+  const focus = input.focus_areas || input.skills || [];
+  if (focus.length >= 3) score += 10;
+  else if (focus.length >= 1) score += 5;
+
+  if (input.quote && input.quote.length >= 10) score += 5;
+  if (input.linkedinUrl || input.githubUrl || input.portfolioUrl || input.websiteUrl) score += 5;
+
+  return Math.min(100, score);
+}
+
+function stripUnsafeHtml(str: string): string {
+  return str.replace(/<[^>]*>?/gm, "").trim();
+}
+
 export function validateLeadershipInput(raw: any): {
   valid: boolean;
   errors: Record<string, string>;
+  warnings?: string[];
   sanitized?: LeadershipMutationInput;
 } {
   const errors: Record<string, string> = {};
+  const warnings: string[] = [];
 
   if (!raw || typeof raw !== "object") {
     return { valid: false, errors: { form: "Invalid request payload." } };
   }
 
-  const name = String(raw.fullName || raw.name || "").trim();
+  const name = stripUnsafeHtml(String(raw.fullName || raw.name || ""));
   if (!name) {
     errors.name = "Full name is required.";
   } else if (name.length > 100) {
     errors.name = "Full name must be 100 characters or fewer.";
   }
 
-  const designation = String(raw.primaryDesignation || raw.designation || "").trim();
+  const designation = stripUnsafeHtml(String(raw.primaryDesignation || raw.designation || ""));
   if (!designation) {
     errors.designation = "Primary designation is required.";
   } else if (designation.length > 120) {
     errors.designation = "Primary designation must be 120 characters or fewer.";
+  }
+
+  const shortBio = stripUnsafeHtml(String(raw.shortBio || raw.bio || ""));
+  if (shortBio.length > 400) {
+    errors.shortBio = "Short bio must be 400 characters or fewer.";
   }
 
   // Slug validation
@@ -233,7 +355,7 @@ export function validateLeadershipInput(raw: any): {
     if (!url || !url.trim()) return;
     const trimmed = url.trim();
     if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("/")) {
-      errors[fieldName] = "Must be a valid URL starting with https:// or /";
+      errors[fieldName] = "Must be a valid URL starting with https://, http://, or /";
     }
   };
 
@@ -251,7 +373,7 @@ export function validateLeadershipInput(raw: any): {
   const sanitizedCropY = Math.min(100, Math.max(0, isNaN(cropY) ? 50 : cropY));
   const sanitizedCropScale = Math.min(3, Math.max(0.5, isNaN(cropScale) ? 1 : cropScale));
 
-  // Status
+  // Status & Verification Status
   let status: LeadershipStatus = "active";
   if (raw.status === "hidden" || raw.status === "archived") {
     status = raw.status;
@@ -261,45 +383,129 @@ export function validateLeadershipInput(raw: any): {
     status = "hidden";
   }
 
-  if (Object.keys(errors).length > 0) {
-    return { valid: false, errors };
+  let verificationStatus: LeadershipVerificationStatus = "draft";
+  const rawVerif = String(raw.verificationStatus || raw.verification_status || "").toLowerCase().trim();
+  if (rawVerif === "draft" || rawVerif === "needs_verification" || rawVerif === "verified" || rawVerif === "published") {
+    verificationStatus = rawVerif as LeadershipVerificationStatus;
+  } else if (raw.isPublishing) {
+    verificationStatus = "published";
   }
 
   const focusAreas = Array.isArray(raw.focus_areas)
-    ? raw.focus_areas.map((s: any) => String(s).trim()).filter(Boolean)
+    ? raw.focus_areas.map((s: any) => stripUnsafeHtml(String(s))).filter(Boolean)
     : Array.isArray(raw.skills)
-    ? raw.skills.map((s: any) => String(s).trim()).filter(Boolean)
+    ? raw.skills.map((s: any) => stripUnsafeHtml(String(s))).filter(Boolean)
     : [];
 
   const responsibilities = Array.isArray(raw.responsibilities)
-    ? raw.responsibilities.map((s: any) => String(s).trim()).filter(Boolean)
+    ? raw.responsibilities.map((s: any) => stripUnsafeHtml(String(s))).filter(Boolean)
     : Array.isArray(raw.roles)
-    ? raw.roles.map((s: any) => String(s).trim()).filter(Boolean)
+    ? raw.roles.map((s: any) => stripUnsafeHtml(String(s))).filter(Boolean)
     : [];
+
+  const skills = Array.isArray(raw.skills)
+    ? raw.skills.map((s: any) => stripUnsafeHtml(String(s))).filter(Boolean)
+    : focusAreas;
+
+  // Publishing strict checks
+  if ((raw.isPublishing === true || rawVerif === "published") && status === "active") {
+    if (focusAreas.length < 3) {
+      errors.focus_areas = "At least three focus areas are required to publish a leadership profile.";
+    }
+    if (responsibilities.length === 0) {
+      errors.responsibilities = "Responsibilities must not be empty for published leadership.";
+    }
+  }
+
+  // Parse contributions if present
+  const contributions: AdminContributionDto[] = [];
+  if (Array.isArray(raw.contributions)) {
+    for (const c of raw.contributions) {
+      if (!c || typeof c !== "object") continue;
+      const title = stripUnsafeHtml(String(c.title || ""));
+      if (!title) continue;
+
+      let cVerif: LeadershipVerificationStatus = "draft";
+      const rawCVerif = String(c.verification_status || c.verificationStatus || "").toLowerCase();
+      if (rawCVerif === "published" || rawCVerif === "verified" || rawCVerif === "needs_verification" || rawCVerif === "draft") {
+        cVerif = rawCVerif as LeadershipVerificationStatus;
+      }
+
+      if (cVerif !== "published") {
+        warnings.push(`Contribution "${title}" is marked ${cVerif} and will remain hidden from the public website.`);
+      }
+
+      contributions.push({
+        id: c.id ? String(c.id) : `contrib-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        team_member_id: String(raw.id || ""),
+        contribution_type: c.contribution_type || c.contributionType || "project",
+        title,
+        summary: c.summary ? stripUnsafeHtml(String(c.summary)) : undefined,
+        project_name: c.project_name || c.projectName ? stripUnsafeHtml(String(c.project_name || c.projectName)) : undefined,
+        project_url: c.project_url || c.projectUrl ? String(c.project_url || c.projectUrl).trim() : undefined,
+        repository_url: c.repository_url || c.repositoryUrl ? String(c.repository_url || c.repositoryUrl).trim() : undefined,
+        started_at: c.started_at || c.startedAt ? String(c.started_at || c.startedAt).trim() : undefined,
+        completed_at: c.completed_at || c.completedAt ? String(c.completed_at || c.completedAt).trim() : undefined,
+        verification_status: cVerif,
+        is_public: c.is_public !== false && c.isPublic !== false,
+        display_order: Number(c.display_order ?? c.displayOrder ?? 0),
+      });
+    }
+  }
+
+  if (Object.keys(errors).length > 0) {
+    return { valid: false, errors, warnings };
+  }
+
+  const completeness = calculateProfileCompleteness({
+    name,
+    designation,
+    primaryDesignation: designation,
+    roleType: String(raw.roleType || "Core Team").trim(),
+    department: stripUnsafeHtml(String(raw.department || "")),
+    shortBio,
+    fullBio: stripUnsafeHtml(String(raw.fullBio || "")),
+    leadershipSummary: stripUnsafeHtml(String(raw.leadershipSummary || raw.leadership_summary || "")),
+    responsibilities,
+    focus_areas: focusAreas,
+    quote: stripUnsafeHtml(String(raw.quote || "")),
+    linkedinUrl: String(raw.linkedinUrl || "").trim(),
+    githubUrl: String(raw.githubUrl || "").trim(),
+  });
 
   return {
     valid: true,
     errors: {},
+    warnings,
     sanitized: {
       id: raw.id ? String(raw.id).trim() : undefined,
       slug,
       name,
       fullName: name,
-      displayName: String(raw.displayName || name).trim(),
-      codename: String(raw.codename || raw.code_name || "").trim(),
-      roleType: String(raw.roleType || "Core Team").trim(),
+      displayName: stripUnsafeHtml(String(raw.displayName || name)),
+      codename: stripUnsafeHtml(String(raw.codename || raw.code_name || "")),
+      roleType: stripUnsafeHtml(String(raw.roleType || "Core Team")),
       designation,
       primaryDesignation: designation,
-      secondaryDesignation: String(raw.secondaryDesignation || "").trim(),
-      department: String(raw.department || "").trim(),
-      tagline: String(raw.tagline || "").trim(),
-      shortBio: String(raw.shortBio || raw.bio || "").trim(),
-      fullBio: String(raw.fullBio || "").trim(),
-      quote: String(raw.quote || "").trim(),
-      skills: focusAreas,
+      secondaryDesignation: stripUnsafeHtml(String(raw.secondaryDesignation || raw.secondary_designation || "")),
+      department: stripUnsafeHtml(String(raw.department || "")),
+      tagline: stripUnsafeHtml(String(raw.tagline || raw.shortTagline || raw.short_tagline || "")),
+      shortBio,
+      fullBio: stripUnsafeHtml(String(raw.fullBio || "")),
+      leadershipSummary: stripUnsafeHtml(String(raw.leadershipSummary || raw.leadership_summary || "")),
+      quote: stripUnsafeHtml(String(raw.quote || "")),
+      skills,
       focus_areas: focusAreas,
       responsibilities,
       roles: responsibilities,
+      educationSummary: stripUnsafeHtml(String(raw.educationSummary || raw.education_summary || "")),
+      experienceSummary: stripUnsafeHtml(String(raw.experienceSummary || raw.experience_summary || "")),
+      verificationStatus,
+      profileCompleteness: completeness,
+      sourceNotes: stripUnsafeHtml(String(raw.sourceNotes || raw.source_notes || "")),
+      lastVerifiedAt: new Date().toISOString(),
+      isPublic: raw.isPublic !== false && raw.is_public !== false,
+      contributions,
       photoUrl: String(raw.photoUrl || "").trim() || "/assets/image-assests/hero.jpeg",
       image_path: String(raw.image_path || raw.profileStoragePath || "").trim(),
       profileStoragePath: String(raw.profileStoragePath || raw.image_path || "").trim(),

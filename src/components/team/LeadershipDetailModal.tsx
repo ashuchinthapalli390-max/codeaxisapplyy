@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   X,
   Crown,
@@ -11,6 +11,9 @@ import {
   Briefcase,
   Quote,
   CheckCircle2,
+  GraduationCap,
+  ExternalLink,
+  Award,
 } from "lucide-react";
 import { GithubIcon, LinkedinIcon, InstagramIcon } from "@/components/ui/SocialIcons";
 import { TeamMember } from "@/types/admin";
@@ -26,6 +29,18 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
   const [prevPhotoUrl, setPrevPhotoUrl] = useState(member?.photoUrl);
   const [imgError, setImgError] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (member?.photoUrl !== prevPhotoUrl) {
     setPrevPhotoUrl(member?.photoUrl);
     setImgError(false);
@@ -35,10 +50,21 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
 
   const responsibilities = member.responsibilities || member.roles || [];
   const skills = member.skills || [];
+  const focusAreas = member.focus_areas || skills;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md font-mono select-none">
-      <div className="red-glass rounded-3xl border border-red-500/40 w-full max-w-2xl overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.95),0_0_40px_rgba(239,68,68,0.25)] flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md font-mono select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="leader-modal-title"
+        className="red-glass rounded-3xl border border-red-500/40 w-full max-w-2xl overflow-hidden shadow-[0_25px_80px_rgba(0,0,0,0.95),0_0_40px_rgba(239,68,68,0.25)] flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-200"
+      >
         
         {/* Header Bar */}
         <div className="px-6 py-4 border-b border-red-950/80 flex items-center justify-between bg-[#070712]">
@@ -54,7 +80,8 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
               playButtonClick();
               onClose();
             }}
-            className="p-1.5 rounded-xl border border-red-950 text-slate-400 hover:text-white hover:border-red-500 transition-colors"
+            aria-label="Close modal"
+            className="p-1.5 rounded-xl border border-red-950 text-slate-400 hover:text-white hover:border-red-500 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -68,10 +95,10 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
             
             {/* Profile Avatar / Photo */}
             <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-3xl bg-black border-2 border-red-500/60 p-1 shadow-[0_0_25px_rgba(239,68,68,0.4)] shrink-0 overflow-hidden relative">
-              {member.photoUrl && !imgError ? (
+              {member.photoUrl && member.photoUrl !== "/logo.jpeg" && !imgError ? (
                 <img
                   src={member.photoUrl}
-                  alt={member.name}
+                  alt={`Portrait of ${member.displayName || member.name}`}
                   onError={() => setImgError(true)}
                   style={{
                     objectPosition: `${member.profileObjectPositionX ?? 50}% ${member.profileObjectPositionY ?? 50}%`,
@@ -80,8 +107,13 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
                   className="w-full h-full object-cover rounded-2xl"
                 />
               ) : (
-                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-red-950 to-black flex items-center justify-center text-2xl font-black text-red-300 border border-red-900/60">
-                  {(member.displayName || member.name).slice(0, 2).toUpperCase()}
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-red-950 via-[#180709] to-black flex flex-col items-center justify-center border border-red-900/60 text-red-300">
+                  <span className="text-2xl font-black">
+                    {(member.displayName || member.name || "CX").slice(0, 2).toUpperCase()}
+                  </span>
+                  <span className="text-[9px] font-bold text-red-400/80 tracking-widest mt-0.5">
+                    CODEXA
+                  </span>
                 </div>
               )}
             </div>
@@ -89,7 +121,7 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
             {/* Names & Taglines */}
             <div className="space-y-1.5 text-center sm:text-left flex-grow">
               <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                <h2 id="leader-modal-title" className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                   {member.displayName || member.name}
                 </h2>
                 {member.codename && member.codename.trim() && member.codename.toLowerCase() !== "none" && member.codename.toLowerCase() !== "no codename" && (
@@ -98,12 +130,14 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
                   </span>
                 )}
               </div>
-              <div className="text-xs sm:text-sm font-bold text-red-400">{member.designation}</div>
+              <div className="text-xs sm:text-sm font-bold text-red-400">
+                {member.primaryDesignation || member.designation || "Core Team"}
+              </div>
               {member.secondaryDesignation && (
                 <div className="text-xs text-slate-400">{member.secondaryDesignation}</div>
               )}
-              {member.tagline && (
-                <p className="text-xs text-slate-300 italic pt-1">{member.tagline}</p>
+              {(member.shortTagline || member.tagline) && (
+                <p className="text-xs text-slate-300 italic pt-1">{member.shortTagline || member.tagline}</p>
               )}
 
               {/* Department & Location */}
@@ -174,13 +208,13 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
           )}
 
           {/* Skills & Focus Areas */}
-          {skills.length > 0 && (
+          {focusAreas.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-red-950/60">
               <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider">
                 Focus Areas & Technical Domains
               </h3>
               <div className="flex flex-wrap gap-1.5">
-                {skills.map((skill, idx) => (
+                {focusAreas.map((skill, idx) => (
                   <span
                     key={idx}
                     className="px-2.5 py-1 rounded-lg bg-black/70 border border-red-950 text-slate-300 text-xs font-bold"
@@ -189,6 +223,94 @@ export default function LeadershipDetailModal({ member, isOpen, onClose }: Leade
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Verified Contributions */}
+          {member.contributions && member.contributions.length > 0 && (
+            <div className="space-y-2.5 pt-2 border-t border-red-950/60">
+              <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Award className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Verified Contributions & Projects</span>
+              </h3>
+              <div className="space-y-2">
+                {member.contributions.map((c: any, idx: number) => (
+                  <div
+                    key={c.id || idx}
+                    className="p-3 rounded-xl bg-black/60 border border-red-950/80 space-y-1 text-xs font-mono"
+                  >
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="font-bold text-white flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+                        <span>{c.title}</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-950 text-red-300 border border-red-800/60 uppercase font-bold">
+                        {c.contributionType || c.contribution_type || "project"}
+                      </span>
+                    </div>
+                    {c.summary && (
+                      <p className="text-slate-300 text-[11px] leading-relaxed pl-3.5">{c.summary}</p>
+                    )}
+                    {(c.projectName || c.project_name || c.projectUrl || c.project_url || c.repositoryUrl || c.repository_url) && (
+                      <div className="flex items-center gap-3 pl-3.5 pt-1 text-[10px] flex-wrap">
+                        {(c.projectName || c.project_name) && (
+                          <span className="text-slate-400">
+                            Project: <strong className="text-slate-200">{c.projectName || c.project_name}</strong>
+                          </span>
+                        )}
+                        {(c.projectUrl || c.project_url) && (
+                          <a
+                            href={c.projectUrl || c.project_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-red-400 hover:text-red-300 underline flex items-center gap-1"
+                          >
+                            <span>Live Project</span>
+                            <ExternalLink className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                        {(c.repositoryUrl || c.repository_url) && (
+                          <a
+                            href={c.repositoryUrl || c.repository_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-red-400 hover:text-red-300 underline flex items-center gap-1"
+                          >
+                            <span>Repository</span>
+                            <GithubIcon className="w-2.5 h-2.5" />
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Education Summary */}
+          {member.educationSummary && (
+            <div className="space-y-1.5 pt-2 border-t border-red-950/60">
+              <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                <GraduationCap className="w-3.5 h-3.5 text-red-400" />
+                <span>Education & Qualifications</span>
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
+                {member.educationSummary}
+              </p>
+            </div>
+          )}
+
+          {/* Experience Summary */}
+          {member.experienceSummary && (
+            <div className="space-y-1.5 pt-2 border-t border-red-950/60">
+              <h3 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Briefcase className="w-3.5 h-3.5 text-red-400" />
+                <span>Verified Experience Summary</span>
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed font-mono whitespace-pre-wrap">
+                {member.experienceSummary}
+              </p>
             </div>
           )}
 

@@ -17,6 +17,8 @@ export interface TeamMember {
   role_type?: string;
   department?: string;
   tagline?: string;
+  shortTagline?: string;
+  short_tagline?: string;
   bio: string;
   shortBio?: string;
   short_bio?: string;
@@ -39,6 +41,23 @@ export interface TeamMember {
   responsibilities?: string[];
   roles?: string[]; // Alias/compatibility with responsibilities
   skills: string[];
+  leadershipSummary?: string;
+  leadership_summary?: string;
+  educationSummary?: string;
+  education_summary?: string;
+  experienceSummary?: string;
+  experience_summary?: string;
+  verificationStatus?: "draft" | "needs_verification" | "verified" | "published";
+  verification_status?: "draft" | "needs_verification" | "verified" | "published";
+  profileCompleteness?: number;
+  profile_completeness?: number;
+  sourceNotes?: string;
+  source_notes?: string;
+  lastVerifiedAt?: string;
+  last_verified_at?: string;
+  isPublic?: boolean;
+  is_public?: boolean;
+  contributions?: TeamMemberContribution[];
   email?: string;
   secondaryEmail?: string;
   whatsapp?: string;
@@ -70,6 +89,35 @@ export interface TeamMember {
   archived_at?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type ContributionType =
+  | "leadership"
+  | "engineering"
+  | "product"
+  | "design"
+  | "operations"
+  | "recruitment"
+  | "mentorship"
+  | "project"
+  | "community";
+
+export interface TeamMemberContribution {
+  id: string;
+  team_member_id: string;
+  contribution_type: ContributionType;
+  title: string;
+  summary?: string;
+  project_name?: string;
+  project_url?: string;
+  repository_url?: string;
+  started_at?: string;
+  completed_at?: string;
+  verification_status: "draft" | "needs_verification" | "verified" | "published";
+  is_public: boolean;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export type ApplicationWindowStatus = "AUTO" | "OPEN" | "OPENING_SOON" | "CLOSED";

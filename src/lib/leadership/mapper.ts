@@ -4,6 +4,9 @@ import {
   AdminLeadershipDto,
   LeadershipMutationInput,
   LeadershipStatus,
+  PublicContributionDto,
+  AdminContributionDto,
+  TeamMemberContributionDbRow,
 } from "./schema";
 
 /**
@@ -32,17 +35,74 @@ export function resolveLeadershipImageUrl(row: Partial<TeamMemberDbRow>): string
   return "/assets/image-assests/hero.jpeg";
 }
 
+export function mapDbContributionToPublicDto(row: TeamMemberContributionDbRow | any): PublicContributionDto {
+  return {
+    id: String(row.id),
+    contributionType: row.contribution_type || "project",
+    title: row.title || "Contribution",
+    summary: row.summary || "",
+    projectName: row.project_name || undefined,
+    projectUrl: row.project_url || undefined,
+    repositoryUrl: row.repository_url || undefined,
+    completedAt: row.completed_at || undefined,
+  };
+}
+
+export function mapDbContributionToAdminDto(row: TeamMemberContributionDbRow | any): AdminContributionDto {
+  return {
+    id: String(row.id),
+    team_member_id: String(row.team_member_id),
+    contribution_type: row.contribution_type || "project",
+    title: row.title || "Contribution",
+    summary: row.summary || undefined,
+    project_name: row.project_name || undefined,
+    project_url: row.project_url || undefined,
+    repository_url: row.repository_url || undefined,
+    started_at: row.started_at || undefined,
+    completed_at: row.completed_at || undefined,
+    verification_status: row.verification_status || "draft",
+    is_public: row.is_public !== false,
+    display_order: Number(row.display_order || 0),
+    created_at: row.created_at || new Date().toISOString(),
+    updated_at: row.updated_at || new Date().toISOString(),
+  };
+}
+
 /**
  * Maps a canonical Supabase database row to a public-safe DTO
  */
-export function mapDbRowToPublicDto(row: TeamMemberDbRow): PublicLeadershipDto {
+export function mapDbRowToPublicDto(
+  row: TeamMemberDbRow | any,
+  contributions: (TeamMemberContributionDbRow | any)[] = []
+): PublicLeadershipDto {
   const photoUrl = resolveLeadershipImageUrl(row);
   const cropX = Number(row.image_crop_x ?? row.crop_x ?? 50);
   const cropY = Number(row.image_crop_y ?? row.crop_y ?? 50);
   const cropScale = Number(row.image_zoom ?? row.crop_scale ?? 1);
   const sortOrder = Number(row.sort_order ?? 0);
 
-  const focusAreas = Array.isArray(row.focus_areas) ? row.focus_areas : [];
+  const focusAreas = Array.isArray(row.focus_areas)
+    ? row.focus_areas
+    : Array.isArray(row.skills)
+    ? row.skills
+    : [];
+
+  const skills = Array.isArray(row.skills)
+    ? row.skills
+    : focusAreas;
+
+  const responsibilities = Array.isArray(row.responsibilities)
+    ? row.responsibilities
+    : Array.isArray(row.roles)
+    ? row.roles
+    : [];
+
+  const publicContribs = contributions
+    .filter((c) => c.is_public !== false && (c.verification_status === "published" || !c.verification_status))
+    .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0))
+    .map(mapDbContributionToPublicDto);
+
+  const primaryDesignation = row.primary_designation || row.designation || "Core Team";
 
   return {
     id: row.id,
@@ -51,17 +111,23 @@ export function mapDbRowToPublicDto(row: TeamMemberDbRow): PublicLeadershipDto {
     displayName: row.display_name || row.full_name || "Team Member",
     codename: row.code_name || "",
     roleType: row.role_type || "Core Team",
-    designation: row.primary_designation || "Core Team",
-    primaryDesignation: row.primary_designation || "Core Team",
+    designation: primaryDesignation,
+    primaryDesignation,
     secondaryDesignation: row.secondary_designation || "",
     department: row.department || "",
     tagline: row.tagline || row.short_tagline || "",
-    bio: row.short_bio || "",
-    shortBio: row.short_bio || "",
+    bio: row.short_bio || row.bio || "",
+    shortBio: row.short_bio || row.bio || "",
     fullBio: row.full_bio || "",
+    leadershipSummary: row.leadership_summary || "",
     quote: row.quote || "",
-    skills: focusAreas,
+    responsibilities,
+    skills,
     focus_areas: focusAreas,
+    educationSummary: row.education_summary || undefined,
+    experienceSummary: row.experience_summary || undefined,
+    verificationStatus: row.verification_status || "published",
+    contributions: publicContribs,
     photoUrl,
     image_path: row.image_path || "",
     profileObjectPositionX: cropX,
@@ -81,13 +147,31 @@ export function mapDbRowToPublicDto(row: TeamMemberDbRow): PublicLeadershipDto {
 /**
  * Maps a canonical Supabase database row to an editable Admin DTO
  */
-export function mapDbRowToAdminDto(row: TeamMemberDbRow): AdminLeadershipDto {
+export function mapDbRowToAdminDto(
+  row: TeamMemberDbRow | any,
+  contributions: (TeamMemberContributionDbRow | any)[] = []
+): AdminLeadershipDto {
   const photoUrl = resolveLeadershipImageUrl(row);
   const cropX = Number(row.image_crop_x ?? row.crop_x ?? 50);
   const cropY = Number(row.image_crop_y ?? row.crop_y ?? 50);
   const cropScale = Number(row.image_zoom ?? row.crop_scale ?? 1);
   const sortOrder = Number(row.sort_order ?? 0);
-  const focusAreas = Array.isArray(row.focus_areas) ? row.focus_areas : [];
+
+  const focusAreas = Array.isArray(row.focus_areas)
+    ? row.focus_areas
+    : Array.isArray(row.skills)
+    ? row.skills
+    : [];
+
+  const skills = Array.isArray(row.skills)
+    ? row.skills
+    : focusAreas;
+
+  const responsibilities = Array.isArray(row.responsibilities)
+    ? row.responsibilities
+    : Array.isArray(row.roles)
+    ? row.roles
+    : [];
 
   let status: LeadershipStatus = "active";
   if (row.status) {
@@ -98,6 +182,12 @@ export function mapDbRowToAdminDto(row: TeamMemberDbRow): AdminLeadershipDto {
     status = "hidden";
   }
 
+  const adminContribs = contributions
+    .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0))
+    .map(mapDbContributionToAdminDto);
+
+  const primaryDesignation = row.primary_designation || row.designation || "Core Team";
+
   return {
     id: row.id,
     slug: row.slug || row.id,
@@ -106,19 +196,29 @@ export function mapDbRowToAdminDto(row: TeamMemberDbRow): AdminLeadershipDto {
     displayName: row.display_name || row.full_name || "Team Member",
     codename: row.code_name || "",
     roleType: row.role_type || "Core Team",
-    designation: row.primary_designation || "Core Team",
-    primaryDesignation: row.primary_designation || "Core Team",
+    designation: primaryDesignation,
+    primaryDesignation,
     secondaryDesignation: row.secondary_designation || "",
     department: row.department || "",
     tagline: row.tagline || row.short_tagline || "",
-    bio: row.short_bio || "",
-    shortBio: row.short_bio || "",
+    bio: row.short_bio || row.bio || "",
+    shortBio: row.short_bio || row.bio || "",
     fullBio: row.full_bio || "",
+    leadershipSummary: row.leadership_summary || "",
+    professionalSummary: row.leadership_summary || "",
+    educationSummary: row.education_summary || "",
+    experienceSummary: row.experience_summary || "",
+    verificationStatus: row.verification_status || "published",
+    profileCompleteness: Number(row.profile_completeness ?? 100),
+    sourceNotes: row.source_notes || undefined,
+    lastVerifiedAt: row.last_verified_at || undefined,
+    isPublic: row.is_public !== false,
     quote: row.quote || "",
-    skills: focusAreas,
+    skills,
     focus_areas: focusAreas,
-    responsibilities: focusAreas,
-    roles: focusAreas,
+    responsibilities,
+    roles: responsibilities,
+    contributions: adminContribs,
     photoUrl,
     image_path: row.image_path || "",
     profileStoragePath: row.image_path || "",
@@ -137,6 +237,10 @@ export function mapDbRowToAdminDto(row: TeamMemberDbRow): AdminLeadershipDto {
     portfolioUrl: row.portfolio_url || "",
     websiteUrl: row.external_url || "",
     external_url: row.external_url || "",
+    instagramUrl: undefined,
+    youtubeUrl: undefined,
+    twitterUrl: undefined,
+    discordUsername: undefined,
     showPhone: false,
     showEmail: Boolean(row.email),
     showWhatsapp: Boolean(row.whatsapp || row.whatsapp_url),
@@ -184,8 +288,18 @@ export function mapMutationInputToDbRow(
     short_tagline: input.tagline || null,
     short_bio: input.shortBio || null,
     full_bio: input.fullBio || null,
+    leadership_summary: input.leadershipSummary || null,
     quote: input.quote || null,
+    responsibilities: input.responsibilities || input.roles || [],
     focus_areas: input.focus_areas || input.skills || [],
+    skills: input.skills || input.focus_areas || [],
+    education_summary: input.educationSummary || null,
+    experience_summary: input.experienceSummary || null,
+    verification_status: input.verificationStatus || "published",
+    profile_completeness: input.profileCompleteness ?? 100,
+    source_notes: input.sourceNotes || null,
+    last_verified_at: input.lastVerifiedAt || now,
+    is_public: input.isPublic !== false,
     email: input.email || null,
     whatsapp: input.whatsapp || input.whatsapp_url || null,
     whatsapp_url: input.whatsapp_url || input.whatsapp || null,

@@ -10,6 +10,7 @@ import IntroAnimation from "@/components/IntroAnimation";
 import LeadershipDetailModal from "@/components/team/LeadershipDetailModal";
 import { TeamMember, InternshipRound, SiteModule } from "@/types/admin";
 import ImageWithFallback from "@/components/ui/ImageWithFallback";
+import { GithubIcon, LinkedinIcon } from "@/components/ui/SocialIcons";
 import { learningModules, applicationRounds } from "@/config/card-assets";
 import {
   ArrowRight,
@@ -1110,44 +1111,54 @@ agency.launchRecruitmentBatch("2026-SEP");`,
               Leadership profiles are synchronizing with the central registry...
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {teamMembers
-                .filter((m) => m.isVisible !== false && !m.isArchived)
-                .sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+                .filter((m) => (m.isVisible !== false && !m.isArchived && m.verificationStatus !== "draft"))
+                .sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0))
                 .map((member) => (
-                <div
-                  key={member.id}
+                <article
+                  key={member.id || member.slug}
+                  id={`leader-card-${member.slug || member.id}`}
                   onClick={() => {
                     playButtonClick();
                     setSelectedLeaderModal(member);
                   }}
-                  className="tilt-card red-glass rounded-3xl p-6 border border-red-500/40 space-y-5 flex flex-col justify-between relative overflow-hidden group cursor-pointer hover:border-red-500 transition-all shadow-[0_10px_35px_rgba(0,0,0,0.6)]"
+                  className="tilt-card red-glass rounded-3xl p-6 border border-red-500/40 hover:border-red-500/80 space-y-4 flex flex-col justify-between relative overflow-hidden group cursor-pointer transition-all duration-300 shadow-[0_10px_35px_rgba(0,0,0,0.7)] hover:shadow-[0_15px_40px_rgba(239,68,68,0.25)]"
                 >
                   <div className="space-y-4">
+                    {/* Top Row: Badges, Name, Designation & Photo */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1 overflow-hidden">
+                      <div className="space-y-1.5 min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/80 text-red-300 border border-red-500/30 font-mono font-bold uppercase inline-flex items-center gap-1">
-                            <Crown className="w-3 h-3 text-yellow-400" />
-                            <span>{member.roleType}</span>
+                          <span className="text-[9px] px-2.5 py-0.5 rounded-full bg-red-950/90 text-red-300 border border-red-500/40 font-mono font-bold uppercase inline-flex items-center gap-1">
+                            <Crown className="w-3 h-3 text-yellow-400 shrink-0" />
+                            <span>{member.roleType || "Core Team"}</span>
                           </span>
                           {member.codename && member.codename.trim() && member.codename.toLowerCase() !== "none" && member.codename.toLowerCase() !== "no codename" && (
-                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-red-950/90 text-red-400 border border-red-700/60 font-mono font-bold tracking-wider uppercase">
+                            <span className="text-[9px] px-2 py-0.5 rounded-full bg-black/80 text-red-400 border border-red-800/60 font-mono font-bold tracking-wider uppercase">
                               {member.codename}
                             </span>
                           )}
                         </div>
-                        <h3 className="text-lg sm:text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors truncate">
+                        <h3 className="text-lg sm:text-xl font-black font-mono text-white group-hover:text-red-400 transition-colors leading-snug break-words">
                           {member.displayName || member.name}
                         </h3>
-                        <div className="text-[11px] font-mono text-slate-400 truncate">{member.designation}</div>
+                        <div className="text-xs font-mono font-bold text-red-400 leading-tight">
+                          {member.primaryDesignation || member.designation || "Core Team"}
+                        </div>
+                        {member.secondaryDesignation && (
+                          <div className="text-[11px] font-mono text-slate-400 leading-tight">
+                            {member.secondaryDesignation}
+                          </div>
+                        )}
                       </div>
 
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.4)] flex-shrink-0 overflow-hidden group-hover:scale-105 transition-transform relative">
-                        {member.photoUrl && !brokenImages[member.id] ? (
+                      {/* Photo / Avatar Fallback */}
+                      <div className="w-20 h-20 sm:w-22 sm:h-22 rounded-2xl bg-black border-2 border-red-500/50 p-1 shadow-[0_0_20px_rgba(239,68,68,0.35)] shrink-0 overflow-hidden group-hover:scale-105 transition-transform relative">
+                        {member.photoUrl && member.photoUrl !== "/logo.jpeg" && !brokenImages[member.id] ? (
                           <img
                             src={member.photoUrl}
-                            alt={member.name}
+                            alt={`Portrait of ${member.displayName || member.name}`}
                             onError={() => setBrokenImages((prev) => ({ ...prev, [member.id]: true }))}
                             style={{
                               objectPosition: `${member.profileObjectPositionX ?? 50}% ${member.profileObjectPositionY ?? 50}%`,
@@ -1156,35 +1167,63 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                             className="w-full h-full object-cover rounded-xl"
                           />
                         ) : (
-                          <div className="w-full h-full rounded-xl bg-gradient-to-br from-red-950 via-slate-900 to-black flex items-center justify-center text-lg font-black text-red-300 border border-red-900/60">
-                            {(member.displayName || member.name).slice(0, 2).toUpperCase()}
+                          <div className="w-full h-full rounded-xl bg-gradient-to-br from-red-950 via-[#160608] to-black flex flex-col items-center justify-center border border-red-900/60 text-red-300">
+                            <span className="text-xl font-black font-mono tracking-wider">
+                              {(member.displayName || member.name || "CX").slice(0, 2).toUpperCase()}
+                            </span>
+                            <span className="text-[8px] font-mono text-red-400/70 uppercase font-bold tracking-widest mt-0.5">
+                              CODEXA
+                            </span>
                           </div>
                         )}
                       </div>
                     </div>
 
-                    <p className="text-xs text-slate-300 font-mono leading-relaxed line-clamp-3">
-                      {member.shortBio || member.bio}
-                    </p>
+                    {/* Short Bio (2-3 lines) */}
+                    {(member.shortBio || member.bio) && (
+                      <p className="text-xs text-slate-300 font-mono leading-relaxed line-clamp-3">
+                        {member.shortBio || member.bio}
+                      </p>
+                    )}
 
+                    {/* Leads / Responsibilities (up to 3 items) */}
+                    {member.responsibilities && member.responsibilities.length > 0 && (
+                      <div className="space-y-1.5 pt-2 border-t border-red-950/60 font-mono">
+                        <span className="text-[10px] font-bold text-red-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3 h-3 text-red-500 shrink-0" />
+                          <span>Leads & Responsibilities</span>
+                        </span>
+                        <ul className="space-y-1 text-[11px] text-slate-300">
+                          {member.responsibilities.slice(0, 3).map((resp, rIdx) => (
+                            <li key={rIdx} className="flex items-start gap-1.5 leading-snug">
+                              <span className="text-red-500 font-bold shrink-0">•</span>
+                              <span className="line-clamp-1">{resp}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Quote */}
                     {member.quote && (
-                      <div className="p-3 rounded-xl bg-red-950/30 border border-red-900/40 text-[11px] font-mono text-red-200 italic">
+                      <div className="p-2.5 rounded-xl bg-red-950/25 border border-red-900/40 text-[11px] font-mono text-red-200/90 italic leading-relaxed">
                         &ldquo;{member.quote}&rdquo;
                       </div>
                     )}
 
-                    {member.skills && member.skills.length > 0 && (
-                      <div className="space-y-1.5 font-mono text-[11px]">
+                    {/* Focus Area Chips (max 4 + N indicator) */}
+                    {((member.focus_areas && member.focus_areas.length > 0) || (member.skills && member.skills.length > 0)) && (
+                      <div className="space-y-1.5 pt-2 border-t border-red-950/60 font-mono">
                         <div className="text-[10px] text-red-400 font-bold uppercase">Focus Areas:</div>
                         <div className="flex flex-wrap gap-1.5">
-                          {member.skills.slice(0, 5).map((s) => (
-                            <span key={s} className="px-2 py-0.5 rounded bg-black/60 text-slate-300 border border-red-950 text-[10px]">
-                              {s}
+                          {(member.focus_areas || member.skills || []).slice(0, 4).map((f) => (
+                            <span key={f} className="px-2 py-0.5 rounded bg-black/70 text-slate-300 border border-red-950 text-[10px]">
+                              {f}
                             </span>
                           ))}
-                          {member.skills.length > 5 && (
-                            <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-300 text-[9px] font-bold">
-                              +{member.skills.length - 5}
+                          {(member.focus_areas || member.skills || []).length > 4 && (
+                            <span className="px-1.5 py-0.5 rounded bg-red-950 text-red-300 border border-red-900/60 text-[9px] font-bold">
+                              +{(member.focus_areas || member.skills || []).length - 4}
                             </span>
                           )}
                         </div>
@@ -1192,65 +1231,54 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                     )}
                   </div>
 
-                  {/* Public Contact Links */}
+                  {/* Card Footer: Professional links and clearly labelled VIEW PROFILE button */}
                   <div
-                    className="border-t border-red-950 pt-4 flex items-center justify-between font-mono"
+                    className="border-t border-red-950 pt-3.5 flex items-center justify-between font-mono gap-2"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <div className="flex items-center gap-2">
-                      {member.showWhatsapp !== false && member.whatsapp && (
+                      {member.githubUrl && (
                         <a
-                          href={`https://wa.me/${member.whatsapp.replace(/[^0-9]/g, "")}`}
+                          href={member.githubUrl}
                           target="_blank"
                           rel="noopener noreferrer"
+                          aria-label={`GitHub profile of ${member.displayName || member.name}`}
                           onClick={playButtonClick}
-                          className="px-3 py-1.5 rounded-xl bg-emerald-950/60 border border-emerald-600/40 text-emerald-300 hover:bg-emerald-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
-                          title="Chat on WhatsApp"
+                          className="p-2 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-slate-400 hover:text-white transition-all"
+                          title="GitHub Profile"
                         >
-                          <MessageCircle className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">WhatsApp</span>
+                          <GithubIcon className="w-3.5 h-3.5" />
                         </a>
                       )}
-
-                      {member.showPhone !== false && member.phone && (
+                      {member.linkedinUrl && (
                         <a
-                          href={`tel:${member.phone.replace(/[^0-9+]/g, "")}`}
+                          href={member.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`LinkedIn profile of ${member.displayName || member.name}`}
                           onClick={playButtonClick}
-                          className="px-3 py-1.5 rounded-xl bg-red-950/60 border border-red-600/40 text-red-300 hover:bg-red-600 hover:text-white transition-all text-xs font-bold flex items-center gap-1.5"
-                          title="Call Phone"
+                          className="p-2 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-slate-400 hover:text-white transition-all"
+                          title="LinkedIn Profile"
                         >
-                          <Phone className="w-3.5 h-3.5" />
-                          <span className="hidden sm:inline">Call</span>
+                          <LinkedinIcon className="w-3.5 h-3.5" />
                         </a>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      {member.showEmail !== false && member.email && (
-                        <a
-                          href={`mailto:${member.email}`}
-                          onClick={playButtonClick}
-                          className="p-2 rounded-xl border border-red-950 hover:border-red-500 text-slate-400 hover:text-white transition-all"
-                          title={`Email ${member.name}`}
-                        >
-                          <Mail className="w-3.5 h-3.5" />
-                        </a>
-                      )}
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          playButtonClick();
-                          setSelectedLeaderModal(member);
-                        }}
-                        className="p-2 rounded-xl bg-black/60 border border-red-950 hover:border-red-500 text-red-400 hover:text-white transition-all"
-                        title="View Full Profile"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        playButtonClick();
+                        setSelectedLeaderModal(member);
+                      }}
+                      aria-label={`View full profile of ${member.displayName || member.name}`}
+                      className="px-3.5 py-2 rounded-xl bg-red-950/60 hover:bg-red-600 border border-red-600/50 hover:border-red-400 text-red-200 hover:text-white transition-all text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.2)] ml-auto"
+                    >
+                      <span>VIEW PROFILE</span>
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           )}
