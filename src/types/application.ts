@@ -194,6 +194,17 @@ export interface ApplicationData {
   is_deleted?: boolean;
   deleted_at?: string;
   deletion_reason?: string;
+  // Submission tokens and schema aliases
+  submission_token?: string;
+  submission_key?: string;
+  github_profile?: string;
+  linkedin_profile?: string;
+  portfolio_website?: string;
+  applicant_name?: string;
+  phone?: string;
+  degree?: string;
+  graduation_year?: string;
+  score?: number;
   is_test?: boolean;
 
   created_at?: string;

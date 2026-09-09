@@ -75,9 +75,10 @@ const PRESET_SKILLS = [
 ];
 
 const PHOTO_PRESETS = [
-  { name: "Founder Ashu", url: "/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg" },
-  { name: "Co-Founder Deepak", url: "/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg" },
-  { name: "CEO Kishore", url: "/assets/image-assests/2306fc1d8f6ea04d1ddd4ebfafd003f2.jpg" },
+  { name: "Founder CH. Arshad", url: "/assets/image-assests/128acbeb739b3eb8bc4d1d9ae15fcfb2.jpg" },
+  { name: "Co-Founder B. Sanjay", url: "/assets/image-assests/2299fdd2a1d01339a71af61a2c7e9cac.jpg" },
+  { name: "CEO Kishore", url: "/assets/image-assests/ed14ea822462d93c926056fcfd9db4c5 (1).jpg" },
+  { name: "CEO G. Bhanu Prasad", url: "/assets/image-assests/4e56a053e3ee0019b13c19c5b3f614fe.jpg" },
   { name: "Hero Cyber", url: "/assets/image-assests/hero.jpeg" },
   { name: "CodeXa Logo", url: "/logo.jpeg" },
 ];

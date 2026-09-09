@@ -59,18 +59,29 @@ export async function POST(req: NextRequest) {
     const storagePath = `resumes/${Date.now()}_${randomId}_${cleanFileName}`;
 
     if (supabase) {
-      // Ensure bucket exists
-      const { data: bucket } = await supabase.storage.getBucket("resumes");
-      if (!bucket) {
-        await supabase.storage.createBucket("resumes", {
-          public: false,
-          fileSizeLimit: MAX_FILE_SIZE,
-        });
+      // Ensure private bucket exists (support application-resumes and resumes)
+      let targetBucket = "application-resumes";
+      const { data: appBucket } = await supabase.storage.getBucket("application-resumes");
+      if (!appBucket) {
+        const { data: legacyBucket } = await supabase.storage.getBucket("resumes");
+        if (legacyBucket) {
+          targetBucket = "resumes";
+        } else {
+          try {
+            await supabase.storage.createBucket("application-resumes", {
+              public: false,
+              fileSizeLimit: MAX_FILE_SIZE,
+            });
+            targetBucket = "application-resumes";
+          } catch {
+            targetBucket = "resumes";
+          }
+        }
       }
 
-      // Upload to private resumes bucket
+      // Upload to private bucket
       const { error: uploadError } = await supabase.storage
-        .from("resumes")
+        .from(targetBucket)
         .upload(storagePath, fileBuffer, {
           contentType: mimeType,
           upsert: true,

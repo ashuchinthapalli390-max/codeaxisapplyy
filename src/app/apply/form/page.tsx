@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import CodingBackground from "@/components/CodingBackground";
@@ -37,6 +38,7 @@ import {
   HelpCircle,
   Laptop,
   Layers,
+  Lock,
   Plus,
   RotateCcw,
   Shield,
@@ -740,20 +742,18 @@ export default function ApplicationFormPage() {
     }
 
     setIsSubmitting(true);
-    setSubmissionStep(1);
-
-    // Cinematic step-by-step submission progression
-    const t1 = setTimeout(() => setSubmissionStep(2), 600);
-    const t2 = setTimeout(() => setSubmissionStep(3), 1200);
-    const t3 = setTimeout(() => setSubmissionStep(4), 1800);
+    setSubmissionStep(1); // Local validation passed
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
 
     try {
+      setSubmissionStep(2); // Transmitting application data to server
+
       // Stable client submission attempt key for safe retry and deduplication
       const clientSubmissionKey =
         (formData as any).submission_key ||
+        (formData as any).submission_token ||
         `sub_${(formData.email || "cax").replace(/[^a-zA-Z0-9]/g, "")}_${Date.now()}`;
 
       const res = await fetch("/api/applications/submit", {
@@ -763,6 +763,7 @@ export default function ApplicationFormPage() {
         body: JSON.stringify({
           ...formData,
           submission_key: clientSubmissionKey,
+          submission_token: clientSubmissionKey,
           integrity_meta: {
             clipboardWarnings: formData.copy_paste_warnings_count || 0,
             tabSwitchCount: formData.tab_switch_count || 0,
@@ -774,17 +775,17 @@ export default function ApplicationFormPage() {
       clearTimeout(timeoutId);
       const json = await res.json().catch(() => ({ success: false, error: "Invalid server response." }));
       if (json.success && json.data?.reference_id) {
-        setSubmissionStep(5);
-        playSuccessSound();
-        // Clear local draft ONLY after verified database submission success
-        clearApplicationDraft();
+        setSubmissionStep(4);
         setTimeout(() => {
-          router.replace(`/apply/success/${json.data.reference_id}`);
-        }, 700);
+          setSubmissionStep(5);
+          playSuccessSound();
+          // Clear local draft ONLY after verified database submission success
+          clearApplicationDraft();
+          setTimeout(() => {
+            router.replace(`/apply/success/${json.data.reference_id}`);
+          }, 600);
+        }, 300);
       } else {
-        clearTimeout(t1);
-        clearTimeout(t2);
-        clearTimeout(t3);
         setIsSubmitting(false);
         setSubmissionError(
           json.error || "Submission could not be completed. Your responses are safely kept. Please retry."
@@ -793,9 +794,6 @@ export default function ApplicationFormPage() {
       }
     } catch (err: any) {
       clearTimeout(timeoutId);
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
       setIsSubmitting(false);
       const isTimeout = err?.name === "AbortError";
       setSubmissionError(

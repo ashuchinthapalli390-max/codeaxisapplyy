@@ -39,35 +39,47 @@ export async function GET(
     if (cleanPath.startsWith("resumes/")) {
       cleanPath = cleanPath.slice("resumes/".length);
     }
+    if (cleanPath.startsWith("application-resumes/")) {
+      cleanPath = cleanPath.slice("application-resumes/".length);
+    }
 
-    // Generate short-lived signed URL (valid for 15 minutes)
-    const { data: signed, error } = await supabase.storage
-      .from("resumes")
-      .createSignedUrl(cleanPath.startsWith("resumes/") ? cleanPath : `resumes/${cleanPath}`, 900);
+    const candidateBuckets = ["application-resumes", "resumes"];
+    let finalSignedUrl: string | null = null;
+    let lastError: any = null;
 
-    if (error || !signed?.signedUrl) {
-      // Try direct path
-      const { data: directSigned, error: directErr } = await supabase.storage
-        .from("resumes")
-        .createSignedUrl(cleanPath, 900);
+    for (const bucketName of candidateBuckets) {
+      // 1. Try with bucket-relative path
+      const { data: signed, error } = await supabase.storage
+        .from(bucketName)
+        .createSignedUrl(cleanPath.startsWith("resumes/") ? cleanPath : `resumes/${cleanPath}`, 900);
 
-      if (directErr || !directSigned?.signedUrl) {
-        return NextResponse.json(
-          { success: false, error: `Failed to generate secure URL: ${error?.message || directErr?.message}` },
-          { status: 500 }
-        );
+      if (signed?.signedUrl && !error) {
+        finalSignedUrl = signed.signedUrl;
+        break;
       }
 
-      return NextResponse.json({
-        success: true,
-        signedUrl: directSigned.signedUrl,
-        fileName: app.resume_file_name || "Resume.pdf",
-      });
+      // 2. Try direct path
+      const { data: directSigned, error: directErr } = await supabase.storage
+        .from(bucketName)
+        .createSignedUrl(cleanPath, 900);
+
+      if (directSigned?.signedUrl && !directErr) {
+        finalSignedUrl = directSigned.signedUrl;
+        break;
+      }
+      lastError = error || directErr;
+    }
+
+    if (!finalSignedUrl) {
+      return NextResponse.json(
+        { success: false, error: `Failed to generate secure download URL: ${lastError?.message || "File not found in storage buckets."}` },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      signedUrl: signed.signedUrl,
+      signedUrl: finalSignedUrl,
       fileName: app.resume_file_name || "Resume.pdf",
     });
   } catch (err) {

@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   createAdminSession as saveFallbackSession,
-  verifyAdminSessionToken as verifyFallbackSession,
   revokeAdminSession as revokeFallbackSession,
   revokeAllOtherAdminSessions as revokeOtherFallbackSessions,
   revokeAllAdminSessions as revokeAllFallbackSessions,
@@ -77,12 +76,16 @@ interface SessionPayload {
  * Guarantees that across all serverless instances and cold boots, the secret NEVER changes randomly.
  */
 export function getStableSessionSecret(): string {
-  const envSecret = process.env.ADMIN_SESSION_SECRET?.trim();
-  if (envSecret && envSecret.length >= 16) {
-    return envSecret;
+  const envSecret = (process.env.ADMIN_SESSION_SECRET || process.env.ADMIN_SECRET_KEY || process.env.ADMIN_PASSKEY)?.trim();
+  if (envSecret && envSecret.length >= 8) {
+    return createHash("sha256").update(`codexa_session_signing_seed:${envSecret}`).digest("hex");
   }
-  const passkey = process.env.ADMIN_PASSKEY?.trim() || "codexa_admin_2026_default_fallback_passkey";
-  return createHash("sha256").update(`codexa_session_signing_seed:${passkey}`).digest("hex");
+
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Fatal: ADMIN_SESSION_SECRET or ADMIN_PASSKEY must be configured in production environment.");
+  }
+
+  return createHash("sha256").update("codexa_dev_local_signing_secret").digest("hex");
 }
 
 /**

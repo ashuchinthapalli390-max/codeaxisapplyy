@@ -47,8 +47,7 @@ export default function AdminLoginPage({ onLoginSuccess }: AdminLoginPageProps =
         if (onLoginSuccess) {
           onLoginSuccess();
         } else {
-          router.replace("/admin/dashboard");
-          router.refresh();
+          window.location.href = "/admin/dashboard";
         }
       } else {
         setErrorMsg(json.error || "Authentication failed. Invalid master key.");

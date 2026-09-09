@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 import { InternshipRound } from "@/types/admin";
 import type { ApplicationAvailability } from "@/lib/availability";
 
 interface AvailabilityState {
   round: InternshipRound | null;
-  settings: any | null;
+  settings: Record<string, unknown> | null;
   availability: ApplicationAvailability | null;
   serverTimeMs: number;
   serverClockOffset: number;
@@ -27,9 +27,9 @@ const defaultState: AvailabilityState = {
 };
 
 let globalState: AvailabilityState = { ...defaultState };
-let listeners = new Set<(state: AvailabilityState) => void>();
+const listeners = new Set<() => void>();
 let fetchPromise: Promise<void> | null = null;
-let pollTimer: any = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 let subscriberCount = 0;
 
 async function fetchAvailability() {
@@ -64,13 +64,13 @@ async function fetchAvailability() {
           isLoading: false,
         };
 
-        listeners.forEach((listener) => listener(globalState));
+        listeners.forEach((listener) => listener());
       }
     } catch {
       // Keep existing state on transient network error, release loading
       if (globalState.isLoading) {
         globalState = { ...globalState, isLoading: false };
-        listeners.forEach((listener) => listener(globalState));
+        listeners.forEach((listener) => listener());
       }
     } finally {
       fetchPromise = null;
@@ -102,32 +102,34 @@ function stopGlobalPolling() {
   }
 }
 
-export function useApplicationAvailability() {
-  const [state, setState] = useState<AvailabilityState>(globalState);
+function subscribe(callback: () => void) {
+  listeners.add(callback);
+  subscriberCount++;
 
-  useEffect(() => {
-    subscriberCount++;
-    listeners.add(setState);
+  if (subscriberCount === 1) {
+    startGlobalPolling();
+  }
 
-    if (subscriberCount === 1) {
-      startGlobalPolling();
-    } else {
-      // Immediate sync
-      setState(globalState);
+  return () => {
+    listeners.delete(callback);
+    subscriberCount--;
+    if (subscriberCount <= 0) {
+      subscriberCount = 0;
+      stopGlobalPolling();
     }
+  };
+}
 
-    return () => {
-      listeners.delete(setState);
-      subscriberCount--;
-      if (subscriberCount <= 0) {
-        subscriberCount = 0;
-        stopGlobalPolling();
-      }
-    };
-  }, []);
+function getSnapshot(): AvailabilityState {
+  return globalState;
+}
+
+export function useApplicationAvailability() {
+  const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   return {
     ...state,
     refetch: fetchAvailability,
   };
 }
+

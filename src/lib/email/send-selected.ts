@@ -113,7 +113,7 @@ export async function sendSelectedEmail({
         </p>
 
         <div style="border-top:1px solid #222; padding-top:16px; margin-top:30px; font-size:11px; color:#666; text-align:center;">
-          Founder: Ashu &bull; Co-Founder: Deepak &bull; CEO: Kishore<br>
+          Founder & Technical Director: CH. Arshad &bull; Co-Founder & Platform Lead: B. Sanjay &bull; CEO: Kishore &bull; CEO: G. Bhanu Prasad<br>
           CodeXa Agency &bull; <a href="https://www.codxa-agency.online" style="color:#888; text-decoration:none;">www.codxa-agency.online</a>
         </div>
       </div>

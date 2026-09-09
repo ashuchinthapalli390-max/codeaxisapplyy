@@ -1,7 +1,13 @@
 -- =============================================================================
--- CODEXA APPLY — AUTHORITATIVE CANONICAL PRODUCTION SCHEMA
--- File: database/supabase_schema.sql
--- Synchronized with: supabase/migrations/20260909000000_canonical_production_stabilization.sql
+-- Migration: 20260909000000_canonical_production_stabilization.sql
+-- Description: Authoritative Canonical Production Schema for CodeXa Apply
+--   1. Sequence-based atomic reference ID generation: CXA-{BATCH}-{000001}
+--   2. Authoritative internship_rounds with strict single active round guarantee
+--   3. Unified applications table with UUID submission_token & reference_id constraints
+--   4. Canonical team_members table with the 4 validated leadership profiles
+--   5. Supporting tables: application_status_history, interviews, offers,
+--      offer_responses, email_events, admin_sessions, audit_logs, site_settings, site_modules
+--   6. Complete Row Level Security (RLS) policies and least-privilege grants
 -- =============================================================================
 
 -- Extensions
@@ -533,6 +539,27 @@ ON CONFLICT (id) DO UPDATE SET
   is_archived = EXCLUDED.is_archived,
   details = EXCLUDED.details,
   updated_at = NOW();
+
+-- Safely archive any legacy 'team_profiles' rows into team_members marked as archived if they exist
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'team_profiles') THEN
+    INSERT INTO public.team_members (id, name, role, codename, short_bio, photo_url, sort_order, is_active, is_archived, updated_at)
+    SELECT
+      id,
+      name,
+      COALESCE(designation, 'Team Member'),
+      NULL,
+      short_bio,
+      profile_image_url,
+      COALESCE(display_order, 99),
+      false, -- Mark inactive so public and admin active views show only the 4 canonical leaders
+      true,  -- Mark archived
+      NOW()
+    FROM public.team_profiles
+    ON CONFLICT (id) DO NOTHING;
+  END IF;
+END $$;
 
 -- -----------------------------------------------------------------------------
 -- 6. ADMIN SESSIONS (Cryptographic Token Storage)

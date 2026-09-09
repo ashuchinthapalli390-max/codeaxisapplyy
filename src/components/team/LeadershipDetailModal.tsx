@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   X,
   Crown,
@@ -11,9 +11,6 @@ import {
   Briefcase,
   Quote,
   CheckCircle2,
-  Sparkles,
-  ExternalLink,
-  ShieldCheck,
 } from "lucide-react";
 import { GithubIcon, LinkedinIcon, InstagramIcon } from "@/components/ui/SocialIcons";
 import { TeamMember } from "@/types/admin";
@@ -26,11 +23,13 @@ interface LeadershipDetailModalProps {
 }
 
 export default function LeadershipDetailModal({ member, isOpen, onClose }: LeadershipDetailModalProps) {
+  const [prevPhotoUrl, setPrevPhotoUrl] = useState(member?.photoUrl);
   const [imgError, setImgError] = useState(false);
 
-  useEffect(() => {
+  if (member?.photoUrl !== prevPhotoUrl) {
+    setPrevPhotoUrl(member?.photoUrl);
     setImgError(false);
-  }, [member?.photoUrl]);
+  }
 
   if (!isOpen || !member) return null;
 

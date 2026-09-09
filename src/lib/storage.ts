@@ -1,6 +1,4 @@
 import "server-only";
-import fs from "fs";
-import path from "path";
 import { ApplicationData } from "@/types/application";
 import {
   TeamMember,
@@ -626,7 +624,7 @@ export async function saveInternshipRound(roundData: Partial<InternshipRound>): 
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const overrideVal = (updated.status || "AUTO").toUpperCase();
-      let dbPayload: any = {
+      const dbPayload: any = {
         title: updated.title,
         batch_code: updated.batch_code,
         status_override: overrideVal,
@@ -773,165 +771,236 @@ export async function getInternshipRounds(): Promise<InternshipRound[]> {
 // ----------------- APPLICATION SUBMISSION & CRUD (SUPABASE-ONLY) -----------------
 
 export async function saveApplication(data: ApplicationData): Promise<{ id: number | string; reference_id: string }> {
-  const refId = data.reference_id?.trim() || generateReferenceId();
+  // 1. Determine active batch code
+  const activeRound = await getActiveInternshipRound();
+  const batchCode = activeRound?.batch_code || "2026-SEP";
 
-  const githubUrl = data.developer_links?.find((l) => l.platform === "GitHub")?.url;
-  const linkedinUrl = data.developer_links?.find((l) => l.platform === "LinkedIn")?.url;
-  const portfolioUrl = data.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url;
+  // 2. Client submission token for idempotency
+  const submissionToken =
+    (data as any).submission_token ||
+    (data as any).submission_key ||
+    `sub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-  const dbPayload = {
-    reference_id: refId,
-    full_name: data.full_name,
-    date_of_birth: data.date_of_birth,
-    email: data.email,
-    phone_number: data.phone_number,
-    whatsapp_number: data.whatsapp_number,
-    city: data.city,
-    state: data.state,
-    country: data.country || "India",
-    preferred_name: data.preferred_name,
-    discord_username: data.discord_username,
-    instagram_handle: data.instagram_handle,
-    preferred_language: data.preferred_language || "English",
-    hobbies: data.hobbies || [],
-
-    college_name: data.college_name,
-    university_name: data.university_name,
-    degree: data.course,
-    course: data.course,
-    branch: data.branch,
-    academic_year: data.academic_year,
-    semester: data.semester,
-    roll_number: data.roll_number,
-    graduation_year: data.expected_graduation,
-    expected_graduation: data.expected_graduation,
-    cgpa: data.cgpa,
-    percentage: data.percentage,
-    cgpa_percentage: data.cgpa || data.percentage,
-    certifications: data.certifications,
-    achievements: data.achievements,
-    backlogs: data.backlogs,
-
-    coding_start_timeline: data.coding_start_timeline,
-    has_built_projects: data.has_built_projects,
-    hackathon_experience: data.hackathon_experience || "None",
-    internship_experience: data.internship_experience || "None",
-    freelancing_experience: data.freelancing_experience || "None",
-    open_source_experience: data.open_source_experience || "None",
-    team_project_experience: data.team_project_experience || "None",
-    developer_links: data.developer_links || [],
-    projects: data.projects || [],
-    github_profile: githubUrl,
-    linkedin_profile: linkedinUrl,
-    portfolio_website: portfolioUrl,
-    resume_storage_path: (data as any).resume_storage_path || data.resume_url || null,
-    resume_file_name: data.resume_file_name || null,
-    resume_file_size: data.resume_file_size ? Number(data.resume_file_size) : null,
-    resume_file_type: (data as any).resume_file_type || null,
-
-    daily_availability: data.daily_availability,
-    available_days: data.available_days || [],
-    preferred_timing: data.preferred_timing || [],
-    can_attend_meetings: data.can_attend_meetings,
-    can_meet_deadlines: data.can_meet_deadlines,
-    can_communicate_if_unavailable: data.can_communicate_if_unavailable,
-    academic_constraints: data.academic_constraints,
-    exam_periods: data.exam_periods,
-    laptop_status: data.laptop_status,
-    operating_system: data.operating_system,
-    ram_capacity: data.ram_capacity,
-    internet_stability: data.internet_stability,
-    can_run_dev_tools: data.can_run_dev_tools,
-    processor: data.processor,
-    gpu: data.gpu,
-    storage_type: data.storage_type,
-    laptop_model: data.laptop_model,
-
-    c_level: data.c_level,
-    c_answers: data.c_answers || {},
-    python_level: data.python_level,
-    python_answers: data.python_answers || {},
-    java_level: data.java_level,
-    java_answers: data.java_answers || {},
-    html_level: data.html_level,
-    html_answers: data.html_answers || {},
-    vibe_coding_level: data.vibe_coding_level,
-    vibe_coding_answers: data.vibe_coding_answers || {},
-
-    mindset_answers: data.mindset_answers || {},
-
-    interview_q1_why_codexa: data.interview_q1_why_codexa,
-    interview_q2_why_select: data.interview_q2_why_select,
-    interview_q3_expectations: data.interview_q3_expectations,
-    interview_q4_strongest_skills: data.interview_q4_strongest_skills,
-    interview_q5_weakest_area: data.interview_q5_weakest_area,
-    interview_q6_describe_project: data.interview_q6_describe_project,
-    interview_q7_difficult_problem: data.interview_q7_difficult_problem,
-    interview_q8_ai_coding_usage: data.interview_q8_ai_coding_usage,
-    interview_q9_college_balance: data.interview_q9_college_balance,
-    interview_q10_future_goal: data.interview_q10_future_goal,
-
-    commitment_accurate_info: data.commitment_accurate_info ?? true,
-    commitment_independent_work: data.commitment_independent_work ?? true,
-    commitment_responsible_communication: data.commitment_responsible_communication ?? true,
-    commitment_team_rules: data.commitment_team_rules ?? true,
-    commitment_confidentiality: data.commitment_confidentiality ?? true,
-    commitment_assigned_duties: data.commitment_assigned_duties ?? true,
-    commitment_no_guaranteed_employment: data.commitment_no_guaranteed_employment ?? true,
-    commitment_accept_policies: data.commitment_accept_policies ?? true,
-
-    copy_paste_warnings_count: data.copy_paste_warnings_count || 0,
-    tab_switch_count: data.tab_switch_count || 0,
-
-    genuineness_integrity_score: data.genuineness_integrity_score || 0,
-    commitment_continuity_score: data.commitment_continuity_score || 0,
-    mindset_habits_score: data.mindset_habits_score || 0,
-    technical_knowledge_score: data.technical_knowledge_score || 0,
-    learning_potential_score: data.learning_potential_score || 0,
-    interview_communication_score: data.interview_communication_score || 0,
-    total_score: data.total_score || 0,
-    score_band: data.score_band,
-    commitment_signal: data.commitment_signal,
-    skill_authenticity: data.skill_authenticity || {},
-
-    status: data.status || "Submitted",
-    is_test: Boolean(data.is_test ?? isTestSubmission(data)),
-    raw_submission: data,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  // 1. Direct Supabase Insert
   const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
   const supabase = getSupabaseAdmin();
 
   if (supabase) {
-    // Idempotency check via client submission_key
-    const subKey = (data as any).submission_key;
-    if (subKey) {
-      const { data: existingByKey } = await supabase
+    // 3. Check for idempotent retry via submission_token or submission_key
+    try {
+      const { data: existingByToken } = await supabase
         .from("applications")
         .select("id, reference_id")
-        .eq("submission_key", subKey)
+        .or(`submission_token.eq.${submissionToken},reference_id.eq.${data.reference_id || "NONE"}`)
         .maybeSingle();
 
-      if (existingByKey) {
+      if (existingByToken) {
         return {
-          id: existingByKey.id,
-          reference_id: existingByKey.reference_id,
+          id: existingByToken.id,
+          reference_id: existingByToken.reference_id,
         };
+      }
+    } catch {
+      // Non-fatal if table doesn't have submission_token yet
+    }
+
+    // 4. Generate reference ID atomically via sequence RPC if not already assigned
+    let refId = data.reference_id?.trim();
+    if (!refId) {
+      try {
+        const { data: rpcRef, error: rpcErr } = await supabase.rpc("generate_reference_id", {
+          p_batch_code: batchCode,
+        });
+        if (!rpcErr && rpcRef && typeof rpcRef === "string") {
+          refId = rpcRef;
+        }
+      } catch {
+        // RPC not defined yet, fallback to client monotonic generator
       }
     }
 
-    const { data: inserted, error } = await supabase
+    if (!refId) {
+      refId = generateReferenceId(batchCode);
+    }
+
+    const githubUrl = data.developer_links?.find((l) => l.platform === "GitHub")?.url || (data as any).github_profile;
+    const linkedinUrl = data.developer_links?.find((l) => l.platform === "LinkedIn")?.url || (data as any).linkedin_profile;
+    const portfolioUrl = data.developer_links?.find((l) => l.platform === "Portfolio" || l.platform === "Website")?.url || (data as any).portfolio_website;
+
+    const roundId = activeRound?.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeRound.id)
+      ? activeRound.id
+      : null;
+
+    const dbPayload: any = {
+      reference_id: refId,
+      submission_token: submissionToken,
+      round_id: roundId,
+
+      // Applicant profile (dual-mapped to satisfy both schemas)
+      applicant_name: data.full_name?.trim() || data.preferred_name?.trim() || "Applicant",
+      full_name: data.full_name?.trim() || data.preferred_name?.trim() || "Applicant",
+      date_of_birth: data.date_of_birth || "",
+      email: (data.email || "").toLowerCase().trim(),
+      email_normalized: (data.email || "").toLowerCase().trim(),
+      phone: data.phone_number?.trim() || "",
+      phone_number: data.phone_number?.trim() || "",
+      whatsapp_number: data.whatsapp_number || null,
+      city: data.city || "",
+      state: data.state || "",
+      country: data.country || "India",
+      preferred_name: data.preferred_name || null,
+      discord_username: data.discord_username || null,
+      instagram_handle: data.instagram_handle || null,
+      preferred_language: data.preferred_language || "English",
+      hobbies: data.hobbies || [],
+
+      // Academic details
+      college_name: data.college_name || "",
+      university_name: data.university_name || "",
+      degree: data.course || "",
+      course: data.course || "",
+      branch: data.branch || "",
+      academic_year: data.academic_year || "",
+      semester: data.semester || "",
+      roll_number: data.roll_number || "",
+      graduation_year: data.expected_graduation || (data as any).graduation_year || "",
+      expected_graduation: data.expected_graduation || (data as any).graduation_year || "",
+      cgpa: data.cgpa || null,
+      percentage: data.percentage || null,
+      cgpa_percentage: (data as any).cgpa_percentage || data.cgpa || data.percentage || null,
+      certifications: data.certifications || null,
+      achievements: data.achievements || null,
+      backlogs: data.backlogs || null,
+
+      // Developer presence
+      coding_start_timeline: data.coding_start_timeline || "",
+      has_built_projects: data.has_built_projects || "",
+      hackathon_experience: data.hackathon_experience || "None",
+      internship_experience: data.internship_experience || "None",
+      freelancing_experience: data.freelancing_experience || "None",
+      open_source_experience: data.open_source_experience || "None",
+      team_project_experience: data.team_project_experience || "None",
+      developer_links: data.developer_links || [],
+      projects: data.projects || [],
+      github_profile: githubUrl || null,
+      linkedin_profile: linkedinUrl || null,
+      portfolio_website: portfolioUrl || null,
+
+      // Resume details
+      resume_path: (data as any).resume_storage_path || data.resume_url || null,
+      resume_storage_path: (data as any).resume_storage_path || data.resume_url || null,
+      resume_file_name: data.resume_file_name || null,
+      resume_file_size: data.resume_file_size ? Number(data.resume_file_size) : null,
+      resume_file_type: (data as any).resume_file_type || null,
+
+      // Availability & Hardware
+      daily_availability: data.daily_availability || "",
+      available_days: data.available_days || [],
+      preferred_timing: data.preferred_timing || [],
+      can_attend_meetings: data.can_attend_meetings || "Yes",
+      can_meet_deadlines: data.can_meet_deadlines || "Yes",
+      can_communicate_if_unavailable: data.can_communicate_if_unavailable || "Yes, always",
+      academic_constraints: data.academic_constraints || null,
+      exam_periods: data.exam_periods || null,
+      laptop_status: data.laptop_status || "",
+      operating_system: data.operating_system || "",
+      ram_capacity: data.ram_capacity || "",
+      internet_stability: data.internet_stability || "",
+      can_run_dev_tools: data.can_run_dev_tools || "Yes",
+      processor: data.processor || null,
+      gpu: data.gpu || null,
+      storage_type: data.storage_type || null,
+      laptop_model: data.laptop_model || null,
+
+      // Technical screening
+      c_level: data.c_level || "I Don't Know",
+      c_answers: data.c_answers || {},
+      python_level: data.python_level || "I Don't Know",
+      python_answers: data.python_answers || {},
+      java_level: data.java_level || "I Don't Know",
+      java_answers: data.java_answers || {},
+      html_level: data.html_level || "I Don't Know",
+      html_answers: data.html_answers || {},
+      vibe_coding_level: data.vibe_coding_level || "Never Used",
+      vibe_coding_answers: data.vibe_coding_answers || {},
+
+      mindset_answers: data.mindset_answers || {},
+
+      // Interview answers
+      interview_q1_why_codexa: data.interview_q1_why_codexa || "",
+      interview_q2_why_select: data.interview_q2_why_select || "",
+      interview_q3_expectations: data.interview_q3_expectations || "",
+      interview_q4_strongest_skills: data.interview_q4_strongest_skills || "",
+      interview_q5_weakest_area: data.interview_q5_weakest_area || "",
+      interview_q6_describe_project: data.interview_q6_describe_project || "",
+      interview_q7_difficult_problem: data.interview_q7_difficult_problem || "",
+      interview_q8_ai_coding_usage: data.interview_q8_ai_coding_usage || "",
+      interview_q9_college_balance: data.interview_q9_college_balance || "",
+      interview_q10_future_goal: data.interview_q10_future_goal || "",
+
+      // Commitments
+      commitment_accurate_info: data.commitment_accurate_info ?? true,
+      commitment_independent_work: data.commitment_independent_work ?? true,
+      commitment_responsible_communication: data.commitment_responsible_communication ?? true,
+      commitment_team_rules: data.commitment_team_rules ?? true,
+      commitment_confidentiality: data.commitment_confidentiality ?? true,
+      commitment_assigned_duties: data.commitment_assigned_duties ?? true,
+      commitment_no_guaranteed_employment: data.commitment_no_guaranteed_employment ?? true,
+      commitment_accept_policies: data.commitment_accept_policies ?? true,
+
+      copy_paste_warnings_count: data.copy_paste_warnings_count || 0,
+      tab_switch_count: data.tab_switch_count || 0,
+
+      // Scoring
+      score: Number(data.total_score || 0),
+      total_score: Number(data.total_score || 0),
+      genuineness_integrity_score: Number(data.genuineness_integrity_score || 0),
+      commitment_continuity_score: Number(data.commitment_continuity_score || 0),
+      mindset_habits_score: Number(data.mindset_habits_score || 0),
+      technical_knowledge_score: Number(data.technical_knowledge_score || 0),
+      learning_potential_score: Number(data.learning_potential_score || 0),
+      interview_communication_score: Number(data.interview_communication_score || 0),
+      score_band: data.score_band || "Standard Candidate",
+      commitment_signal: data.commitment_signal || "Moderate",
+      skill_authenticity: data.skill_authenticity || {},
+
+      answers: data,
+      raw_submission: data,
+      status: data.status || "Submitted",
+      is_test: Boolean(data.is_test ?? isTestSubmission(data)),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    let { data: inserted, error } = await supabase
       .from("applications")
       .insert(dbPayload)
       .select("id, reference_id")
       .single();
 
+    // If error occurs due to extra fields not yet in older table versions, retry with fallback payload
+    if (error && error.message?.includes("column")) {
+      const sanitizedPayload = { ...dbPayload };
+      delete sanitizedPayload.submission_token;
+      delete sanitizedPayload.applicant_name;
+      delete sanitizedPayload.email_normalized;
+      delete sanitizedPayload.phone;
+      delete sanitizedPayload.score;
+      delete sanitizedPayload.answers;
+      delete sanitizedPayload.resume_path;
+
+      const retryRes = await supabase
+        .from("applications")
+        .insert(sanitizedPayload)
+        .select("id, reference_id")
+        .single();
+
+      inserted = retryRes.data;
+      error = retryRes.error;
+    }
+
     if (error) {
+      // Check for duplicate key idempotency
       if (error.code === "23505" || error.message?.includes("duplicate key") || error.message?.includes("reference_id")) {
-        // Query existing by reference_id for safe idempotency
         const { data: existing } = await supabase
           .from("applications")
           .select("id, reference_id")
@@ -945,8 +1014,29 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
           };
         }
       }
+
       console.error("[Supabase Application Insert Error]:", error);
       throw new Error(`Database error saving application: ${error.message}`);
+    }
+
+    // 5. Asynchronously log initial state to application_status_history
+    if (inserted?.id) {
+      try {
+        await supabase.from("application_status_history").insert({
+          application_id: inserted.id,
+          reference_id: inserted.reference_id,
+          previous_status: null,
+          new_status: "Submitted",
+          note: "Initial applicant submission",
+          changed_by: "Applicant Submission",
+        });
+      } catch (histErr) {
+        console.warn("[application_status_history notice]:", histErr);
+      }
+    }
+
+    if (!inserted) {
+      throw new Error("Database error: No record returned from application insert.");
     }
 
     return {
@@ -955,9 +1045,9 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
     };
   }
 
-  // 2. In-memory Mock fallback if Supabase not configured in development
+  // Fallback for local development when Supabase is not configured
   const store = ensureStore();
-  const subKey = (data as any).submission_key;
+  const subKey = (data as any).submission_key || (data as any).submission_token;
   if (subKey) {
     const existing = store.applications.find(
       (a) => (a as any).submission_key === subKey || (data.reference_id && a.reference_id === data.reference_id)
@@ -965,12 +1055,13 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
     if (existing) {
       return {
         id: existing.id || 1,
-        reference_id: existing.reference_id || refId,
+        reference_id: existing.reference_id || (data.reference_id as string),
       };
     }
   }
 
   const nextId = store.applications.length + 1;
+  const refId = data.reference_id?.trim() || generateReferenceId(batchCode);
   const applicationRecord: ApplicationData = {
     ...data,
     id: nextId,
@@ -982,6 +1073,7 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
 
   return { id: nextId, reference_id: refId };
 }
+
 
 export async function getApplicationByRef(refOrId: string): Promise<ApplicationData | null> {
   const query = refOrId.trim();
@@ -1202,6 +1294,17 @@ export async function updateApplicationStatus(
         console.error("[Supabase Status Update Error]:", error);
         return false;
       }
+
+      if (existing?.id) {
+        supabase.from("application_status_history").insert({
+          application_id: existing.id,
+          changed_by: adminUser,
+          old_status: existing.status || null,
+          new_status: newStatus,
+          reason: notes || null,
+        }).then(undefined, () => {});
+      }
+
       return true;
     }
   } catch (err) {
@@ -1519,7 +1622,7 @@ export async function getTeamMembers(includeArchived: boolean = false): Promise<
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const supabase = getSupabaseAdmin();
     if (supabase) {
-      // 1. Try canonical team_members table
+      // Query canonical team_members table
       let query = supabase.from("team_members").select("*").order("sort_order", { ascending: true });
       if (!includeArchived) {
         query = query.eq("is_active", true);
@@ -1527,18 +1630,6 @@ export async function getTeamMembers(includeArchived: boolean = false): Promise<
       const { data, error } = await query;
       if (data && !error && data.length > 0) {
         return data.map(mapDbRowToTeamMember);
-      }
-
-      // 2. Fallback to team_profiles if team_members is missing or empty
-      if (error && (error.code === "42P01" || error.message.includes("does not exist"))) {
-        let altQuery = supabase.from("team_profiles").select("*").order("display_order", { ascending: true });
-        if (!includeArchived) {
-          altQuery = altQuery.eq("is_archived", false);
-        }
-        const altRes = await altQuery;
-        if (altRes.data && !altRes.error && altRes.data.length > 0) {
-          return altRes.data.map(mapDbRowToTeamMember);
-        }
       }
     }
   } catch (err) {
@@ -1578,11 +1669,6 @@ export async function getTeamMemberById(id: string): Promise<TeamMember | null> 
       if (data && !error) {
         return mapDbRowToTeamMember(data);
       }
-      // Fallback check team_profiles
-      const altRes = await supabase.from("team_profiles").select("*").eq("id", id).maybeSingle();
-      if (altRes.data && !altRes.error) {
-        return mapDbRowToTeamMember(altRes.data);
-      }
     }
   } catch (err) {
     console.warn("[Supabase Team Member Fetch Warning]:", err);
@@ -1616,33 +1702,17 @@ export async function saveTeamMember(member: TeamMember): Promise<boolean> {
     if (supabase) {
       const row = mapTeamMemberToDbRow(updatedMember);
 
-      // Attempt upsert to canonical team_members table
+      // Upsert to canonical team_members table
       let { error } = await supabase.from("team_members").upsert(row, { onConflict: "id" });
 
-      // If 'details' column is missing in existing schema, strip it and retry base columns
+      // If 'details' column is missing in legacy schema, strip it and retry base columns
       if (error && error.message.includes("details")) {
-        const { details, ...baseRow } = row;
+        const { details: _details, ...baseRow } = row;
         const retryRes = await supabase.from("team_members").upsert(baseRow, { onConflict: "id" });
         error = retryRes.error;
       }
 
-      // If team_members doesn't exist, try legacy team_profiles
-      if (error && (error.code === "42P01" || error.message.includes("does not exist"))) {
-        const legacyRow: any = {
-          id: updatedMember.id,
-          name: updatedMember.name,
-          display_name: updatedMember.displayName || updatedMember.name,
-          designation: updatedMember.designation,
-          role_type: updatedMember.roleType || "Core Team",
-          short_bio: updatedMember.shortBio || updatedMember.bio || null,
-          profile_image_url: updatedMember.photoUrl,
-          display_order: updatedMember.displayOrder ?? 0,
-          is_visible: updatedMember.isVisible !== false,
-          is_archived: updatedMember.isArchived === true,
-          updated_at: now,
-        };
-        await supabase.from("team_profiles").upsert(legacyRow, { onConflict: "id" });
-      } else if (error) {
+      if (error) {
         console.error("[Supabase Team Save Error]:", error.message);
       }
     }
@@ -1667,16 +1737,10 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
         const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
         const supabase = getSupabaseAdmin();
         if (supabase) {
-          const { error } = await supabase
+          await supabase
             .from("team_members")
             .update({ is_active: false, updated_at: now })
             .eq("id", id);
-          if (error) {
-            await supabase
-              .from("team_profiles")
-              .update({ is_archived: true, is_visible: false, updated_at: now })
-              .eq("id", id);
-          }
         }
       } catch (err) {
         console.warn("[Supabase Team Archive Warning]:", err);
@@ -1688,10 +1752,7 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
       const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
       const supabase = getSupabaseAdmin();
       if (supabase) {
-        const { error } = await supabase.from("team_members").delete().eq("id", id);
-        if (error) {
-          await supabase.from("team_profiles").delete().eq("id", id);
-        }
+        await supabase.from("team_members").delete().eq("id", id);
       }
     } catch (err) {
       console.warn("[Supabase Team Delete Warning]:", err);
@@ -1703,47 +1764,42 @@ export async function deleteTeamMember(id: string, softDelete: boolean = true): 
 
 export async function restoreTeamMember(id: string): Promise<boolean> {
   const store = ensureStore();
+  const member = store.team.find((t) => t.id === id);
   const now = new Date().toISOString();
-  const member = (store.team || []).find((t) => t.id === id);
   if (member) {
     member.isArchived = false;
     member.isVisible = true;
     member.updatedAt = now;
-  }
-
-  try {
-    const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
-    const supabase = getSupabaseAdmin();
-    if (supabase) {
-      const { error } = await supabase
-        .from("team_members")
-        .update({ is_active: true, updated_at: now })
-        .eq("id", id);
-      if (error) {
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const supabase = getSupabaseAdmin();
+      if (supabase) {
         await supabase
-          .from("team_profiles")
-          .update({ is_archived: false, is_visible: true, updated_at: now })
+          .from("team_members")
+          .update({ is_active: true, updated_at: now })
           .eq("id", id);
       }
+    } catch (err) {
+      console.warn("[Supabase Team Restore Warning]:", err);
     }
-  } catch (err) {
-    console.warn("[Supabase Team Restore Warning]:", err);
+    return true;
   }
-
-  return true;
+  return false;
 }
 
 export async function duplicateTeamMember(id: string): Promise<TeamMember | null> {
-  const original = await getTeamMemberById(id);
-  if (!original) return null;
+  const store = ensureStore();
+  const existing = store.team.find((t) => t.id === id);
+  if (!existing) return null;
 
   const now = new Date().toISOString();
   const newMember: TeamMember = {
-    ...original,
-    id: `team-${Date.now()}`,
-    name: `${original.name} (Copy)`,
-    displayName: original.displayName ? `${original.displayName} (Copy)` : undefined,
-    displayOrder: (original.displayOrder ?? 0) + 1,
+    ...existing,
+    id: `team_${Date.now()}`,
+    name: `${existing.name} (Copy)`,
+    displayName: `${existing.displayName || existing.name} (Copy)`,
+    isVisible: false,
+    displayOrder: (existing.displayOrder ?? 0) + 1,
     createdAt: now,
     updatedAt: now,
   };
@@ -1768,16 +1824,10 @@ export async function reorderTeamMembers(orderedIds: string[]): Promise<boolean>
     const supabase = getSupabaseAdmin();
     if (supabase) {
       for (let i = 0; i < orderedIds.length; i++) {
-        const { error } = await supabase
+        await supabase
           .from("team_members")
           .update({ sort_order: i + 1, updated_at: now })
           .eq("id", orderedIds[i]);
-        if (error) {
-          await supabase
-            .from("team_profiles")
-            .update({ display_order: i + 1, updated_at: now })
-            .eq("id", orderedIds[i]);
-        }
       }
     }
   } catch (err) {

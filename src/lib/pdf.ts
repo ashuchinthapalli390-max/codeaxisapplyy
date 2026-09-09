@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import { ApplicationData } from "@/types/application";
+import { OfferData } from "@/types/admin";
 
 /**
  * Generates an applicant-facing PDF confirmation report.
@@ -277,7 +278,7 @@ export const generateFullReportPdf = generateAdminPDF;
 /**
  * Generates an official CodeXa Internship Offer Letter PDF.
  */
-export function generateOfferLetterPDF(offer: any): void {
+export function generateOfferLetterPDF(offer: OfferData): void {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();

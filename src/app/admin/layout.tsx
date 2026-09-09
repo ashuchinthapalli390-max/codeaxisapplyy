@@ -70,7 +70,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Handle immediate transition upon successful login
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
-    router.replace("/admin/dashboard");
+    window.location.href = "/admin/dashboard";
   };
 
   // If on login route or unauthenticated, show terminal login screen

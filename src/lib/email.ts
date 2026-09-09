@@ -1,4 +1,5 @@
 import { ApplicationData } from "@/types/application";
+import { InterviewData, OfferData } from "@/types/admin";
 
 interface SendEmailParams {
   to: string | string[];
@@ -93,7 +94,7 @@ export async function sendApplicantConfirmationEmail(app: ApplicationData): Prom
 
     <div class="footer">
       CodeXa Agency &bull; Building Technology. Building Developers.<br>
-      Founder: Ashu &bull; Co-Founder: Deepak &bull; CEO: Kishore
+      Founder & Technical Director: CH. Arshad &bull; Co-Founder & Platform Lead: B. Sanjay &bull; CEO: Kishore &bull; CEO: G. Bhanu Prasad
     </div>
   </div>
 </body>
@@ -127,7 +128,7 @@ export async function sendApplicantConfirmationEmail(app: ApplicationData): Prom
   }
 }
 
-export async function sendInterviewInvitationEmail(interview: any): Promise<{ success: boolean; error?: string }> {
+export async function sendInterviewInvitationEmail(interview: InterviewData): Promise<{ success: boolean; error?: string }> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://www.codeaxisapply.xyz";
   const trackUrl = `${baseUrl}/status?ref=${encodeURIComponent(interview.reference_id)}`;
 
@@ -232,7 +233,7 @@ export async function sendInterviewInvitationEmail(interview: any): Promise<{ su
   });
 }
 
-export async function sendOfferLetterEmail(offer: any): Promise<{ success: boolean; error?: string }> {
+export async function sendOfferLetterEmail(offer: OfferData): Promise<{ success: boolean; error?: string }> {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_BASE_URL || "https://www.codeaxisapply.xyz";
   const respondUrl = `${baseUrl}/offer/respond?token=${encodeURIComponent(offer.token)}`;
 

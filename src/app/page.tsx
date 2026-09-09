@@ -291,9 +291,9 @@ export async function buildMyFuture() {
     codexa: `// CODEXA AGENCY ECOSYSTEM
 const agency = new CodeXaAgency({
   mission: "Building Technology. Building Developers.",
-  stack: ["Next.js", "AI Prompts", "MySQL", "APIs"],
+  stack: ["Next.js", "AI Prompts", "PostgreSQL", "APIs"],
   rounds: 8,
-  mentorship: "Ashu, Deepak, Kishore"
+  mentorship: "CH. Arshad, B. Sanjay, Kishore, G. Bhanu Prasad"
 });
 
 agency.launchRecruitmentBatch("2026-SEP");`,
@@ -1044,19 +1044,29 @@ agency.launchRecruitmentBatch("2026-SEP");`,
           </div>
 
           <div className="text-center pt-4">
-            <Link
-              href="/apply/rules"
-              onClick={playButtonClick}
-              className="btn-red-sweep inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-mono font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.4)]"
-            >
-              <span>PROCEED TO SCREENING RULES</span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {countdown.canApply ? (
+              <Link
+                href="/apply/rules"
+                onClick={playButtonClick}
+                className="btn-red-sweep inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-mono font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_25px_rgba(239,68,68,0.4)]"
+              >
+                <span>PROCEED TO SCREENING RULES</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <div
+                aria-disabled="true"
+                className="inline-flex items-center gap-2 px-8 py-4 bg-red-950/40 text-red-300 font-mono font-bold text-xs uppercase tracking-widest rounded-2xl border border-red-900/60 cursor-not-allowed select-none"
+              >
+                <Lock className="w-4 h-4 text-red-400" />
+                <span>{countdown.status === "OPENING_SOON" ? "APPLICATIONS OPENING SOON" : "APPLICATIONS CLOSED"}</span>
+              </div>
+            )}
           </div>
         </section>
 
         {/* =========================================================================
-            SECTION 8: LEADERSHIP SPOTLIGHT (Ashu, Deepak, Kishore)
+            SECTION 8: LEADERSHIP SPOTLIGHT (CH. Arshad, B. Sanjay, Kishore, G. Bhanu Prasad)
            ========================================================================= */}
         <section id="leadership" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-10 text-left scroll-mt-10">
           <div className="text-center space-y-2 max-w-2xl mx-auto">
@@ -1289,14 +1299,24 @@ agency.launchRecruitmentBatch("2026-SEP");`,
             </div>
 
             <div className="relative z-10 flex flex-col sm:flex-row justify-center gap-4 pt-4 max-w-md mx-auto">
-              <Link
-                href="/apply"
-                onClick={playButtonClick}
-                className="btn-red-sweep py-4 px-8 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-mono font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center justify-center gap-2"
-              >
-                <span>START APPLICATION</span>
-                <ArrowRight className="w-4 h-4" />
-              </Link>
+              {countdown.canApply ? (
+                <Link
+                  href="/apply"
+                  onClick={playButtonClick}
+                  className="btn-red-sweep py-4 px-8 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 text-white font-mono font-black text-xs uppercase tracking-widest rounded-2xl border border-red-400/50 shadow-[0_0_30px_rgba(239,68,68,0.6)] flex items-center justify-center gap-2"
+                >
+                  <span>START APPLICATION</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              ) : (
+                <div
+                  aria-disabled="true"
+                  className="py-4 px-8 bg-red-950/40 text-red-300 font-mono font-bold text-xs uppercase tracking-widest rounded-2xl border border-red-900/60 flex items-center justify-center gap-2 cursor-not-allowed select-none"
+                >
+                  <Lock className="w-4 h-4 text-red-400" />
+                  <span>{countdown.status === "OPENING_SOON" ? "APPLICATIONS OPENING SOON" : "APPLICATIONS CLOSED"}</span>
+                </div>
+              )}
 
               <Link
                 href="/status"
