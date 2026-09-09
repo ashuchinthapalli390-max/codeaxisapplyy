@@ -970,7 +970,7 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
       const { data: resData, error: err } = await supabase
         .from("applications")
         .insert(currentPayload)
-        .select("id, reference_id, email, created_at, round_id")
+        .select("id, reference_id, email, created_at")
         .single();
 
       if (!err && resData) {
@@ -989,13 +989,13 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
         if (errMsg.includes("submission_token") || errMsg.includes("idx_applications_token")) {
           const { data: tokenRow } = await supabase
             .from("applications")
-            .select("id, reference_id, email, email_normalized, created_at")
+            .select("id, reference_id, email, created_at")
             .eq("submission_token", submissionToken)
             .maybeSingle();
 
           if (
             tokenRow &&
-            (tokenRow.email_normalized === normalizedEmail ||
+            ((tokenRow as any).email_normalized === normalizedEmail ||
               tokenRow.email?.toLowerCase().trim() === normalizedEmail)
           ) {
             return {
@@ -1035,9 +1035,11 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
         const missingCol = missingColMatch[1];
         console.warn(`[Supabase Schema Adaptive Retry]: Column '${missingCol}' missing from table schema (attempt ${attempt + 1}).`);
 
+        delete currentPayload[missingCol];
+
         if (attempt === 0) {
-          console.warn("[Supabase Schema Adaptive Retry]: Collapsing payload to canonical legacy columns in single step...");
-          const legacyColumns = new Set([
+          console.warn("[Supabase Schema Adaptive Retry]: Collapsing payload to canonical baseline columns in single step...");
+          const baselineColumns = new Set([
             "reference_id",
             "full_name",
             "date_of_birth",
@@ -1057,70 +1059,29 @@ export async function saveApplication(data: ApplicationData): Promise<{ id: numb
             "github_profile",
             "linkedin_profile",
             "portfolio_website",
-            "resume_url",
-            "daily_availability",
-            "available_days",
-            "preferred_timing",
-            "c_level",
-            "python_level",
-            "java_level",
-            "html_level",
-            "vibe_coding_level",
             "total_score",
             "score_band",
-            "commitment_signal",
-            "status",
-            "submission_token",
-            "round_id",
-            "email_normalized",
-            "applicant_name",
-            "course",
-            "academic_year",
-            "semester",
-            "roll_number",
-            "expected_graduation",
-            "cgpa",
-            "percentage",
-            "coding_start_timeline",
-            "has_built_projects",
-            "developer_links",
-            "projects",
-            "laptop_status",
-            "operating_system",
-            "ram_capacity",
-            "internet_stability",
-            "can_run_dev_tools",
-            "can_attend_meetings",
-            "can_meet_deadlines",
-            "can_communicate_if_unavailable",
-            "copy_paste_warnings_count",
-            "tab_switch_count",
-            "commitment_accurate_info",
-            "commitment_independent_work",
-            "commitment_accept_policies",
             "genuineness_integrity_score",
             "commitment_continuity_score",
             "mindset_habits_score",
             "technical_knowledge_score",
             "learning_potential_score",
             "interview_communication_score",
+            "commitment_signal",
             "skill_authenticity",
-            "answers",
+            "status",
+            "admin_notes",
+            "admin_tags",
             "raw_submission",
-            "is_test",
-            "is_test_record",
             "is_deleted",
-            "submitted_at",
             "created_at",
             "updated_at",
           ]);
           for (const key of Object.keys(currentPayload)) {
-            if (!legacyColumns.has(key)) {
+            if (!baselineColumns.has(key)) {
               delete currentPayload[key];
             }
           }
-        } else {
-          delete currentPayload[missingCol];
         }
         continue;
       }
@@ -1585,7 +1546,7 @@ export async function deleteApplication(refOrId: string, reason?: string, adminU
       } else if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
-        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+        updateQuery = updateQuery.ilike("reference_id", query);
       }
 
       const { data, error } = await updateQuery.select("id, reference_id");
@@ -1723,7 +1684,7 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
       } else if (isNum) {
         updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
-        updateQuery = updateQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+        updateQuery = updateQuery.ilike("reference_id", query);
       }
 
       const { data, error } = await updateQuery.select("id, reference_id");

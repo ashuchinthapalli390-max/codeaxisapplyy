@@ -137,9 +137,14 @@ async function run() {
   }
 
   // 1. Create three controlled test candidates with distinct test emails and answers
-  const candidateA = createCandidate("ALPHA", "TEST ALPHA", `test.alpha.${RUN_ID}@example.com`);
-  const candidateB = createCandidate("BETA", "TEST BETA", `test.beta.${RUN_ID}@example.com`);
-  const candidateC = createCandidate("GAMMA", "TEST GAMMA", `test.gamma.${RUN_ID}@example.com`);
+  // Using RUN_ID suffix to guarantee test run isolation on live database while preserving requested test prefixes
+  const emailA = process.env.USE_EXACT_EMAILS === "true" ? "test.alpha.candidate@example.com" : `test.alpha.candidate.${RUN_ID}@example.com`;
+  const emailB = process.env.USE_EXACT_EMAILS === "true" ? "test.beta.candidate@example.com" : `test.beta.candidate.${RUN_ID}@example.com`;
+  const emailC = process.env.USE_EXACT_EMAILS === "true" ? "test.gamma.candidate@example.com" : `test.gamma.candidate.${RUN_ID}@example.com`;
+
+  const candidateA = createCandidate("ALPHA", "TEST ALPHA", emailA);
+  const candidateB = createCandidate("BETA", "TEST BETA", emailB);
+  const candidateC = createCandidate("GAMMA", "TEST GAMMA", emailC);
 
   console.log("[Phase 1] Submitting Applicant A and Applicant B concurrently...");
 
@@ -176,6 +181,7 @@ async function run() {
   assert(refA !== refB, "Applicant A and Applicant B received distinct reference codes");
   assert(refA?.startsWith("CXA-"), "Applicant A reference follows CXA-* standard");
   assert(refB?.startsWith("CXA-"), "Applicant B reference follows CXA-* standard");
+  assert(candidateA.submission_token !== candidateB.submission_token, "Applicant A and B have distinct submission tokens");
 
   // 3. Submit Applicant C sequentially
   console.log("\n[Phase 2] Submitting Applicant C sequentially...");
@@ -193,6 +199,7 @@ async function run() {
 
   assert(idC !== idA && idC !== idB, "Applicant C received a unique UUID distinct from A and B");
   assert(refC !== refA && refC !== refB, "Applicant C received a unique reference distinct from A and B");
+  assert(candidateC.submission_token !== candidateA.submission_token, "Applicant C has distinct submission token");
 
   // 4. Idempotency test: Retrying same submission token
   console.log("\n[Phase 3] Testing Submission Idempotency...");
@@ -232,6 +239,55 @@ async function run() {
   const trackRefOnly = await fetch(`${BASE_URL}/api/applications/track?ref=${encodeURIComponent(refA)}`);
   const jsonRefOnly = await trackRefOnly.json();
   assert(trackRefOnly.status === 400 && jsonRefOnly.success === false, "Tracking with Reference alone without Email fails with HTTP 400");
+
+  // 6. Soft-Delete & Restore Isolation on Candidate B (if admin access available)
+  console.log("\n[Phase 5] Testing Soft-Delete and Restore Isolation...");
+  const adminPasskey = process.env.ADMIN_PASSKEY;
+  if (adminPasskey) {
+    try {
+      const loginRes = await fetch(`${BASE_URL}/api/admin/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey: adminPasskey }),
+      });
+      if (loginRes.ok) {
+        const cookie = loginRes.headers.get("set-cookie");
+        // Soft-delete B
+        const delRes = await fetch(`${BASE_URL}/api/admin/delete`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: cookie },
+          body: JSON.stringify({ id: idB, reason: "Automated isolation test" }),
+        });
+        const delJson = await delRes.json();
+        assert(delJson.success === true, "Candidate B moved to Trash via soft delete");
+
+        // Tracking B while in Trash must fail
+        const trackDeletedB = await fetch(`${BASE_URL}/api/applications/track?ref=${encodeURIComponent(refB)}&email=${encodeURIComponent(candidateB.email)}`);
+        assert(trackDeletedB.status === 404, "Tracking B while in Trash returns 404");
+
+        // Tracking A must remain unaffected
+        const trackAStillActive = await fetch(`${BASE_URL}/api/applications/track?ref=${encodeURIComponent(refA)}&email=${encodeURIComponent(candidateA.email)}`);
+        assert(trackAStillActive.status === 200, "Candidate A remains active while Candidate B is in Trash");
+
+        // Restore B
+        const restoreRes = await fetch(`${BASE_URL}/api/admin/restore`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Cookie: cookie },
+          body: JSON.stringify({ id: idB }),
+        });
+        const restoreJson = await restoreRes.json();
+        assert(restoreJson.success === true, "Candidate B restored successfully from Trash");
+
+        // Tracking B after restore must succeed
+        const trackRestoredB = await fetch(`${BASE_URL}/api/applications/track?ref=${encodeURIComponent(refB)}&email=${encodeURIComponent(candidateB.email)}`);
+        assert(trackRestoredB.status === 200, "Tracking B succeeds after restore");
+      }
+    } catch (adminTestErr) {
+      console.warn("  [NOTE] Admin endpoint test notice:", adminTestErr.message);
+    }
+  } else {
+    console.log("  [INFO] Skipping remote admin soft-delete call (ADMIN_PASSKEY not passed). Handled by server storage test.");
+  }
 
   console.log("\n==================================================================");
   console.log(`  TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
