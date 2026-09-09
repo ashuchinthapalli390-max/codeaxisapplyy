@@ -245,6 +245,96 @@ async function run() {
     assert.strictEqual(row.is_archived, true);
   });
 
+  console.log("\n▶ [Test 6] Adaptive Missing Column Extraction...");
+  test("extractMissingColumn parses PostgREST schema cache error", async () => {
+    const { extractMissingColumn } = await import("../src/lib/leadership/repository.ts");
+    const err = { message: "Could not find the 'responsibilities' column of 'team_members' in the schema cache" };
+    assert.strictEqual(extractMissingColumn(err), "responsibilities");
+  });
+
+  test("extractMissingColumn parses Postgres relation column error", async () => {
+    const { extractMissingColumn } = await import("../src/lib/leadership/repository.ts");
+    const err = { message: 'column "education_summary" of relation "team_members" does not exist' };
+    assert.strictEqual(extractMissingColumn(err), "education_summary");
+  });
+
+  console.log("\n▶ [Test 7] Canonical Overlay on Incomplete Database Rows...");
+  test("mapDbRowToPublicDto overlays verified content when DB row has placeholders", () => {
+    // Simulated DB row with old placeholder values
+    const incompleteDbRow = {
+      id: "d63a0516-ab2f-4474-a3ca-8d549db5fbc2",
+      full_name: "CH. Arshad",
+      display_name: "CH. Arshad",
+      role_type: "Founder",
+      designation: "Core Team",
+      primary_designation: "Core Team",
+      photo_url: "/logo.jpeg",
+      responsibilities: [],
+      quote: "",
+    };
+
+    const dto = mapDbRowToPublicDto(incompleteDbRow);
+    assert.strictEqual(dto.primaryDesignation, "Founder & Technical Director", "Overlays real designation");
+    assert.notStrictEqual(dto.photoUrl, "/logo.jpeg", "Replaces repeating logo.jpeg with verified photo");
+    assert(dto.responsibilities.length >= 3, "Overlays verified responsibilities");
+    assert.strictEqual(dto.quote, "Build with purpose, architect for resilience, and always ship production-grade code.", "Overlays quote");
+    assert.strictEqual(dto.codename, "SOUTH DEVELOPER", "Overlays codename");
+  });
+
+  console.log("\n▶ [Test 8] Parlapalli Varun Profile & Privacy Protection...");
+  test("Varun profile matches verified resume and strictly excludes private data", () => {
+    const varun = CANONICAL_INITIAL_PROFILES.find((p) => p.slug === "p-varun");
+    assert(varun, "Varun profile exists in canonical definitions");
+    assert.strictEqual(varun.full_name, "Parlapalli Varun");
+    assert.strictEqual(varun.display_name, "P. Varun");
+    assert.strictEqual(varun.role_type, "COO");
+    assert.strictEqual(varun.primary_designation, "Chief Operating Officer");
+    assert.strictEqual(varun.secondary_designation, "Core Frontend & UI/UX Designer");
+    assert(varun.education_summary?.includes("Cybersecurity"), "Education summary includes Cybersecurity");
+    assert(varun.education_summary?.includes("Narasaraopeta Engineering College"), "Education summary includes college");
+    assert.strictEqual(varun.linkedin_url, "https://linkedin.com/in/varun-parlapalli/");
+    assert.strictEqual(varun.github_url, "https://github.com/varunparlapalli2008");
+
+    // Strict privacy checks: ensure no private resume data exists
+    const publicVarun = mapDbRowToPublicDto(varun);
+    assert.strictEqual(publicVarun.phone, undefined, "No phone number in public DTO");
+    assert.strictEqual(publicVarun.email, undefined, "No email in public DTO");
+    assert.strictEqual(publicVarun.address, undefined, "No residential address in public DTO");
+    assert.strictEqual(publicVarun.date_of_birth, undefined, "No DOB in public DTO");
+    assert.strictEqual(publicVarun.dob, undefined, "No DOB in public DTO");
+  });
+
+  console.log("\n▶ [Test 9] G. Bhanu Prasad Full Name & Designation Wrapping...");
+  test("G. Bhanu Prasad full name and designations are complete and untruncated", () => {
+    const bhanu = CANONICAL_INITIAL_PROFILES.find((p) => p.slug === "g-bhanu-prasad");
+    assert(bhanu, "Bhanu profile exists");
+    assert.strictEqual(bhanu.display_name, "G. Bhanu Prasad");
+    assert.strictEqual(bhanu.code_name, "HAKAI");
+    assert.strictEqual(bhanu.primary_designation, "Chief Executive Officer");
+    assert.strictEqual(bhanu.secondary_designation, "Technology Strategy & Talent Leadership");
+    assert(!bhanu.display_name?.includes("..."), "Name is never truncated with ellipsis in data");
+  });
+
+  console.log("\n▶ [Test 10] All 5 Leadership Profiles Public Delivery...");
+  await testAsync("getPublicLeadership guarantees all 5 verified profiles", async () => {
+    const list = await getPublicLeadership();
+    assert.strictEqual(list.length, 5, "Exactly 5 profiles returned in public leadership");
+    const names = list.map((m) => m.displayName);
+    assert(names.includes("CH. Arshad"), "Arshad present");
+    assert(names.includes("B. Sanjay"), "Sanjay present");
+    assert(names.includes("Kishore"), "Kishore present");
+    assert(names.includes("G. Bhanu Prasad"), "Bhanu present");
+    assert(names.includes("P. Varun"), "Varun present");
+
+    for (const member of list) {
+      assert(member.primaryDesignation, `Designation present for ${member.displayName}`);
+      assert.notStrictEqual(member.primaryDesignation, "Core Team", `Designation not placeholder for ${member.displayName}`);
+      assert(member.responsibilities.length >= 1, `Responsibilities present for ${member.displayName}`);
+      assert(member.focus_areas.length >= 3, `At least 3 focus areas for ${member.displayName}`);
+      assert.notStrictEqual(member.photoUrl, "/logo.jpeg", `Logo not used as portrait for ${member.displayName}`);
+    }
+  });
+
   console.log("\n==================================================================");
   console.log(`  LEADERSHIP TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log("==================================================================\n");

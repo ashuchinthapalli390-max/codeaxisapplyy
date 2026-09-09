@@ -8,17 +8,24 @@ import {
   AdminContributionDto,
   TeamMemberContributionDbRow,
 } from "./schema";
+import {
+  findMatchingCanonicalProfile,
+  INITIAL_VERIFIED_CONTRIBUTIONS,
+} from "./canonical";
 
 /**
- * Resolves the displayable image URL from database storage path or fallback asset
+ * Resolves the displayable image URL from database storage path or fallback asset.
+ * Replaces old placeholder /logo.jpeg with canonical photos or styled assets.
  */
-export function resolveLeadershipImageUrl(row: Partial<TeamMemberDbRow>): string {
+export function resolveLeadershipImageUrl(
+  row: Partial<TeamMemberDbRow>,
+  canonical?: Partial<TeamMemberDbRow>
+): string {
   if (row.image_path && row.image_path.trim()) {
     const path = row.image_path.trim();
     if (path.startsWith("http://") || path.startsWith("https://") || path.startsWith("/")) {
       return path;
     }
-    // Form Supabase Storage URL if supabase project is known, or fallback
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
     const bucket = row.image_bucket || "leadership";
     if (supabaseUrl) {
@@ -28,8 +35,12 @@ export function resolveLeadershipImageUrl(row: Partial<TeamMemberDbRow>): string
     return `/storage/v1/object/public/${bucket}/${path}`;
   }
 
-  if (row.photo_url && row.photo_url.trim()) {
+  if (row.photo_url && row.photo_url.trim() && row.photo_url.trim() !== "/logo.jpeg") {
     return row.photo_url.trim();
+  }
+
+  if (canonical?.photo_url && canonical.photo_url !== "/logo.jpeg") {
+    return canonical.photo_url;
   }
 
   return "/assets/image-assests/hero.jpeg";
@@ -69,67 +80,93 @@ export function mapDbContributionToAdminDto(row: TeamMemberContributionDbRow | a
 }
 
 /**
- * Maps a canonical Supabase database row to a public-safe DTO
+ * Maps a canonical Supabase database row to a public-safe DTO.
+ * Seamlessly overlays verified baseline values when existing database row contains
+ * null/placeholder designations, empty responsibilities, quotes, or missing photos.
  */
 export function mapDbRowToPublicDto(
   row: TeamMemberDbRow | any,
   contributions: (TeamMemberContributionDbRow | any)[] = []
 ): PublicLeadershipDto {
-  const photoUrl = resolveLeadershipImageUrl(row);
-  const cropX = Number(row.image_crop_x ?? row.crop_x ?? 50);
-  const cropY = Number(row.image_crop_y ?? row.crop_y ?? 50);
-  const cropScale = Number(row.image_zoom ?? row.crop_scale ?? 1);
-  const sortOrder = Number(row.sort_order ?? 0);
+  const canonical = findMatchingCanonicalProfile(row);
+  const photoUrl = resolveLeadershipImageUrl(row, canonical);
 
-  const focusAreas = Array.isArray(row.focus_areas)
-    ? row.focus_areas
-    : Array.isArray(row.skills)
-    ? row.skills
-    : [];
+  const cropX = Number(row.image_crop_x ?? row.crop_x ?? canonical?.crop_x ?? 50);
+  const cropY = Number(row.image_crop_y ?? row.crop_y ?? canonical?.crop_y ?? 50);
+  const cropScale = Number(row.image_zoom ?? row.crop_scale ?? canonical?.crop_scale ?? 1);
+  const sortOrder = Number(row.sort_order ?? canonical?.sort_order ?? 0);
 
-  const skills = Array.isArray(row.skills)
-    ? row.skills
-    : focusAreas;
+  const focusAreas =
+    Array.isArray(row.focus_areas) && row.focus_areas.length > 0
+      ? row.focus_areas
+      : Array.isArray(row.skills) && row.skills.length > 0
+      ? row.skills
+      : (canonical?.focus_areas || []);
 
-  const responsibilities = Array.isArray(row.responsibilities)
-    ? row.responsibilities
-    : Array.isArray(row.roles)
-    ? row.roles
-    : [];
+  const skills =
+    Array.isArray(row.skills) && row.skills.length > 0
+      ? row.skills
+      : focusAreas;
 
-  const publicContribs = contributions
+  const responsibilities =
+    Array.isArray(row.responsibilities) && row.responsibilities.length > 0
+      ? row.responsibilities
+      : Array.isArray(row.roles) && row.roles.length > 0
+      ? row.roles
+      : (canonical?.responsibilities || []);
+
+  // Use DB contributions if present, else fallback to initial verified contributions
+  let rawContribs = contributions;
+  if (rawContribs.length === 0 && canonical?.id) {
+    rawContribs = INITIAL_VERIFIED_CONTRIBUTIONS.filter((c) => c.team_member_id === canonical.id);
+  }
+
+  const publicContribs = rawContribs
     .filter((c) => c.is_public !== false && (c.verification_status === "published" || !c.verification_status))
     .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0))
     .map(mapDbContributionToPublicDto);
 
-  const primaryDesignation = row.primary_designation || row.designation || "Core Team";
+  let primaryDesignation = row.primary_designation || row.designation;
+  if (!primaryDesignation || primaryDesignation === "Core Team") {
+    primaryDesignation = canonical?.primary_designation || "Core Team";
+  }
+
+  const secondaryDesignation = row.secondary_designation || canonical?.secondary_designation || "";
+  const department = row.department || canonical?.department || "";
+  const tagline = row.tagline || row.short_tagline || canonical?.tagline || canonical?.short_tagline || "";
+  const shortBio = row.short_bio || row.bio || canonical?.short_bio || "";
+  const fullBio = row.full_bio || canonical?.full_bio || shortBio;
+  const leadershipSummary = row.leadership_summary || canonical?.leadership_summary || "";
+  const quote = row.quote || canonical?.quote || "";
+  const codename = row.code_name || row.codename || canonical?.code_name || "";
+  const roleType = row.role_type || canonical?.role_type || "Core Team";
 
   return {
-    id: row.id,
-    slug: row.slug || row.id,
-    name: row.full_name || row.display_name || "Team Member",
-    displayName: row.display_name || row.full_name || "Team Member",
-    codename: row.code_name || "",
-    roleType: row.role_type || "Core Team",
+    id: row.id || canonical?.id || "member",
+    slug: row.slug || canonical?.slug || row.id || "member",
+    name: row.full_name || row.display_name || canonical?.full_name || "Team Member",
+    displayName: row.display_name || row.full_name || canonical?.display_name || "Team Member",
+    codename,
+    roleType,
     designation: primaryDesignation,
     primaryDesignation,
-    secondaryDesignation: row.secondary_designation || "",
-    department: row.department || "",
-    tagline: row.tagline || row.short_tagline || "",
-    bio: row.short_bio || row.bio || "",
-    shortBio: row.short_bio || row.bio || "",
-    fullBio: row.full_bio || "",
-    leadershipSummary: row.leadership_summary || "",
-    quote: row.quote || "",
+    secondaryDesignation,
+    department,
+    tagline,
+    bio: shortBio,
+    shortBio,
+    fullBio,
+    leadershipSummary,
+    quote,
     responsibilities,
     skills,
     focus_areas: focusAreas,
-    educationSummary: row.education_summary || undefined,
-    experienceSummary: row.experience_summary || undefined,
-    verificationStatus: row.verification_status || "published",
+    educationSummary: row.education_summary || canonical?.education_summary || undefined,
+    experienceSummary: row.experience_summary || canonical?.experience_summary || undefined,
+    verificationStatus: row.verification_status || canonical?.verification_status || "published",
     contributions: publicContribs,
     photoUrl,
-    image_path: row.image_path || "",
+    image_path: row.image_path || canonical?.image_path || "",
     profileObjectPositionX: cropX,
     profileObjectPositionY: cropY,
     profileScale: cropScale,
@@ -137,41 +174,47 @@ export function mapDbRowToPublicDto(
     displayOrder: sortOrder,
     isFeatured: row.is_featured !== false,
     status: "active",
-    linkedinUrl: row.linkedin_url || undefined,
-    githubUrl: row.github_url || undefined,
-    portfolioUrl: row.portfolio_url || undefined,
-    websiteUrl: row.external_url || undefined,
+    linkedinUrl: row.linkedin_url || canonical?.linkedin_url || undefined,
+    githubUrl: row.github_url || canonical?.github_url || undefined,
+    portfolioUrl: row.portfolio_url || canonical?.portfolio_url || undefined,
+    websiteUrl: row.external_url || canonical?.external_url || undefined,
   };
 }
 
 /**
- * Maps a canonical Supabase database row to an editable Admin DTO
+ * Maps a canonical Supabase database row to an editable Admin DTO.
+ * Overlays verified baseline values for incomplete records.
  */
 export function mapDbRowToAdminDto(
   row: TeamMemberDbRow | any,
   contributions: (TeamMemberContributionDbRow | any)[] = []
 ): AdminLeadershipDto {
-  const photoUrl = resolveLeadershipImageUrl(row);
-  const cropX = Number(row.image_crop_x ?? row.crop_x ?? 50);
-  const cropY = Number(row.image_crop_y ?? row.crop_y ?? 50);
-  const cropScale = Number(row.image_zoom ?? row.crop_scale ?? 1);
-  const sortOrder = Number(row.sort_order ?? 0);
+  const canonical = findMatchingCanonicalProfile(row);
+  const photoUrl = resolveLeadershipImageUrl(row, canonical);
 
-  const focusAreas = Array.isArray(row.focus_areas)
-    ? row.focus_areas
-    : Array.isArray(row.skills)
-    ? row.skills
-    : [];
+  const cropX = Number(row.image_crop_x ?? row.crop_x ?? canonical?.crop_x ?? 50);
+  const cropY = Number(row.image_crop_y ?? row.crop_y ?? canonical?.crop_y ?? 50);
+  const cropScale = Number(row.image_zoom ?? row.crop_scale ?? canonical?.crop_scale ?? 1);
+  const sortOrder = Number(row.sort_order ?? canonical?.sort_order ?? 0);
 
-  const skills = Array.isArray(row.skills)
-    ? row.skills
-    : focusAreas;
+  const focusAreas =
+    Array.isArray(row.focus_areas) && row.focus_areas.length > 0
+      ? row.focus_areas
+      : Array.isArray(row.skills) && row.skills.length > 0
+      ? row.skills
+      : (canonical?.focus_areas || []);
 
-  const responsibilities = Array.isArray(row.responsibilities)
-    ? row.responsibilities
-    : Array.isArray(row.roles)
-    ? row.roles
-    : [];
+  const skills =
+    Array.isArray(row.skills) && row.skills.length > 0
+      ? row.skills
+      : focusAreas;
+
+  const responsibilities =
+    Array.isArray(row.responsibilities) && row.responsibilities.length > 0
+      ? row.responsibilities
+      : Array.isArray(row.roles) && row.roles.length > 0
+      ? row.roles
+      : (canonical?.responsibilities || []);
 
   let status: LeadershipStatus = "active";
   if (row.status) {
@@ -182,46 +225,64 @@ export function mapDbRowToAdminDto(
     status = "hidden";
   }
 
-  const adminContribs = contributions
+  let rawContribs = contributions;
+  if (rawContribs.length === 0 && canonical?.id) {
+    rawContribs = INITIAL_VERIFIED_CONTRIBUTIONS.filter((c) => c.team_member_id === canonical.id);
+  }
+
+  const adminContribs = rawContribs
     .sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0))
     .map(mapDbContributionToAdminDto);
 
-  const primaryDesignation = row.primary_designation || row.designation || "Core Team";
+  let primaryDesignation = row.primary_designation || row.designation;
+  if (!primaryDesignation || primaryDesignation === "Core Team") {
+    primaryDesignation = canonical?.primary_designation || "Core Team";
+  }
+
+  const secondaryDesignation = row.secondary_designation || canonical?.secondary_designation || "";
+  const department = row.department || canonical?.department || "";
+  const tagline = row.tagline || row.short_tagline || canonical?.tagline || canonical?.short_tagline || "";
+  const shortBio = row.short_bio || row.bio || canonical?.short_bio || "";
+  const fullBio = row.full_bio || canonical?.full_bio || shortBio;
+  const leadershipSummary = row.leadership_summary || canonical?.leadership_summary || "";
+  const quote = row.quote || canonical?.quote || "";
+  const codename = row.code_name || row.codename || canonical?.code_name || "";
+  const roleType = row.role_type || canonical?.role_type || "Core Team";
 
   return {
-    id: row.id,
-    slug: row.slug || row.id,
-    name: row.full_name || row.display_name || "Team Member",
-    fullName: row.full_name || row.display_name || "Team Member",
-    displayName: row.display_name || row.full_name || "Team Member",
-    codename: row.code_name || "",
-    roleType: row.role_type || "Core Team",
+    id: row.id || canonical?.id || "member",
+    slug: row.slug || canonical?.slug || row.id || "member",
+    name: row.full_name || row.display_name || canonical?.full_name || "Team Member",
+    fullName: row.full_name || row.display_name || canonical?.full_name || "Team Member",
+    displayName: row.display_name || row.full_name || canonical?.display_name || "Team Member",
+    codename,
+    roleType,
     designation: primaryDesignation,
     primaryDesignation,
-    secondaryDesignation: row.secondary_designation || "",
-    department: row.department || "",
-    tagline: row.tagline || row.short_tagline || "",
-    bio: row.short_bio || row.bio || "",
-    shortBio: row.short_bio || row.bio || "",
-    fullBio: row.full_bio || "",
-    leadershipSummary: row.leadership_summary || "",
-    professionalSummary: row.leadership_summary || "",
-    educationSummary: row.education_summary || "",
-    experienceSummary: row.experience_summary || "",
-    verificationStatus: row.verification_status || "published",
+    secondaryDesignation,
+    department,
+    tagline,
+    bio: shortBio,
+    shortBio,
+    fullBio,
+    leadershipSummary,
+    professionalSummary: leadershipSummary,
+    educationSummary: row.education_summary || canonical?.education_summary || "",
+    experienceSummary: row.experience_summary || canonical?.experience_summary || "",
+    verificationStatus: row.verification_status || canonical?.verification_status || "published",
     profileCompleteness: Number(row.profile_completeness ?? 100),
-    sourceNotes: row.source_notes || undefined,
+    sourceNotes: row.source_notes || canonical?.source_notes || undefined,
     lastVerifiedAt: row.last_verified_at || undefined,
     isPublic: row.is_public !== false,
-    quote: row.quote || "",
+    quote,
     skills,
     focus_areas: focusAreas,
     responsibilities,
     roles: responsibilities,
     contributions: adminContribs,
     photoUrl,
-    image_path: row.image_path || "",
-    profileStoragePath: row.image_path || "",
+    image_path: row.image_path || canonical?.image_path || "",
+    profileStoragePath: row.image_path || canonical?.image_path || "",
     profileObjectPositionX: cropX,
     profileObjectPositionY: cropY,
     profileScale: cropScale,
@@ -232,8 +293,8 @@ export function mapDbRowToAdminDto(
     phone: "",
     whatsapp: row.whatsapp || row.whatsapp_url || "",
     whatsapp_url: row.whatsapp_url || row.whatsapp || "",
-    linkedinUrl: row.linkedin_url || "",
-    githubUrl: row.github_url || "",
+    linkedinUrl: row.linkedin_url || canonical?.linkedin_url || "",
+    githubUrl: row.github_url || canonical?.github_url || "",
     portfolioUrl: row.portfolio_url || "",
     websiteUrl: row.external_url || "",
     external_url: row.external_url || "",
