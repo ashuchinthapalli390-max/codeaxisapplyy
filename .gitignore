@@ -46,3 +46,15 @@ next-env.d.ts
 
 # supabase cli temporary files
 supabase/.temp/
+
+# temp images in root
+/*.jpeg
+
+# scratch test scripts
+scripts/check-*.mjs
+scripts/get-*.mjs
+scripts/inspect-*.mjs
+scripts/test-clean-*.mjs
+scripts/test-prod-columns.mjs
+scripts/test-prod.mjs
+scripts/test-save-*.mjs
