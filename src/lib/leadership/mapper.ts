@@ -24,6 +24,12 @@ export function getMemberVersion(row: any): number {
   if (id && MEMBER_VERSIONS.has(id)) {
     return MEMBER_VERSIONS.get(id)!;
   }
+  if (row?.updated_at) {
+    const ts = new Date(row.updated_at).getTime();
+    if (!isNaN(ts) && ts > 0) {
+      return ts;
+    }
+  }
   return 1;
 }
 

@@ -688,9 +688,10 @@ export async function saveLeadershipMember(
     );
   }
 
-  setMemberVersion(memberId, nextVersion);
+  const finalVersion = getMemberVersion(data);
+  setMemberVersion(memberId, finalVersion);
   if (data) {
-    data.version = nextVersion;
+    data.version = finalVersion;
   }
 
   // Sync contributions if provided
@@ -937,7 +938,7 @@ export async function restoreLeadershipMember(
     throw new LeadershipError(`Restore failed: ${res.error?.message || "member not found"}`, 500);
   }
   if (res.data) {
-    res.data.version = nextVersion;
+    res.data.version = getMemberVersion(res.data);
   }
 
   await triggerLeadershipRevalidation();
