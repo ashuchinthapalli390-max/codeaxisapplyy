@@ -33,33 +33,31 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Resolve UUID if reference_id or numeric ID was supplied
+    // Resolve application and verify existence and Trash status
     let applicationId = inputId;
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputId);
 
-    if (!isUuid) {
-      const { data: foundRow, error: lookupErr } = await supabase
-        .from("applications")
-        .select("id, reference_id, deleted_at")
-        .or(`reference_id.ilike.${inputId},id.eq.${inputId}`)
-        .maybeSingle();
+    const lookupQuery = isUuid
+      ? supabase.from("applications").select("id, reference_id, deleted_at").eq("id", inputId).maybeSingle()
+      : supabase.from("applications").select("id, reference_id, deleted_at").or(`reference_id.ilike.${inputId},id.eq.${inputId}`).maybeSingle();
 
-      if (lookupErr || !foundRow) {
-        return NextResponse.json(
-          { success: false, error: `Application "${inputId}" not found in database.` },
-          { status: 404 }
-        );
-      }
+    const { data: foundRow, error: lookupErr } = await lookupQuery;
 
-      if (foundRow.deleted_at === null) {
-        return NextResponse.json(
-          { success: false, error: `Application "${foundRow.reference_id || inputId}" is already active (not in Trash).` },
-          { status: 409 }
-        );
-      }
-
-      applicationId = foundRow.id;
+    if (lookupErr || !foundRow) {
+      return NextResponse.json(
+        { success: false, error: `Application "${inputId}" not found.` },
+        { status: 404 }
+      );
     }
+
+    if (foundRow.deleted_at === null) {
+      return NextResponse.json(
+        { success: false, error: `Application "${foundRow.reference_id || inputId}" is already active (not in Trash).` },
+        { status: 409 }
+      );
+    }
+
+    applicationId = foundRow.id;
 
     // Restore: reset deleted_at, deleted_by, and delete_reason to NULL where deleted_at IS NOT NULL
     const { data, error } = await supabase

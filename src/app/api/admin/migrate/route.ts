@@ -144,51 +144,93 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Database Migration via direct connection if DATABASE_URL is available
-    const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+    // 2. Database Migration via direct connection or Supabase Management/SQL
+    const dbUrl = body.databaseUrl || process.env.DATABASE_URL || process.env.POSTGRES_URL;
     let sqlExecutionResult: any = null;
 
-    if (dbUrl) {
-      let migrationSql = "";
-      if (customSql) {
-        migrationSql = customSql;
-      } else {
-        const migrationPath = path.resolve(
-          process.cwd(),
-          "supabase/migrations/20260903031306_canonical_production_schema.sql"
-        );
-        if (fs.existsSync(migrationPath)) {
-          migrationSql = fs.readFileSync(migrationPath, "utf-8");
-        }
-      }
-
-      if (migrationSql) {
-        const client = new Client({
-          connectionString: dbUrl,
-          ssl: { rejectUnauthorized: false },
-        });
-
-        await client.connect();
-        try {
-          await client.query(migrationSql);
-          // Reload PostgREST schema cache
-          await client.query("NOTIFY pgrst, 'reload schema';");
-          sqlExecutionResult = {
-            success: true,
-            method: "pg_client",
-            message: "Migration SQL executed and PostgREST schema cache reload signal dispatched.",
-          };
-        } finally {
-          await client.end();
-        }
-      }
+    let migrationSql = "";
+    if (customSql) {
+      migrationSql = customSql;
     } else {
-      sqlExecutionResult = {
-        success: false,
-        method: "none",
-        message:
-          "DATABASE_URL not set in server environment. To apply PostgreSQL migrations directly, add DATABASE_URL or execute the migration SQL via Supabase SQL Editor.",
-      };
+      const migrationPath = path.resolve(
+        process.cwd(),
+        "supabase/migrations/20260910140000_applications_soft_delete_repair.sql"
+      );
+      if (fs.existsSync(migrationPath)) {
+        migrationSql = fs.readFileSync(migrationPath, "utf-8");
+      }
+    }
+
+    if (dbUrl && migrationSql) {
+      const client = new Client({
+        connectionString: dbUrl,
+        ssl: { rejectUnauthorized: false },
+      });
+
+      await client.connect();
+      try {
+        await client.query(migrationSql);
+        // Reload PostgREST schema cache
+        await client.query("NOTIFY pgrst, 'reload schema';");
+        sqlExecutionResult = {
+          success: true,
+          method: "pg_client",
+          message: "Migration SQL executed and PostgREST schema cache reload signal dispatched.",
+        };
+      } finally {
+        await client.end();
+      }
+    } else if (migrationSql) {
+      // Attempt execution via Supabase pg/query endpoint with secret key
+      const secret = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim();
+      const supabaseUrl = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL)?.trim();
+
+      if (supabaseUrl && secret) {
+        try {
+          const pgRes = await fetch(`${supabaseUrl}/pg/query`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: secret,
+              Authorization: `Bearer ${secret}`,
+            },
+            body: JSON.stringify({ query: migrationSql }),
+          });
+          const pgJson = await pgRes.json().catch(() => null);
+          if (pgRes.ok) {
+            sqlExecutionResult = {
+              success: true,
+              method: "supabase_pg_query",
+              message: "Executed migration via Supabase pg/query API.",
+              result: pgJson,
+            };
+          } else {
+            sqlExecutionResult = {
+              success: false,
+              method: "supabase_pg_query_attempted",
+              status: pgRes.status,
+              response: pgJson,
+              message:
+                "DATABASE_URL not set and Supabase /pg/query endpoint returned non-200. Please execute migration SQL via Supabase SQL Editor or provide databaseUrl.",
+            };
+          }
+        } catch (e: any) {
+          sqlExecutionResult = {
+            success: false,
+            method: "none",
+            error: e.message,
+            message:
+              "DATABASE_URL not set in server environment. To apply PostgreSQL migrations directly, execute 20260910140000_applications_soft_delete_repair.sql via Supabase SQL Editor.",
+          };
+        }
+      } else {
+        sqlExecutionResult = {
+          success: false,
+          method: "none",
+          message:
+            "DATABASE_URL not set in server environment. To apply PostgreSQL migrations directly, execute 20260910140000_applications_soft_delete_repair.sql via Supabase SQL Editor.",
+        };
+      }
     }
 
     return NextResponse.json({
