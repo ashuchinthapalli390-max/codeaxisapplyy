@@ -53,19 +53,20 @@ async function adaptiveUpdate(
   initialPayload: Record<string, any>
 ): Promise<{ data: any; error: any }> {
   const payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const res = await supabase.from(table).update(payload).eq("id", id).select().single();
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const res = await supabase.from(table).update(payload).eq("id", id).select().maybeSingle();
     if (!res.error) return res;
 
     const missingCol = extractMissingColumn(res.error);
-    if (missingCol && missingCol in payload) {
+    if (missingCol) {
       console.warn(`[Adaptive DB Update] Column "${missingCol}" does not exist in "${table}". Retrying without it.`);
       delete payload[missingCol];
+      delete payload[missingCol.toLowerCase()];
       continue;
     }
     return res;
   }
-  return await supabase.from(table).update(payload).eq("id", id).select().single();
+  return await supabase.from(table).update(payload).eq("id", id).select().maybeSingle();
 }
 
 /**
@@ -77,19 +78,20 @@ async function adaptiveInsert(
   initialPayload: Record<string, any>
 ): Promise<{ data: any; error: any }> {
   const payload = { ...initialPayload };
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const res = await supabase.from(table).insert(payload).select().single();
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const res = await supabase.from(table).insert(payload).select().maybeSingle();
     if (!res.error) return res;
 
     const missingCol = extractMissingColumn(res.error);
-    if (missingCol && missingCol in payload) {
+    if (missingCol) {
       console.warn(`[Adaptive DB Insert] Column "${missingCol}" does not exist in "${table}". Retrying without it.`);
       delete payload[missingCol];
+      delete payload[missingCol.toLowerCase()];
       continue;
     }
     return res;
   }
-  return await supabase.from(table).insert(payload).select().single();
+  return await supabase.from(table).insert(payload).select().maybeSingle();
 }
 
 async function triggerLeadershipRevalidation() {
@@ -147,12 +149,11 @@ export async function reconcileLeadershipDatabase(): Promise<{
     if (isStaleDemo && !alreadyArchived) {
       console.log(`[Leadership Reconcile] Archiving stale profile: ${row.id} (${rowName})`);
       const updatePayload: Record<string, any> = {
-        is_active: false,
-        archived_at: new Date().toISOString(),
-        archived_by: "reconciliation_archiver",
+        status: "archived",
+        deleted_at: new Date().toISOString(),
+        deleted_by: "reconciliation_archiver",
+        delete_reason: "Archived stale demo profile",
       };
-      if (row.status !== undefined) updatePayload.status = "archived";
-      if (row.is_archived !== undefined) updatePayload.is_archived = true;
       await supabase
         .from("team_members")
         .update(updatePayload)
@@ -179,8 +180,11 @@ export async function reconcileLeadershipDatabase(): Promise<{
 
     if (!match) {
       console.log(`[Leadership Reconcile] Inserting canonical profile: ${canonical.full_name} (${canonical.id})`);
+      const { leadership_summary, is_active, is_archived, ...cleanCanonical } = canonical as any;
       const insertRow = {
-        ...canonical,
+        ...cleanCanonical,
+        short_bio: canonical.short_bio || canonical.leadership_summary,
+        full_bio: canonical.full_bio || canonical.leadership_summary,
         created_at: now,
         updated_at: now,
       };
@@ -215,7 +219,6 @@ export async function reconcileLeadershipDatabase(): Promise<{
           short_tagline: canonical.short_tagline,
           short_bio: canonical.short_bio,
           full_bio: canonical.full_bio,
-          leadership_summary: canonical.leadership_summary,
           quote: canonical.quote,
           responsibilities: canonical.responsibilities,
           focus_areas: canonical.focus_areas,
@@ -226,7 +229,6 @@ export async function reconcileLeadershipDatabase(): Promise<{
           profile_completeness: 100,
           is_public: true,
           status: "active",
-          is_active: true,
           sort_order: canonical.sort_order,
           updated_at: now,
         };
@@ -762,10 +764,6 @@ export async function deleteLeadershipMember(
   if (softDelete) {
     const updatePayload: Record<string, any> = {
       status: "archived",
-      is_active: false,
-      is_archived: true,
-      archived_at: now,
-      archived_by: adminUser?.email || adminUser?.id || "admin",
       deleted_at: now,
       deleted_by: adminUser?.email || adminUser?.id || "admin",
       delete_reason: deleteReason || "Moved to Trash by administrator",
@@ -850,10 +848,6 @@ export async function restoreLeadershipMember(
   const nextVersion = (Number(target.version) || 1) + 1;
   const updatePayload: Record<string, any> = {
     status: "active",
-    is_active: true,
-    is_archived: false,
-    archived_at: null,
-    archived_by: null,
     deleted_at: null,
     deleted_by: null,
     delete_reason: null,
