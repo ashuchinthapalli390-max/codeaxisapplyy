@@ -33,6 +33,7 @@ export default function AdminApplicationsPage() {
   const [applications, setApplications] = useState<ApplicationData[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
 
@@ -68,6 +69,7 @@ export default function AdminApplicationsPage() {
 
   const fetchApps = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const params = new URLSearchParams();
       params.set("view", currentView);
@@ -79,12 +81,18 @@ export default function AdminApplicationsPage() {
 
       const res = await fetch(`/api/admin/applications?${params.toString()}`, { credentials: "include" });
       const json = await res.json();
-      if (json.success) {
-        setApplications(json.data);
-        setTotal(json.total);
+      if (res.ok && json.success) {
+        setApplications(json.data || []);
+        setTotal(json.total ?? (json.data ? json.data.length : 0));
+        setFetchError(null);
+      } else {
+        const errorMsg = json?.error?.message || json?.error || "Failed to load applications from database.";
+        setFetchError(errorMsg);
+        console.error("Fetch apps error from server:", json);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch apps error:", err);
+      setFetchError("Network connection error. Unable to load applications.");
     } finally {
       setLoading(false);
     }
@@ -416,24 +424,22 @@ export default function AdminApplicationsPage() {
           <span>Active Candidates</span>
         </button>
 
-        {process.env.NODE_ENV === "development" && (
-          <button
-            type="button"
-            onClick={() => {
-              playButtonClick();
-              setCurrentView("test");
-              setSelectedIds([]);
-            }}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-              currentView === "test"
-                ? "bg-amber-600 text-white shadow-[0_0_15px_rgba(217,119,6,0.5)]"
-                : "bg-black/60 border border-red-950 text-amber-400/80 hover:text-amber-300"
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>Test Submissions</span>
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            playButtonClick();
+            setCurrentView("test");
+            setSelectedIds([]);
+          }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            currentView === "test"
+              ? "bg-amber-600 text-white shadow-[0_0_15px_rgba(217,119,6,0.5)]"
+              : "bg-black/60 border border-red-950 text-amber-400/80 hover:text-amber-300"
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5" />
+          <span>Test Submissions</span>
+        </button>
 
         <button
           type="button"
@@ -814,7 +820,28 @@ export default function AdminApplicationsPage() {
                 );
               })}
 
-              {applications.length === 0 && !loading && (
+              {fetchError && !loading && (
+                <tr>
+                  <td colSpan={9} className="py-12 text-center">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <div className="w-10 h-10 rounded-full bg-red-900/30 border border-red-500/50 flex items-center justify-center text-red-400">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div className="text-white font-bold text-sm">Failed to Load Applications</div>
+                      <div className="text-red-400 text-xs max-w-md">{fetchError}</div>
+                      <button
+                        type="button"
+                        onClick={fetchApps}
+                        className="px-4 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition-colors cursor-pointer"
+                      >
+                        Retry Database Query
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )}
+
+              {!fetchError && applications.length === 0 && !loading && (
                 <tr>
                   <td colSpan={9} className="py-12 text-center text-slate-500">
                     {currentView === "trash"

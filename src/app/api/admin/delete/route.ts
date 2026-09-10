@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, handleAdminAuthError } from "@/lib/admin/session";
-import { permanentDeleteApplication, addAuditLog } from "@/lib/storage";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { deleteApplication, permanentDeleteApplication } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -52,11 +51,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Standard Protected Soft Delete
-    const supabase = getSupabaseAdmin();
-    if (!supabase) {
-      // Memory fallback strictly for offline development without Supabase configured
-      const { deleteApplication } = await import("@/lib/storage");
+    // Standard Protected Soft Delete via resilient storage helper
+    try {
       const ok = await deleteApplication(inputId, reason, adminIdentifier);
       if (!ok) {
         return NextResponse.json(
@@ -68,101 +64,24 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "Application moved to Trash.",
       });
-    }
-
-    // Resolve application and verify existence and Trash status
-    let applicationId = inputId;
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inputId);
-
-    const lookupQuery = isUuid
-      ? supabase.from("applications").select("id, reference_id, deleted_at").eq("id", inputId).maybeSingle()
-      : supabase.from("applications").select("id, reference_id, deleted_at").or(`reference_id.ilike.${inputId},id.eq.${inputId}`).maybeSingle();
-
-    const { data: foundRow, error: lookupErr } = await lookupQuery;
-
-    if (lookupErr || !foundRow) {
-      return NextResponse.json(
-        { success: false, error: `Application "${inputId}" not found.` },
-        { status: 404 }
-      );
-    }
-
-    if (foundRow.deleted_at !== null) {
-      return NextResponse.json(
-        { success: false, error: `Application "${foundRow.reference_id || inputId}" is already in Trash.` },
-        { status: 409 }
-      );
-    }
-
-    applicationId = foundRow.id;
-
-    // Perform canonical soft-delete update required by architecture
-    const { data, error } = await supabase
-      .from("applications")
-      .update({
-        deleted_at: new Date().toISOString(),
-        deleted_by: adminIdentifier,
-        delete_reason: reason || null,
-      })
-      .eq("id", applicationId)
-      .is("deleted_at", null)
-      .select("id, deleted_at, deleted_by, delete_reason")
-      .single();
-
-    if (error) {
-      // Handle 0 rows updated or conflict
-      if (error.code === "PGRST116") {
-        // Query to distinguish 404 (doesn't exist) from 409 (already deleted)
-        const { data: checkApp } = await supabase
-          .from("applications")
-          .select("id, deleted_at")
-          .eq("id", applicationId)
-          .maybeSingle();
-
-        if (!checkApp) {
-          return NextResponse.json(
-            { success: false, error: `Application "${inputId}" not found.` },
-            { status: 404 }
-          );
-        }
-
-        if (checkApp.deleted_at !== null) {
-          return NextResponse.json(
-            { success: false, error: `Application "${inputId}" is already in Trash.` },
-            { status: 409 }
-          );
-        }
-
+    } catch (delErr: any) {
+      if (delErr?.statusCode === 409 || delErr?.message?.includes("already in Trash")) {
         return NextResponse.json(
-          { success: false, error: "Application could not be updated." },
+          { success: false, error: delErr.message || `Application "${inputId}" is already in Trash.` },
+          { status: 409 }
+        );
+      }
+      if (delErr?.message?.includes("not found")) {
+        return NextResponse.json(
+          { success: false, error: delErr.message || `Application "${inputId}" not found.` },
           { status: 404 }
         );
       }
-
       return NextResponse.json(
-        { success: false, error: `Database error moving application to Trash: ${error.message}` },
+        { success: false, error: delErr?.message || "Unable to move application to Trash." },
         { status: 500 }
       );
     }
-
-    // Return success ONLY when exactly one updated row is returned
-    if (!data || !data.id) {
-      return NextResponse.json(
-        { success: false, error: `Application "${inputId}" not found or already in Trash.` },
-        { status: 404 }
-      );
-    }
-
-    await addAuditLog(
-      "APPLICATION_DELETED",
-      `Application ${data.id} moved to Trash by ${adminIdentifier}. Reason: ${reason || "None specified"}`
-    );
-
-    return NextResponse.json({
-      success: true,
-      data,
-      message: "Application moved to Trash successfully.",
-    });
   } catch (err) {
     return handleAdminAuthError(err);
   }

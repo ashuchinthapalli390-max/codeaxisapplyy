@@ -1270,12 +1270,9 @@ export async function getApplicationByRef(refOrId: string): Promise<ApplicationD
     const supabase = getSupabaseAdmin();
     if (supabase) {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
-      const isNum = !isNaN(Number(query));
       let dbQuery = supabase.from("applications").select("*");
       if (isUuid) {
-        dbQuery = dbQuery.eq("id", query);
-      } else if (isNum) {
-        dbQuery = dbQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
+        dbQuery = dbQuery.or(`id.eq.${query},reference_id.ilike.${query}`);
       } else {
         dbQuery = dbQuery.ilike("reference_id", query);
       }
@@ -1361,40 +1358,42 @@ export async function getApplications(filters?: {
     const supabase = getSupabaseAdmin();
 
     if (supabase) {
-      // 1. Base query from applications table ordered by created_at
-      // 1. Base query from applications table with active/trash filtering
-      let dbQuery = supabase.from("applications").select("*");
+      // 1. Fetch real rows from applications table in Supabase
+      let data: any[] | null = null;
+      let queryError: any = null;
 
-      if (filters?.view === "trash") {
-        // Trash query must return only rows where deleted_at is not null
-        dbQuery = dbQuery.not("deleted_at", "is", null);
+      const orderedRes = await supabase
+        .from("applications")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!orderedRes.error && orderedRes.data) {
+        data = orderedRes.data;
       } else {
-        // Active Applications query must include .is("deleted_at", null)
-        // and default to excluding explicitly marked test rows (safely including NULL)
-        dbQuery = dbQuery
-          .is("deleted_at", null)
-          .or("is_test_record.is.null,is_test_record.eq.false");
-      }
-
-      let { data, error } = await dbQuery.order("created_at", { ascending: false });
-
-      // Fallback query if ordering or composite column isn't indexed
-      if (error) {
-        console.warn("[getApplications Supabase Notice]: Filtered query notice:", error.message, ". Retrying base query...");
-        let baseQuery = supabase.from("applications").select("*");
-        if (filters?.view === "trash") {
-          baseQuery = baseQuery.not("deleted_at", "is", null);
+        console.warn("[getApplications] Ordered select notice:", orderedRes.error?.message, "- falling back to plain select(*)");
+        const plainRes = await supabase.from("applications").select("*");
+        if (!plainRes.error && plainRes.data) {
+          data = plainRes.data;
         } else {
-          baseQuery = baseQuery.is("deleted_at", null);
+          queryError = plainRes.error || orderedRes.error;
+          console.error("[getApplications] Supabase query failed:", queryError);
         }
-        const retryRes = await baseQuery;
-        data = retryRes.data;
-        error = retryRes.error;
       }
 
-      if (!error && data) {
+      if (queryError) {
+        throw new Error(`APPLICATION_READ_FAILED: ${queryError.message || "Database query failed"}`);
+      }
+
+      if (data) {
         // 2. Map all rows (extracting full data from raw_submission if needed)
         let list: ApplicationData[] = data.map(mapDbRowToApplication);
+
+        // Ensure newest-first ordering by created_at
+        list.sort((a, b) => {
+          const tA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tB - tA;
+        });
 
         // 3. View mode filtering (trash, test, active)
         if (filters?.view === "trash") {
@@ -1402,7 +1401,7 @@ export async function getApplications(filters?: {
         } else if (filters?.view === "test") {
           list = list.filter((a) => !a.deleted_at && !a.is_deleted && (a.is_test_record === true || a.is_test === true));
         } else {
-          // Active view: safely exclude only explicitly marked test applications
+          // Active view: safely exclude only explicitly marked test applications and deleted applications
           list = list.filter((a) => !a.deleted_at && !a.is_deleted && a.is_test_record !== true && a.is_test !== true);
         }
 
@@ -1451,8 +1450,12 @@ export async function getApplications(filters?: {
         };
       }
     }
-  } catch (err) {
-    console.warn("[getApplications Supabase Error]:", err);
+  } catch (err: any) {
+    console.error("[getApplications Supabase Error]:", err);
+    const { isSupabaseConfigured } = await import("@/lib/supabase/admin");
+    if (isSupabaseConfigured() || process.env.NODE_ENV === "production") {
+      throw err;
+    }
   }
 
   // Fallback to memory strictly when Supabase is unconfigured in local offline dev
@@ -1610,7 +1613,7 @@ export async function deleteApplication(refOrId: string, reason?: string, adminU
         const { data: found } = await supabase
           .from("applications")
           .select("id")
-          .or(`reference_id.ilike.${query},id.eq.${query}`)
+          .ilike("reference_id", query)
           .maybeSingle();
         if (found?.id) {
           applicationId = found.id;
@@ -1619,33 +1622,80 @@ export async function deleteApplication(refOrId: string, reason?: string, adminU
         }
       }
 
-      const { data, error } = await supabase
+      // Check current record
+      const { data: existingApp, error: fetchErr } = await supabase
         .from("applications")
-        .update({
+        .select("*")
+        .eq("id", applicationId)
+        .maybeSingle();
+
+      if (fetchErr || !existingApp) {
+        throw new Error(`Application "${query}" not found.`);
+      }
+
+      if (existingApp.deleted_at || existingApp.is_deleted || existingApp.raw_submission?.deleted_at) {
+        const conflictErr: any = new Error(`Application "${existingApp.reference_id || query}" is already in Trash.`);
+        conflictErr.statusCode = 409;
+        throw conflictErr;
+      }
+
+      // Attempt standard soft-delete update
+      const updatePayload: Record<string, any> = {
+        deleted_at: now,
+        deleted_by: adminUser,
+        delete_reason: reason || null,
+        is_deleted: true,
+        updated_at: now,
+      };
+
+      let updateRes = await supabase
+        .from("applications")
+        .update(updatePayload)
+        .eq("id", applicationId)
+        .select("*")
+        .maybeSingle();
+
+      if (updateRes.error && updateRes.error.message?.includes("Could not find the")) {
+        // Schema adaptive fallback: some soft delete columns might not be in table
+        const updatedRaw = {
+          ...(existingApp.raw_submission || {}),
           deleted_at: now,
           deleted_by: adminUser,
           delete_reason: reason || null,
           is_deleted: true,
+        };
+        const fallbackPayload = {
+          raw_submission: updatedRaw,
           updated_at: now,
-        })
-        .eq("id", applicationId)
-        .is("deleted_at", null)
-        .select("id, reference_id, deleted_at, deleted_by, delete_reason")
-        .single();
-
-      if (error) {
-        console.error("[deleteApplication Supabase Error]:", error.message);
-        throw new Error(`Database error moving application to Trash: ${error.message}`);
+        };
+        const withIsDel = await supabase
+          .from("applications")
+          .update({ ...fallbackPayload, is_deleted: true })
+          .eq("id", applicationId)
+          .select("*")
+          .maybeSingle();
+        if (!withIsDel.error) {
+          updateRes = withIsDel;
+        } else {
+          updateRes = await supabase
+            .from("applications")
+            .update(fallbackPayload)
+            .eq("id", applicationId)
+            .select("*")
+            .maybeSingle();
+        }
       }
 
-      if (!data || !data.id) {
-        throw new Error(`Application with reference or ID "${query}" not found or already in Trash.`);
+      if (updateRes.error) {
+        console.error("[deleteApplication Supabase Error]:", updateRes.error.message);
+        throw new Error(`Database error moving application to Trash: ${updateRes.error.message}`);
       }
 
-      await addAuditLog("APPLICATION_DELETED", `Application ${data.reference_id || query} moved to Trash. Reason: ${reason || "None specified"}`);
+      await addAuditLog("APPLICATION_DELETED", `Application ${existingApp.reference_id || query} moved to Trash. Reason: ${reason || "None specified"}`);
       return true;
     }
   } catch (err: any) {
+    if (err?.statusCode === 409) throw err;
     if (err.message && !err.message.includes("is not configured")) {
       throw err;
     }
@@ -1661,6 +1711,11 @@ export async function deleteApplication(refOrId: string, reason?: string, adminU
   );
   if (!app) {
     throw new Error(`Application "${query}" not found.`);
+  }
+  if (app.is_deleted || app.deleted_at) {
+    const conflictErr: any = new Error(`Application "${query}" is already in Trash.`);
+    conflictErr.statusCode = 409;
+    throw conflictErr;
   }
 
   app.is_deleted = true;
@@ -1700,12 +1755,9 @@ export async function permanentDeleteApplication(refOrId: string): Promise<boole
 
       // 3. Delete application row
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
-      const isNum = !isNaN(Number(query));
       let deleteQuery = supabase.from("applications").delete();
       if (isUuid) {
         deleteQuery = deleteQuery.eq("id", query);
-      } else if (isNum) {
-        deleteQuery = deleteQuery.or(`reference_id.ilike.${query},id.eq.${query}`);
       } else {
         deleteQuery = deleteQuery.ilike("reference_id", query);
       }
@@ -1757,7 +1809,7 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
         const { data: found } = await supabase
           .from("applications")
           .select("id")
-          .or(`reference_id.ilike.${query},id.eq.${query}`)
+          .ilike("reference_id", query)
           .maybeSingle();
         if (found?.id) {
           applicationId = found.id;
@@ -1766,34 +1818,82 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
         }
       }
 
-      const { data, error } = await supabase
+      // Check current record
+      const { data: existingApp, error: fetchErr } = await supabase
         .from("applications")
-        .update({
-          is_deleted: false,
+        .select("*")
+        .eq("id", applicationId)
+        .maybeSingle();
+
+      if (fetchErr || !existingApp) {
+        throw new Error(`Application "${query}" not found.`);
+      }
+
+      const isAlreadyActive = !existingApp.deleted_at && !existingApp.is_deleted && !existingApp.raw_submission?.deleted_at && !existingApp.raw_submission?.is_deleted;
+      if (isAlreadyActive) {
+        const conflictErr: any = new Error(`Application "${existingApp.reference_id || query}" is already active (not in Trash).`);
+        conflictErr.statusCode = 409;
+        throw conflictErr;
+      }
+
+      // Attempt standard restore update
+      const updatePayload: Record<string, any> = {
+        is_deleted: false,
+        deleted_at: null,
+        deleted_by: null,
+        delete_reason: null,
+        deletion_reason: null,
+        updated_at: now,
+      };
+
+      let updateRes = await supabase
+        .from("applications")
+        .update(updatePayload)
+        .eq("id", applicationId)
+        .select("*")
+        .maybeSingle();
+
+      if (updateRes.error && updateRes.error.message?.includes("Could not find the")) {
+        // Schema adaptive fallback: some soft delete columns might not be in table
+        const updatedRaw = {
+          ...(existingApp.raw_submission || {}),
           deleted_at: null,
           deleted_by: null,
           delete_reason: null,
-          deletion_reason: null,
+          is_deleted: false,
+        };
+        const fallbackPayload = {
+          raw_submission: updatedRaw,
           updated_at: now,
-        })
-        .eq("id", applicationId)
-        .not("deleted_at", "is", null)
-        .select("id, reference_id, deleted_at, deleted_by, delete_reason")
-        .single();
-
-      if (error) {
-        console.error("[restoreApplication Supabase Error]:", error.message);
-        throw new Error(`Database error restoring application from Trash: ${error.message}`);
+        };
+        const withIsDel = await supabase
+          .from("applications")
+          .update({ ...fallbackPayload, is_deleted: false })
+          .eq("id", applicationId)
+          .select("*")
+          .maybeSingle();
+        if (!withIsDel.error) {
+          updateRes = withIsDel;
+        } else {
+          updateRes = await supabase
+            .from("applications")
+            .update(fallbackPayload)
+            .eq("id", applicationId)
+            .select("*")
+            .maybeSingle();
+        }
       }
 
-      if (!data || !data.id) {
-        throw new Error(`Application with reference or ID "${query}" not found in Trash.`);
+      if (updateRes.error) {
+        console.error("[restoreApplication Supabase Error]:", updateRes.error.message);
+        throw new Error(`Database error restoring application from Trash: ${updateRes.error.message}`);
       }
 
-      await addAuditLog("APPLICATION_RESTORED", `Application ${data.reference_id || query} restored from Trash by ${adminUser}.`);
+      await addAuditLog("APPLICATION_RESTORED", `Application ${existingApp.reference_id || query} restored from Trash by ${adminUser}.`);
       return true;
     }
   } catch (err: any) {
+    if (err?.statusCode === 409) throw err;
     if (err.message && !err.message.includes("is not configured")) {
       throw err;
     }
@@ -1810,6 +1910,11 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
   if (!app) {
     throw new Error(`Application "${query}" not found.`);
   }
+  if (!app.is_deleted && !app.deleted_at) {
+    const conflictErr: any = new Error(`Application "${query}" is already active (not in Trash).`);
+    conflictErr.statusCode = 409;
+    throw conflictErr;
+  }
 
   app.is_deleted = false;
   app.deleted_at = undefined;
@@ -1817,7 +1922,7 @@ export async function restoreApplication(refOrId: string, adminUser: string = "a
   app.delete_reason = undefined;
   app.deletion_reason = undefined;
   app.updated_at = now;
-  await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash.`);
+  await addAuditLog("APPLICATION_RESTORED", `Application ${query} restored from Trash by ${adminUser}.`);
   return true;
 }
 
