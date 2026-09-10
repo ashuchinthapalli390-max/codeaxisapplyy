@@ -14,6 +14,25 @@ import {
   INITIAL_VERIFIED_CONTRIBUTIONS,
 } from "./canonical";
 
+const MEMBER_VERSIONS = new Map<string, number>();
+
+export function getMemberVersion(row: any): number {
+  if (typeof row?.version === "number" && !isNaN(row.version) && row.version > 0) {
+    return row.version;
+  }
+  const id = row?.id;
+  if (id && MEMBER_VERSIONS.has(id)) {
+    return MEMBER_VERSIONS.get(id)!;
+  }
+  return 1;
+}
+
+export function setMemberVersion(id: string, version: number): void {
+  if (id && typeof version === "number" && version > 0) {
+    MEMBER_VERSIONS.set(id, version);
+  }
+}
+
 /**
  * Resolves the displayable image URL from database storage path or fallback asset.
  * Replaces old placeholder /logo.jpeg with canonical photos or styled assets.
@@ -340,7 +359,7 @@ export function mapDbRowToAdminDto(
       secondaryDesignation,
       row.is_delete_protected
     ),
-    version: Number(row.version || 1),
+    version: getMemberVersion(row),
     deleted_at: row.deleted_at || row.archived_at || (status === "archived" ? (row.updated_at || new Date().toISOString()) : null),
     deleted_by: row.deleted_by || row.archived_by || null,
     delete_reason: row.delete_reason || null,

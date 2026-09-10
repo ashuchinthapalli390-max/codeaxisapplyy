@@ -10,6 +10,8 @@ import {
   mapDbRowToPublicDto,
   mapDbRowToAdminDto,
   mapMutationInputToDbRow,
+  getMemberVersion,
+  setMemberVersion,
 } from "./mapper";
 import {
   CANONICAL_INITIAL_PROFILES,
@@ -634,12 +636,13 @@ export async function saveLeadershipMember(
     .eq("id", memberId)
     .maybeSingle();
 
+  const currentDbVersion = existingRow ? getMemberVersion(existingRow) : 1;
+
   // Optimistic concurrency check: real conflict occurs only if database version is ahead of client expectedVersion
   if (
     existingRow &&
-    typeof existingRow.version === "number" &&
     typeof input.expectedVersion === "number" &&
-    existingRow.version > input.expectedVersion
+    currentDbVersion > input.expectedVersion
   ) {
     throw new LeadershipError(
       "This profile was modified by another administrator. Please refresh before saving.",
@@ -648,7 +651,8 @@ export async function saveLeadershipMember(
   }
 
   // Next monotonic version
-  dbRow.version = (Number(existingRow?.version) || 1) + 1;
+  const nextVersion = currentDbVersion + 1;
+  dbRow.version = nextVersion;
 
   // Enforce server-side role delete protection: strictly Founder, Co-Founder, CEO
   const isProtectedRole = isDeleteProtected(
@@ -682,6 +686,11 @@ export async function saveLeadershipMember(
       error?.message ?? "Team member update affected no rows.",
       500
     );
+  }
+
+  setMemberVersion(memberId, nextVersion);
+  if (data) {
+    data.version = nextVersion;
   }
 
   // Sync contributions if provided
@@ -807,7 +816,9 @@ export async function deleteLeadershipMember(
   }
 
   const now = new Date().toISOString();
-  const nextVersion = (Number(target.version) || 1) + 1;
+  const currentVer = getMemberVersion(target);
+  const nextVersion = currentVer + 1;
+  setMemberVersion(id, nextVersion);
 
   if (softDelete) {
     const updatePayload: Record<string, any> = {
@@ -908,7 +919,9 @@ export async function restoreLeadershipMember(
   }
 
   const now = new Date().toISOString();
-  const nextVersion = (Number(target.version) || 1) + 1;
+  const currentVer = getMemberVersion(target);
+  const nextVersion = currentVer + 1;
+  setMemberVersion(id, nextVersion);
   const updatePayload: Record<string, any> = {
     is_visible: true,
     status: "active",
@@ -922,6 +935,9 @@ export async function restoreLeadershipMember(
   const res = await adaptiveUpdate(supabase, "team_members", id, updatePayload);
   if (res.error || !res.data) {
     throw new LeadershipError(`Restore failed: ${res.error?.message || "member not found"}`, 500);
+  }
+  if (res.data) {
+    res.data.version = nextVersion;
   }
 
   await triggerLeadershipRevalidation();
