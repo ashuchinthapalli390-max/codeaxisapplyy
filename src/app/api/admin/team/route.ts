@@ -26,6 +26,23 @@ export async function GET(req: NextRequest) {
       await requireAdmin(req);
     }
 
+    if (searchParams.get("debug") === "true") {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const supabase = getSupabaseAdmin();
+      let dbData: any = null;
+      let dbError: any = null;
+      if (supabase) {
+        const res = await supabase.from("team_members").select("*").limit(1);
+        dbData = res.data;
+        dbError = res.error;
+      }
+      return NextResponse.json({
+        keys: dbData?.[0] ? Object.keys(dbData[0]) : [],
+        rawRow: dbData?.[0] || null,
+        error: dbError ? { message: dbError.message, code: dbError.code } : null,
+      });
+    }
+
     if (publicOnly) {
       const publicMembers = await getPublicLeadership();
       console.log(`[Leadership API][${requestId}] Public query returned ${publicMembers.length} active members.`);

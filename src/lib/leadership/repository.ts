@@ -54,8 +54,11 @@ async function adaptiveUpdate(
 ): Promise<{ data: any; error: any }> {
   const payload = { ...initialPayload };
   for (let attempt = 0; attempt < 25; attempt++) {
-    const res = await supabase.from(table).update(payload).eq("id", id).select().maybeSingle();
-    if (!res.error) return res;
+    const res = await supabase.from(table).update(payload).eq("id", id);
+    if (!res.error) {
+      const { data: updatedRow } = await supabase.from(table).select("*").eq("id", id).maybeSingle();
+      return { data: updatedRow || { id, ...payload }, error: null };
+    }
 
     const missingCol = extractMissingColumn(res.error);
     if (missingCol) {
@@ -66,7 +69,7 @@ async function adaptiveUpdate(
     }
     return res;
   }
-  return await supabase.from(table).update(payload).eq("id", id).select().maybeSingle();
+  return await supabase.from(table).update(payload).eq("id", id);
 }
 
 /**
@@ -79,8 +82,11 @@ async function adaptiveInsert(
 ): Promise<{ data: any; error: any }> {
   const payload = { ...initialPayload };
   for (let attempt = 0; attempt < 25; attempt++) {
-    const res = await supabase.from(table).insert(payload).select().maybeSingle();
-    if (!res.error) return res;
+    const res = await supabase.from(table).insert(payload);
+    if (!res.error) {
+      const { data: insertedRow } = await supabase.from(table).select("*").eq("id", payload.id).maybeSingle();
+      return { data: insertedRow || payload, error: null };
+    }
 
     const missingCol = extractMissingColumn(res.error);
     if (missingCol) {
@@ -91,7 +97,7 @@ async function adaptiveInsert(
     }
     return res;
   }
-  return await supabase.from(table).insert(payload).select().maybeSingle();
+  return await supabase.from(table).insert(payload);
 }
 
 async function triggerLeadershipRevalidation() {
@@ -290,10 +296,12 @@ export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
       try {
         const queryRes = await supabase
           .from("team_members")
-          .select("*")
-          .order("sort_order", { ascending: true });
+          .select("*");
         data = queryRes.data;
         error = queryRes.error;
+        if (data && Array.isArray(data)) {
+          data.sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+        }
       } catch (err: any) {
         error = err;
       }
@@ -402,25 +410,14 @@ export async function getAdminLeadership(): Promise<AdminLeadershipDto[]> {
       try {
         const queryRes = await supabase
           .from("team_members")
-          .select("*")
-          .order("sort_order", { ascending: true });
+          .select("*");
         data = queryRes.data;
         error = queryRes.error;
+        if (data && Array.isArray(data)) {
+          data.sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
+        }
       } catch (err: any) {
         error = err;
-      }
-
-      if (error && error.message?.includes("does not exist")) {
-        console.warn("[Leadership Repository] Admin fallback select due to column mismatch:", error.message);
-        try {
-          const retryRes = await supabase.from("team_members").select("*");
-          if (!retryRes.error && retryRes.data && retryRes.data.length > 0) {
-            data = retryRes.data;
-            error = null;
-          }
-        } catch (retryErr) {
-          console.warn("[Leadership Repository] Admin retry failed:", retryErr);
-        }
       }
 
       const needsReconcile =
