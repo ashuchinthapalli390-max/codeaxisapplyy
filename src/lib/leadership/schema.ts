@@ -680,6 +680,13 @@ export function validateLeadershipInput(raw: any): {
       isFeatured: raw.isFeatured !== false,
       isVisible: status === "active",
       isArchived: status === "archived",
+      expectedVersion:
+        typeof raw.expectedVersion === "number" && !isNaN(raw.expectedVersion)
+          ? raw.expectedVersion
+          : typeof raw.version === "number" && !isNaN(raw.version)
+          ? raw.version
+          : undefined,
+      version: typeof raw.version === "number" && !isNaN(raw.version) ? raw.version : undefined,
       updatedAt: raw.updatedAt ? String(raw.updatedAt) : undefined,
     },
   };
