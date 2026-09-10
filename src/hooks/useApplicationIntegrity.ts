@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { isFieldClipboardAllowed, MAX_CLIPBOARD_WARNINGS, clearApplicationDraft } from "@/lib/integrity";
+import { MAX_CLIPBOARD_WARNINGS, clearApplicationDraft, isClipboardRestricted } from "@/lib/integrity";
 import { playWarningTone } from "@/lib/audio";
 
 export interface IntegrityState {
@@ -51,40 +51,17 @@ export function useApplicationIntegrity(
     setTabWarningModal(false);
   }, []);
 
-  // Global window capture for clipboard operations on protected inputs
-  useEffect(() => {
-    const handleClipboardEvent = (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-
-      const tagName = target.tagName;
-      if (tagName === "INPUT" || tagName === "TEXTAREA") {
-        const name = target.getAttribute("name") || "";
-        const type = target.getAttribute("type") || "";
-
-        // Explicitly whitelisted link fields allow clipboard operations without violation
-        if (isFieldClipboardAllowed(name, type)) {
-          return;
-        }
-
-        // Protected application answer field — block and record violation
-        e.preventDefault();
-        registerClipboardViolation(name);
-      }
-    };
-
-    window.addEventListener("paste", handleClipboardEvent, true);
-    window.addEventListener("copy", handleClipboardEvent, true);
-    window.addEventListener("cut", handleClipboardEvent, true);
-
-    return () => {
-      window.removeEventListener("paste", handleClipboardEvent, true);
-      window.removeEventListener("copy", handleClipboardEvent, true);
-      window.removeEventListener("cut", handleClipboardEvent, true);
-    };
+  // Scoped handler for restricted assessment fields only — NEVER attached globally to window/document
+  const handleRestrictedClipboardEvent = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
+    const target = e.target;
+    if (isClipboardRestricted(target)) {
+      e.preventDefault();
+      const fieldName = target instanceof HTMLElement ? target.getAttribute("name") || undefined : undefined;
+      registerClipboardViolation(fieldName);
+    }
   }, [registerClipboardViolation]);
 
-  // Tab switch / visibility change monitor
+  // Tab switch / visibility change monitor (strictly for assessing candidate tab switches)
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -106,6 +83,7 @@ export function useApplicationIntegrity(
     warningModal,
     tabWarningModal,
     registerClipboardViolation,
+    handleRestrictedClipboardEvent,
     closeWarningModal,
     closeTabWarningModal,
   };

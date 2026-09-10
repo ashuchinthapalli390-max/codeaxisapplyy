@@ -61,6 +61,23 @@ export function isFieldClipboardAllowed(fieldName?: string, fieldType?: string):
   return false;
 }
 
+/**
+ * Canonical check for clipboard-restricted targets.
+ * Never runs globally across document/window.
+ * Explicitly respects [data-allow-paste="true"].
+ */
+export function isClipboardRestricted(target: EventTarget | null): boolean {
+  if (typeof window === "undefined" || !(target instanceof HTMLElement)) return false;
+
+  if (target.closest('[data-allow-paste="true"]')) {
+    return false;
+  }
+
+  return Boolean(
+    target.closest('[data-clipboard-restricted="true"]')
+  );
+}
+
 export interface WarningContent {
   title: string;
   badge: string;

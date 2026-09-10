@@ -10,6 +10,8 @@ interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   maxChars?: number;
   allowClipboard?: boolean;
   onClipboardViolation?: () => void;
+  "data-allow-paste"?: string | boolean;
+  "data-clipboard-restricted"?: string | boolean;
 }
 
 export default function Textarea({
@@ -18,7 +20,7 @@ export default function Textarea({
   optional = false,
   minChars,
   maxChars,
-  allowClipboard = false,
+  allowClipboard,
   onClipboardViolation,
   onCopy,
   onCut,
@@ -32,8 +34,18 @@ export default function Textarea({
   const textareaId = id || (name ? `textarea-${name}` : undefined);
   const currentLength = typeof value === "string" ? value.length : 0;
 
+  // By default, textareas allow clipboard operations.
+  // Restrictions apply ONLY if explicitly marked data-clipboard-restricted="true"
+  // and NOT overridden with data-allow-paste="true".
+  const isExplicitlyRestricted =
+    (props["data-clipboard-restricted"] === "true" || props["data-clipboard-restricted"] === true) &&
+    props["data-allow-paste"] !== "true" &&
+    props["data-allow-paste"] !== true;
+
+  const isClipboardAllowed = allowClipboard !== undefined ? allowClipboard : !isExplicitlyRestricted;
+
   const handleCopy = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!allowClipboard) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -41,7 +53,7 @@ export default function Textarea({
   };
 
   const handleCut = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!allowClipboard) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -49,7 +61,7 @@ export default function Textarea({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!allowClipboard) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -82,6 +94,7 @@ export default function Textarea({
         id={textareaId}
         name={name}
         value={value}
+        data-clipboard-restricted={isExplicitlyRestricted ? "true" : undefined}
         onCopy={handleCopy}
         onCut={handleCut}
         onPaste={handlePaste}

@@ -30,11 +30,32 @@ export default function StatusTrackingPage() {
   const [result, setResult] = useState<ApplicationData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const handleRefPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    // Trim leading/trailing whitespace, remove accidental internal spaces, uppercase, preserve hyphens
+    const normalized = text.trim().replace(/\s+/g, "").toUpperCase();
+    setRefId(normalized);
+  };
+
+  const handleEmailPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const text = e.clipboardData.getData("text/plain");
+    if (!text) return;
+    // Trim whitespace, convert to lowercase
+    const normalized = text.trim().toLowerCase();
+    setEmail(normalized);
+  };
+
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     playButtonClick();
 
-    if (!refId.trim() || !email.trim()) {
+    const cleanRef = refId.trim().replace(/\s+/g, "").toUpperCase();
+    const cleanEmail = email.trim().toLowerCase();
+
+    if (!cleanRef || !cleanEmail) {
       setErrorMsg("Please enter both Reference ID and registered Email.");
       playWarningTone();
       return;
@@ -46,7 +67,7 @@ export default function StatusTrackingPage() {
 
     try {
       const res = await fetch(
-        `/api/applications/track?ref=${encodeURIComponent(refId.trim())}&email=${encodeURIComponent(email.trim())}`
+        `/api/applications/track?ref=${encodeURIComponent(cleanRef)}&email=${encodeURIComponent(cleanEmail)}`
       );
       const json = await res.json();
 
@@ -118,6 +139,10 @@ export default function StatusTrackingPage() {
               name="refId"
               value={refId}
               onChange={(e) => setRefId(e.target.value)}
+              onPaste={handleRefPaste}
+              data-allow-paste="true"
+              allowClipboard={true}
+              autoComplete="off"
               placeholder="e.g. CAX-2026-000101"
               required
             />
@@ -127,6 +152,10 @@ export default function StatusTrackingPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onPaste={handleEmailPaste}
+              data-allow-paste="true"
+              allowClipboard={true}
+              autoComplete="email"
               placeholder="e.g. developer@example.com"
               required
             />

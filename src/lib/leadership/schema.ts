@@ -74,6 +74,11 @@ export interface TeamMemberDbRow {
   is_featured: boolean;
   is_active?: boolean;
   is_archived?: boolean;
+  is_delete_protected?: boolean;
+  version?: number;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   created_at: string;
   updated_at: string;
   archived_at: string | null;
@@ -212,6 +217,14 @@ export interface AdminLeadershipDto {
   isVisible: boolean;
   isArchived: boolean;
   status: LeadershipStatus;
+  canDelete: boolean;
+  canEdit?: boolean;
+  canRestore?: boolean;
+  is_delete_protected?: boolean;
+  version?: number;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -271,7 +284,75 @@ export interface LeadershipMutationInput {
   isFeatured?: boolean;
   isVisible?: boolean;
   isArchived?: boolean;
+  is_delete_protected?: boolean;
+  version?: number;
+  expectedVersion?: number;
   updatedAt?: string;
+}
+
+/**
+ * Shared server-side canonical role normalization helper
+ */
+export function normalizeRole(text?: string | null): string {
+  if (!text) return "";
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[–—_]/g, "-")
+    .replace(/[^\w\s&-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Enforces role deletion protection policy:
+ * - Founder => protected
+ * - Co-Founder => protected
+ * - CEO => protected
+ *
+ * Deletable roles:
+ * - CTO, HR, COO, CFO, CMO, Developer, Designer, Operations, Intern, Advisor, Recruiter, etc.
+ */
+export function isDeleteProtected(
+  roleType?: string | null,
+  primaryDesignation?: string | null,
+  secondaryDesignation?: string | null,
+  isExplicitlyProtected?: boolean | null
+): boolean {
+  if (isExplicitlyProtected === true) return true;
+
+  const tokens = [
+    normalizeRole(roleType),
+    normalizeRole(primaryDesignation),
+    normalizeRole(secondaryDesignation),
+  ].filter(Boolean);
+
+  for (const t of tokens) {
+    // Exact checks and tokenized checks
+    if (
+      t === "founder" ||
+      t.startsWith("founder ") ||
+      t.endsWith(" founder") ||
+      t.includes("founder &") ||
+      t.includes("& founder") ||
+      t === "co-founder" ||
+      t === "cofounder" ||
+      t.startsWith("co-founder") ||
+      t.startsWith("cofounder") ||
+      t.includes("co-founder &") ||
+      t.includes("& co-founder") ||
+      t === "ceo" ||
+      t.startsWith("ceo ") ||
+      t.endsWith(" ceo") ||
+      t.includes("ceo ") ||
+      t.includes("chief executive officer") ||
+      t === "chief executive"
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 /**

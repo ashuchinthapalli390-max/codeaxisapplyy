@@ -43,3 +43,6 @@ next-env.d.ts
 
 # local persistent storage data
 .data/
+
+# supabase cli temporary files
+supabase/.temp/

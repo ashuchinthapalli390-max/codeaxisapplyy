@@ -7,6 +7,7 @@ import {
   PublicContributionDto,
   AdminContributionDto,
   TeamMemberContributionDbRow,
+  isDeleteProtected,
 } from "./schema";
 import {
   findMatchingCanonicalProfile,
@@ -313,6 +314,24 @@ export function mapDbRowToAdminDto(
     isVisible: status === "active",
     isArchived: status === "archived",
     status,
+    canDelete: !isDeleteProtected(
+      roleType,
+      primaryDesignation,
+      secondaryDesignation,
+      row.is_delete_protected
+    ),
+    canEdit: true,
+    canRestore: status === "archived",
+    is_delete_protected: isDeleteProtected(
+      roleType,
+      primaryDesignation,
+      secondaryDesignation,
+      row.is_delete_protected
+    ),
+    version: Number(row.version || 1),
+    deleted_at: row.deleted_at || row.archived_at || null,
+    deleted_by: row.deleted_by || row.archived_by || null,
+    delete_reason: row.delete_reason || null,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
     archivedAt: row.archived_at,
@@ -334,6 +353,12 @@ export function mapMutationInputToDbRow(
   const sortOrder = input.sort_order ?? input.displayOrder ?? 0;
 
   const status: LeadershipStatus = input.status || (input.isArchived ? "archived" : (input.isVisible === false ? "hidden" : "active"));
+  const isProtected = isDeleteProtected(
+    input.roleType,
+    input.primaryDesignation || input.designation,
+    input.secondaryDesignation,
+    input.is_delete_protected
+  );
 
   return {
     id,
@@ -380,6 +405,7 @@ export function mapMutationInputToDbRow(
     status,
     is_active: status === "active",
     is_archived: status === "archived",
+    is_delete_protected: isProtected,
     sort_order: sortOrder,
     is_featured: input.isFeatured !== false,
     updated_at: now,

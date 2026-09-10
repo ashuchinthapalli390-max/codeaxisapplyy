@@ -8,6 +8,8 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   optional?: boolean;
   allowClipboard?: boolean;
   onClipboardViolation?: () => void;
+  "data-allow-paste"?: string | boolean;
+  "data-clipboard-restricted"?: string | boolean;
 }
 
 export default function Input({
@@ -27,14 +29,18 @@ export default function Input({
 }: InputProps) {
   const inputId = id || (name ? `input-${name}` : undefined);
   
-  // URL fields allow clipboard operations without violation
-  const isAllowed = allowClipboard ?? (
-    type === "url" || 
-    (name ? (name.toLowerCase().endsWith("url") || name.toLowerCase().endsWith("link")) : false)
-  );
+  // By default, ALL inputs allow copy, cut, and paste freely.
+  // Restrictions apply ONLY if explicitly marked with data-clipboard-restricted="true"
+  // and NOT marked with data-allow-paste="true".
+  const isExplicitlyRestricted =
+    (props["data-clipboard-restricted"] === "true" || props["data-clipboard-restricted"] === true) &&
+    props["data-allow-paste"] !== "true" &&
+    props["data-allow-paste"] !== true;
+
+  const isClipboardAllowed = allowClipboard !== undefined ? allowClipboard : !isExplicitlyRestricted;
 
   const handleCopy = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    if (!isAllowed) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -42,7 +48,7 @@ export default function Input({
   };
 
   const handleCut = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    if (!isAllowed) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -50,7 +56,7 @@ export default function Input({
   };
 
   const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    if (!isAllowed) {
+    if (!isClipboardAllowed) {
       e.preventDefault();
       onClipboardViolation?.();
     }
@@ -68,11 +74,6 @@ export default function Input({
             {label} {!optional && <span className="text-red-500">*</span>}
           </span>
           <div className="flex items-center gap-2">
-            {isAllowed && (
-              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-500/30">
-                PASTE ALLOWED
-              </span>
-            )}
             {optional && <span className="text-[10px] text-slate-500 font-normal">OPTIONAL</span>}
           </div>
         </label>
@@ -81,6 +82,7 @@ export default function Input({
         id={inputId}
         name={name}
         type={type}
+        data-allow-paste={props["data-allow-paste"] ?? "true"}
         onCopy={handleCopy}
         onCut={handleCut}
         onPaste={handlePaste}

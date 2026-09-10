@@ -24,6 +24,7 @@ import {
   Calendar,
   ExternalLink,
   X,
+  Info,
 } from "lucide-react";
 
 type ViewMode = "active" | "test" | "trash";
@@ -32,6 +33,15 @@ export default function AdminApplicationsPage() {
   const [applications, setApplications] = useState<ApplicationData[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null);
+
+  const showToast = (message: string, type: "success" | "error" | "info" = "info") => {
+    setToast({ message, type });
+    setTimeout(() => {
+      setToast((prev) => (prev?.message === message ? null : prev));
+    }, 4500);
+  };
 
   // View state
   const [currentView, setCurrentView] = useState<ViewMode>("active");
@@ -133,9 +143,10 @@ export default function AdminApplicationsPage() {
         setApplications((prev) =>
           prev.map((a) => (a.reference_id === refId ? { ...a, status: newStatus as any } : a))
         );
+        showToast(`Candidate status updated to ${newStatus}.`, "success");
       }
     } catch {
-      alert("Failed to update candidate status.");
+      showToast("Failed to update candidate status.", "error");
     }
   };
 
@@ -164,13 +175,14 @@ export default function AdminApplicationsPage() {
         setTotal((prev) => Math.max(0, prev - 1));
         setSoftDeleteApp(null);
         setDeleteReason("");
+        showToast("Application moved to Trash.", "success");
       } else {
         playWarningTone();
-        alert(json.error || "Failed to delete application.");
+        showToast(json.error || "Failed to delete application.", "error");
       }
     } catch {
       playWarningTone();
-      alert("Network error deleting application.");
+      showToast("Network error deleting application.", "error");
     } finally {
       setIsDeleting(false);
     }
@@ -181,7 +193,7 @@ export default function AdminApplicationsPage() {
     if (!permDeleteApp) return;
     if (deleteConfirmationText.trim() !== "DELETE") {
       playWarningTone();
-      alert('Please type "DELETE" to confirm permanent removal.');
+      showToast('Please type "DELETE" to confirm permanent removal.', "error");
       return;
     }
 
@@ -207,13 +219,14 @@ export default function AdminApplicationsPage() {
         setTotal((prev) => Math.max(0, prev - 1));
         setPermDeleteApp(null);
         setDeleteConfirmationText("");
+        showToast("Application permanently removed from registry.", "success");
       } else {
         playWarningTone();
-        alert(json.error || "Failed to permanently delete application.");
+        showToast(json.error || "Failed to permanently delete application.", "error");
       }
     } catch {
       playWarningTone();
-      alert("Network error during permanent deletion.");
+      showToast("Network error during permanent deletion.", "error");
     } finally {
       setIsPermDeleting(false);
     }
@@ -235,17 +248,18 @@ export default function AdminApplicationsPage() {
         playSuccessSound();
         setApplications((prev) => prev.filter((a) => a.reference_id !== app.reference_id));
         setTotal((prev) => Math.max(0, prev - 1));
+        showToast("Application restored to Active pipeline.", "success");
       } else {
         playWarningTone();
-        alert(json.error || "Failed to restore application.");
+        showToast(json.error || "Failed to restore application.", "error");
       }
     } catch {
       playWarningTone();
-      alert("Network error restoring application.");
+      showToast("Network error restoring application.", "error");
     }
   };
 
-  // Handle Bulk Move to Trash (For Dummy Records)
+  // Handle Bulk Move to Trash (For Marked Records)
   const handleBulkMoveToTrash = async () => {
     if (selectedIds.length === 0) return;
     if (!confirm(`Move ${selectedIds.length} selected record(s) to Trash?`)) return;
@@ -259,15 +273,16 @@ export default function AdminApplicationsPage() {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, permanent: false, reason: "Bulk moved dummy to Trash" }),
+          body: JSON.stringify({ id, permanent: false, reason: "Bulk moved to Trash" }),
         });
       }
       playSuccessSound();
       setApplications((prev) => prev.filter((a) => !selectedIds.includes(a.reference_id || "")));
       setTotal((prev) => Math.max(0, prev - selectedIds.length));
+      showToast(`${selectedIds.length} record(s) moved to Trash.`, "success");
       setSelectedIds([]);
     } catch {
-      alert("Error moving records to Trash.");
+      showToast("Error moving records to Trash.", "error");
     } finally {
       setIsBulkDeleting(false);
     }
@@ -308,6 +323,37 @@ export default function AdminApplicationsPage() {
   return (
     <div className="space-y-6 text-left font-mono">
       
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          className={`p-4 rounded-2xl border flex items-center justify-between gap-3 text-xs font-mono transition-all animate-in fade-in slide-in-from-top-2 ${
+            toast.type === "success"
+              ? "bg-emerald-950/80 border-emerald-500/60 text-emerald-300 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
+              : toast.type === "error"
+              ? "bg-red-950/80 border-red-500/60 text-red-300 shadow-[0_0_20px_rgba(239,68,68,0.2)]"
+              : "bg-slate-900 border-slate-700 text-slate-300"
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {toast.type === "success" ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : toast.type === "error" ? (
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+            ) : (
+              <Info className="w-4 h-4 text-slate-400 shrink-0" />
+            )}
+            <span>{toast.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-red-950 pb-4">
         <div>
@@ -315,11 +361,11 @@ export default function AdminApplicationsPage() {
             DATABASE CANDIDATE REGISTRY
           </span>
           <h1 className="text-2xl font-black text-white uppercase">
-            {currentView === "active"
-              ? `Active Applications (${total})`
+            {currentView === "trash"
+              ? `Trash Bin (${total})`
               : currentView === "test"
-              ? `Test / Dummy Submissions (${total})`
-              : `Trash Bin (${total})`}
+              ? `Test Submissions (${total})`
+              : `Active Applications (${total})`}
           </h1>
         </div>
 
@@ -370,22 +416,24 @@ export default function AdminApplicationsPage() {
           <span>Active Candidates</span>
         </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            playButtonClick();
-            setCurrentView("test");
-            setSelectedIds([]);
-          }}
-          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
-            currentView === "test"
-              ? "bg-amber-600 text-white shadow-[0_0_15px_rgba(217,119,6,0.5)]"
-              : "bg-black/60 border border-red-950 text-amber-400/80 hover:text-amber-300"
-          }`}
-        >
-          <AlertTriangle className="w-3.5 h-3.5" />
-          <span>Test / Dummy Submissions</span>
-        </button>
+        {process.env.NODE_ENV === "development" && (
+          <button
+            type="button"
+            onClick={() => {
+              playButtonClick();
+              setCurrentView("test");
+              setSelectedIds([]);
+            }}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              currentView === "test"
+                ? "bg-amber-600 text-white shadow-[0_0_15px_rgba(217,119,6,0.5)]"
+                : "bg-black/60 border border-red-950 text-amber-400/80 hover:text-amber-300"
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Test Submissions</span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -405,15 +453,14 @@ export default function AdminApplicationsPage() {
         </button>
       </div>
 
-      {/* Contextual Banner for Test View */}
-      {currentView === "test" && (
+      {/* Contextual Banner for Test View in Development */}
+      {process.env.NODE_ENV === "development" && currentView === "test" && (
         <div className="p-4 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-xs text-amber-200 flex items-start gap-3">
           <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <span className="font-bold text-white block mb-0.5">Test & Dummy Isolation Active</span>
+            <span className="font-bold text-white block mb-0.5">Development Test Isolation Active</span>
             <p className="text-amber-200/90 leading-relaxed">
-              These records match test patterns or were flagged as test submissions. Real applicant dossiers are completely separated.
-              You can review each test entry and safely move selected dummy submissions to Trash.
+              These records match developer test markers. Real applicant dossiers are completely separated.
             </p>
           </div>
         </div>
@@ -733,10 +780,10 @@ export default function AdminApplicationsPage() {
                                     if (json.success && json.signedUrl) {
                                       window.open(json.signedUrl, "_blank");
                                     } else {
-                                      alert(json.error || "Could not generate download link.");
+                                      showToast(json.error || "Could not generate download link.", "error");
                                     }
                                   } catch {
-                                    alert("Network error fetching resume.");
+                                    showToast("Network error fetching resume.", "error");
                                   }
                                 }}
                                 className="p-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white transition-all cursor-pointer"
@@ -754,8 +801,8 @@ export default function AdminApplicationsPage() {
                                 setSoftDeleteApp(app);
                                 setDeleteReason("");
                               }}
-                              className="p-1.5 rounded-lg bg-red-950/60 border border-red-900 text-red-400 hover:bg-red-700 hover:text-white transition-all cursor-pointer"
-                              title="Move to Trash"
+                              className="p-1.5 rounded-lg bg-red-950/40 border border-red-900/60 text-red-400 hover:bg-red-600 hover:text-white transition-all cursor-pointer"
+                              title="Move to Trash Bin"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -773,7 +820,7 @@ export default function AdminApplicationsPage() {
                     {currentView === "trash"
                       ? "Trash Bin is empty. No deleted applications."
                       : currentView === "test"
-                      ? "No test or dummy submissions identified."
+                      ? "No test submissions identified."
                       : "No matching applications found. Adjust your search or filters."}
                   </td>
                 </tr>

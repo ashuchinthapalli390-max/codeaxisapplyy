@@ -87,6 +87,14 @@ export interface TeamMember {
   sort_order?: number;
   displayOrder: number;
   archived_at?: string;
+  canDelete?: boolean;
+  canEdit?: boolean;
+  canRestore?: boolean;
+  is_delete_protected?: boolean;
+  version?: number;
+  deleted_at?: string | null;
+  deleted_by?: string | null;
+  delete_reason?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

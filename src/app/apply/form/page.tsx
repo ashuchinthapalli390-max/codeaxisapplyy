@@ -17,7 +17,7 @@ import ClipboardWarningModal from "@/components/application/ClipboardWarningModa
 import ApplicationResetOverlay from "@/components/application/ApplicationResetOverlay";
 import { ApplicationData, ProjectEntry, DeveloperLink, SkillLevel, VibeSkillLevel } from "@/types/application";
 import { validateRound } from "@/lib/validation";
-import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, clearApplicationDraft } from "@/lib/integrity";
+import { MAX_CLIPBOARD_WARNINGS, isFieldClipboardAllowed, isClipboardRestricted, clearApplicationDraft } from "@/lib/integrity";
 import {
   generateDraftId,
   getActiveSessionDraftId,
@@ -445,38 +445,15 @@ export default function ApplicationFormPage() {
     });
   };
 
-  // Window-level Capture Listener for Paste, Copy, and Cut on Monitored Answer Fields
-  useEffect(() => {
-    const handleClipboardAction = (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-
-      const tagName = target.tagName;
-      if (tagName === "INPUT" || tagName === "TEXTAREA") {
-        const name = target.getAttribute("name") || "";
-        const type = target.getAttribute("type") || "";
-
-        // Explicit URL & whitelisted link fields are 100% permitted (no violation)
-        if (isFieldClipboardAllowed(name, type)) {
-          return;
-        }
-
-        // Protected application answer field — intercept and register violation!
-        e.preventDefault();
-        triggerClipboardViolation(name);
-      }
-    };
-
-    window.addEventListener("paste", handleClipboardAction, true);
-    window.addEventListener("copy", handleClipboardAction, true);
-    window.addEventListener("cut", handleClipboardAction, true);
-
-    return () => {
-      window.removeEventListener("paste", handleClipboardAction, true);
-      window.removeEventListener("copy", handleClipboardAction, true);
-      window.removeEventListener("cut", handleClipboardAction, true);
-    };
-  }, []);
+  // Scoped handler for restricted essay fields — NEVER attached globally to window or document
+  const handleRestrictedClipboardAction = (e: React.ClipboardEvent) => {
+    const target = e.target;
+    if (isClipboardRestricted(target)) {
+      e.preventDefault();
+      const name = target instanceof HTMLElement ? target.getAttribute("name") || "" : "";
+      triggerClipboardViolation(name);
+    }
+  };
 
   const scrollToTop = () => {
     formTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });

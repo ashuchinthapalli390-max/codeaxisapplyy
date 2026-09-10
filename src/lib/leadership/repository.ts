@@ -4,6 +4,7 @@ import {
   PublicLeadershipDto,
   AdminLeadershipDto,
   validateLeadershipInput,
+  isDeleteProtected,
 } from "./schema";
 import {
   mapDbRowToPublicDto,
@@ -596,32 +597,40 @@ export async function saveLeadershipMember(
 
   const dbRow = mapMutationInputToDbRow(input, memberId);
 
-  // Check optimistic concurrency if updatedAt provided
-  if (input.updatedAt && input.id) {
-    const { data: currentRow } = await supabase
-      .from("team_members")
-      .select("updated_at")
-      .eq("id", memberId)
-      .maybeSingle();
-
-    if (currentRow && currentRow.updated_at && input.updatedAt) {
-      const currentMs = new Date(currentRow.updated_at).getTime();
-      const clientMs = new Date(input.updatedAt).getTime();
-      if (currentMs - clientMs > 2000) {
-        throw new LeadershipError(
-          "This profile was modified by another administrator. Please refresh before saving.",
-          409
-        );
-      }
-    }
-  }
-
-  // Check if row already exists
+  // Check if row already exists and inspect version/protection
   const { data: existingRow } = await supabase
     .from("team_members")
-    .select("id")
+    .select("id, version, role_type, primary_designation, secondary_designation, is_delete_protected")
     .eq("id", memberId)
     .maybeSingle();
+
+  // Optimistic concurrency check: real conflict occurs only if database version is ahead of client expectedVersion
+  if (
+    existingRow &&
+    typeof existingRow.version === "number" &&
+    typeof input.expectedVersion === "number" &&
+    existingRow.version > input.expectedVersion
+  ) {
+    throw new LeadershipError(
+      "This profile was modified by another administrator. Please refresh before saving.",
+      409
+    );
+  }
+
+  // Next monotonic version
+  dbRow.version = (Number(existingRow?.version) || 1) + 1;
+
+  // Enforce server-side role delete protection for Founder, Co-Founder, CEO
+  if (
+    isDeleteProtected(
+      dbRow.role_type || input.roleType,
+      dbRow.primary_designation || input.primaryDesignation,
+      dbRow.secondary_designation || input.secondaryDesignation,
+      existingRow?.is_delete_protected || dbRow.is_delete_protected
+    )
+  ) {
+    dbRow.is_delete_protected = true;
+  }
 
   let data: any = null;
   let error: any = null;
@@ -710,12 +719,29 @@ export async function saveLeadershipMember(
 
 /**
  * Soft delete (archive) or permanent delete
+ * Founder, Co-Founder, and CEO profiles are strictly delete-protected (HTTP 403).
+ * CTO, HR, COO, and other non-protected roles can be moved to Trash.
  */
 export async function deleteLeadershipMember(
   id: string,
   softDelete: boolean = true,
-  adminUser?: { email?: string; id?: string }
+  adminUser?: { email?: string; id?: string },
+  deleteReason?: string
 ): Promise<boolean> {
+  // 1. Defense-in-depth: Immediately reject deletion if ID matches canonical protected profiles (Founder, Co-Founder, CEO)
+  const canonicalTarget = CANONICAL_INITIAL_PROFILES.find((p) => p.id === id || p.slug === id);
+  if (
+    canonicalTarget &&
+    isDeleteProtected(
+      canonicalTarget.role_type,
+      canonicalTarget.primary_designation,
+      canonicalTarget.secondary_designation,
+      true
+    )
+  ) {
+    throw new LeadershipError("Founder, Co-Founder and CEO profiles cannot be deleted.", 403);
+  }
+
   if (!isSupabaseConfigured()) {
     throw new LeadershipError("Database not configured", 503);
   }
@@ -723,29 +749,65 @@ export async function deleteLeadershipMember(
   const supabase = getSupabaseAdmin();
   if (!supabase) throw new LeadershipError("Supabase unavailable", 503);
 
+  // 2. Fetch current profile from database
+  const { data: existing, error: findError } = await supabase
+    .from("team_members")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (findError) {
+    throw new LeadershipError(`Database error finding team member: ${findError.message}`, 500);
+  }
+
+  const target = existing || canonicalTarget;
+  if (!target) {
+    throw new LeadershipError("Archive failed: no matching team member found.", 404);
+  }
+
+  // 3. Check if already archived/deleted
+  if (target.status === "archived" || target.is_archived === true || target.deleted_at) {
+    throw new LeadershipError("Profile is already archived.", 409);
+  }
+
+  // 4. Enforce protected role policy on server: Founder, Co-Founder, and CEO must never be deletable
+  if (
+    isDeleteProtected(
+      target.role_type || target.roleType,
+      target.primary_designation || target.designation,
+      target.secondary_designation || target.secondaryDesignation,
+      target.is_delete_protected
+    )
+  ) {
+    throw new LeadershipError("Founder, Co-Founder and CEO profiles cannot be deleted.", 403);
+  }
+
   const now = new Date().toISOString();
+  const nextVersion = (Number(target.version) || 1) + 1;
 
   if (softDelete) {
-    const { data, error } = await supabase
-      .from("team_members")
-      .update({
-        status: "archived",
-        is_active: false,
-        is_archived: true,
-        archived_at: now,
-        archived_by: adminUser?.email || adminUser?.id || "admin",
-      })
-      .eq("id", id)
-      .select();
+    const updatePayload: Record<string, any> = {
+      status: "archived",
+      is_active: false,
+      is_archived: true,
+      archived_at: now,
+      archived_by: adminUser?.email || adminUser?.id || "admin",
+      deleted_at: now,
+      deleted_by: adminUser?.email || adminUser?.id || "admin",
+      delete_reason: deleteReason || null,
+      version: nextVersion,
+      updated_at: now,
+    };
 
-    if (error) {
-      throw new LeadershipError(`Failed to archive team member: ${error.message}`, 500);
+    const res = await adaptiveUpdate(supabase, "team_members", id, updatePayload);
+    if (res.error) {
+      throw new LeadershipError(`Failed to archive team member: ${res.error.message}`, 500);
     }
-    if (!data || data.length === 0) {
+    if (!res.data) {
       throw new LeadershipError("Archive failed: no matching team member found.", 404);
     }
   } else {
-    // Delete contributions first
+    // Hard delete: delete contributions first
     try {
       await supabase.from("team_member_contributions").delete().eq("team_member_id", id);
     } catch {
@@ -775,26 +837,41 @@ export async function restoreLeadershipMember(
   const supabase = getSupabaseAdmin();
   if (!supabase) throw new LeadershipError("Supabase unavailable", 503);
 
-  const { data, error } = await supabase
+  const { data: target, error: findErr } = await supabase
     .from("team_members")
-    .update({
-      status: "active",
-      is_active: true,
-      is_archived: false,
-      archived_at: null,
-      archived_by: null,
-      updated_at: new Date().toISOString(),
-    })
+    .select("*")
     .eq("id", id)
-    .select()
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
-    throw new LeadershipError(`Restore failed: ${error?.message || "member not found"}`, 500);
+  if (findErr) {
+    throw new LeadershipError(`Database error finding member: ${findErr.message}`, 500);
+  }
+  if (!target) {
+    throw new LeadershipError("Restore failed: team member not found.", 404);
+  }
+
+  const now = new Date().toISOString();
+  const nextVersion = (Number(target.version) || 1) + 1;
+  const updatePayload: Record<string, any> = {
+    status: "active",
+    is_active: true,
+    is_archived: false,
+    archived_at: null,
+    archived_by: null,
+    deleted_at: null,
+    deleted_by: null,
+    delete_reason: null,
+    version: nextVersion,
+    updated_at: now,
+  };
+
+  const res = await adaptiveUpdate(supabase, "team_members", id, updatePayload);
+  if (res.error || !res.data) {
+    throw new LeadershipError(`Restore failed: ${res.error?.message || "member not found"}`, 500);
   }
 
   await triggerLeadershipRevalidation();
-  return mapDbRowToAdminDto(data as TeamMemberDbRow);
+  return mapDbRowToAdminDto(res.data as TeamMemberDbRow);
 }
 
 /**

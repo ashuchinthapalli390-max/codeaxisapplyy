@@ -2,6 +2,8 @@
 import assert from "node:assert";
 import {
   validateLeadershipInput,
+  isDeleteProtected,
+  normalizeRole,
 } from "../src/lib/leadership/schema.ts";
 import {
   mapDbRowToPublicDto,
@@ -332,6 +334,69 @@ async function run() {
       assert(member.responsibilities.length >= 1, `Responsibilities present for ${member.displayName}`);
       assert(member.focus_areas.length >= 3, `At least 3 focus areas for ${member.displayName}`);
       assert.notStrictEqual(member.photoUrl, "/logo.jpeg", `Logo not used as portrait for ${member.displayName}`);
+    }
+  });
+
+  console.log("\n▶ [Test 11] Protected Leadership Roles vs Deletable Roles...");
+  test("isDeleteProtected accurately protects Founder, Co-Founder, and CEO", () => {
+    assert.strictEqual(isDeleteProtected("Founder", "Founder & Technical Director"), true, "Founder is protected");
+    assert.strictEqual(isDeleteProtected("Co-Founder", "Co-Founder & Platform Lead"), true, "Co-Founder is protected");
+    assert.strictEqual(isDeleteProtected("CEO", "Chief Executive Officer"), true, "CEO is protected");
+    assert.strictEqual(isDeleteProtected(null, "Chief Executive Officer (CEO)"), true, "CEO alias is protected");
+  });
+
+  test("isDeleteProtected permits deletion for CTO, HR, COO, and normal roles", () => {
+    assert.strictEqual(isDeleteProtected("CTO", "Chief Technology Officer"), false, "CTO is deletable");
+    assert.strictEqual(isDeleteProtected("HR", "Head of Human Resources"), false, "HR is deletable");
+    assert.strictEqual(isDeleteProtected("COO", "Chief Operating Officer"), false, "COO is deletable");
+    assert.strictEqual(isDeleteProtected("Developer", "Lead Developer"), false, "Developer is deletable");
+    assert.strictEqual(isDeleteProtected("Core Team", "Operations Lead"), false, "Operations is deletable");
+  });
+
+  test("mapDbRowToAdminDto sets canDelete false for protected roles and true for normal roles", () => {
+    const founderDto = mapDbRowToAdminDto({
+      id: "test-f1",
+      role_type: "Founder",
+      primary_designation: "Founder",
+    });
+    assert.strictEqual(founderDto.canDelete, false, "Founder canDelete is false");
+    assert.strictEqual(founderDto.is_delete_protected, true, "Founder is_delete_protected is true");
+
+    const ctoDto = mapDbRowToAdminDto({
+      id: "test-cto1",
+      role_type: "CTO",
+      primary_designation: "Chief Technology Officer",
+    });
+    assert.strictEqual(ctoDto.canDelete, true, "CTO canDelete is true");
+    assert.strictEqual(ctoDto.is_delete_protected, false, "CTO is_delete_protected is false");
+  });
+
+  console.log("\n▶ [Test 12] Protected Role Deletion Enforcement...");
+  await testAsync("deleteLeadershipMember rejects Founder, Co-Founder, and CEO with HTTP 403", async () => {
+    // Attempt deleting canonical Founder (CH. Arshad)
+    try {
+      await deleteLeadershipMember("d63a0516-ab2f-4474-a3ca-8d549db5fbc2", true);
+      assert.fail("Should have thrown error for Founder deletion");
+    } catch (err) {
+      assert(err instanceof LeadershipError, "Throws LeadershipError");
+      assert.strictEqual(err.statusCode, 403, "HTTP 403 status code");
+      assert(err.message.includes("cannot be deleted"), "Message indicates protected profile");
+    }
+
+    // Attempt deleting canonical Co-Founder (B. Sanjay)
+    try {
+      await deleteLeadershipMember("a5e3eb9c-e7ed-4bd7-8e4a-e073c502b359", true);
+      assert.fail("Should have thrown error for Co-Founder deletion");
+    } catch (err) {
+      assert.strictEqual(err.statusCode, 403, "HTTP 403 status code for Co-Founder");
+    }
+
+    // Attempt deleting canonical CEO (Kishore)
+    try {
+      await deleteLeadershipMember("148ed82c-a0a1-40b1-b91f-9447726a0f9b", true);
+      assert.fail("Should have thrown error for CEO deletion");
+    } catch (err) {
+      assert.strictEqual(err.statusCode, 403, "HTTP 403 status code for CEO");
     }
   });
 

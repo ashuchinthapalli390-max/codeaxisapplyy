@@ -37,6 +37,7 @@ import {
   Sliders,
   ExternalLink,
   ShieldAlert,
+  Shield,
   Globe,
   Briefcase,
 } from "lucide-react";
@@ -338,13 +339,18 @@ export default function AdminTeamPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "delete", id, hardDelete }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         playSuccessSound();
         setIsEditModalOpen(false);
         fetchTeam();
+      } else {
+        setErrorMessage(data?.error || "Failed to delete/archive member.");
+        playWarningTone();
       }
-    } catch {
-      alert("Failed to delete/archive member.");
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to delete/archive member.");
+      playWarningTone();
     }
   };
 
@@ -357,12 +363,17 @@ export default function AdminTeamPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "restore", id }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
         playSuccessSound();
         fetchTeam();
+      } else {
+        setErrorMessage(data?.error || "Failed to restore member.");
+        playWarningTone();
       }
-    } catch {
-      alert("Failed to restore member.");
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to restore member.");
+      playWarningTone();
     }
   };
 
@@ -721,6 +732,14 @@ export default function AdminTeamPage() {
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>RESTORE PROFILE</span>
                   </button>
+                ) : member.canDelete === false || member.is_delete_protected ? (
+                  <div
+                    title="Founder, Co-Founder and CEO profiles cannot be deleted."
+                    className="col-span-2 py-1.5 px-2 rounded-xl bg-yellow-950/30 border border-yellow-600/30 text-yellow-400/90 text-[10px] font-bold flex items-center justify-center gap-1 cursor-default select-none"
+                  >
+                    <Shield className="w-3 h-3 text-yellow-400" />
+                    <span>PROTECTED ROLE</span>
+                  </div>
                 ) : (
                   <button
                     type="button"
@@ -728,7 +747,7 @@ export default function AdminTeamPage() {
                     className="col-span-2 py-1.5 rounded-xl bg-black/40 hover:bg-red-950/40 border border-red-950 text-slate-500 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
                   >
                     <Archive className="w-3 h-3" />
-                    <span>ARCHIVE MEMBER</span>
+                    <span>MOVE TO TRASH</span>
                   </button>
                 )}
               </div>

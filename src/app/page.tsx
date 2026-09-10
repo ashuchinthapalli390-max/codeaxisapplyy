@@ -58,18 +58,52 @@ export default function HomePage() {
   const [selectedLeaderModal, setSelectedLeaderModal] = useState<TeamMember | null>(null);
   const [brokenImages, setBrokenImages] = useState<Record<string, boolean>>({});
 
-  const fetchTeamMembers = () => {
-    fetch("/api/team", {
-      cache: "no-store",
-      headers: { "Cache-Control": "no-cache" },
-    })
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && Array.isArray(json.data)) {
-          setTeamMembers(json.data);
-        }
-      })
-      .catch(() => {});
+  const [leadershipState, setLeadershipState] = useState<{
+    status: "idle" | "loading" | "ready" | "empty" | "error";
+    message?: string;
+  }>({
+    status: "loading",
+  });
+
+  const fetchTeamMembers = async () => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const res = await fetch("/api/team", {
+        method: "GET",
+        cache: "no-store",
+        signal: controller.signal,
+        headers: { "Cache-Control": "no-cache", Accept: "application/json" },
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(json?.error?.message || json?.error || `Leadership request failed with ${res.status}`);
+      }
+      if (json && json.success && Array.isArray(json.data)) {
+        setTeamMembers(json.data);
+        const activeProfiles = json.data.filter((m: any) => m.isVisible !== false && !m.isArchived);
+        setLeadershipState({
+          status: activeProfiles.length > 0 ? "ready" : "empty",
+        });
+      } else {
+        throw new Error("Invalid leadership response shape");
+      }
+    } catch (err: any) {
+      if (controller.signal.aborted) {
+        setLeadershipState((prev) => ({
+          status: teamMembers.length > 0 ? "ready" : "error",
+          message: "Leadership request timed out. Please retry.",
+        }));
+      } else {
+        setLeadershipState((prev) => ({
+          status: teamMembers.length > 0 ? "ready" : "error",
+          message: err?.message || "Unable to load leadership profiles.",
+        }));
+      }
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   };
 
   useEffect(() => {
@@ -1106,9 +1140,39 @@ agency.launchRecruitmentBatch("2026-SEP");`,
             </p>
           </div>
 
-          {teamMembers.filter((m) => m.isVisible !== false && !m.isArchived).length === 0 ? (
+          {leadershipState.status === "loading" && teamMembers.length === 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((n) => (
+                <div key={n} className="red-glass rounded-3xl p-6 border border-red-500/20 animate-pulse space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-24 bg-red-950/60 rounded-full" />
+                    <div className="w-12 h-12 bg-red-950/40 rounded-full" />
+                  </div>
+                  <div className="h-6 w-3/4 bg-red-950/60 rounded" />
+                  <div className="h-4 w-1/2 bg-red-950/40 rounded" />
+                  <div className="h-16 bg-red-950/20 rounded-xl" />
+                </div>
+              ))}
+            </div>
+          ) : leadershipState.status === "error" && teamMembers.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-red-950/30 border border-red-500/40 text-center font-mono space-y-3">
+              <p className="text-xs text-red-300 font-bold">
+                {leadershipState.message || "Unable to load leadership profiles."}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  playButtonClick();
+                  fetchTeamMembers();
+                }}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Retry
+              </button>
+            </div>
+          ) : teamMembers.filter((m) => m.isVisible !== false && !m.isArchived).length === 0 ? (
             <div className="p-8 rounded-2xl bg-red-950/20 border border-red-500/20 text-center font-mono text-xs text-slate-400">
-              Leadership profiles are synchronizing with the central registry...
+              No published leadership profiles found.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

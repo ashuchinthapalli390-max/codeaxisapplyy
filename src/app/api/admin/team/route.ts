@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
     if (action === "delete" && body.id) {
       const hard = body.hardDelete === true;
       console.log(`[Leadership API][${requestId}] Delete started for ID: ${body.id} (hard=${hard})`);
-      await deleteLeadershipMember(body.id, !hard, adminIdentity);
+      await deleteLeadershipMember(body.id, !hard, adminIdentity, body.reason || body.delete_reason);
       await addAuditLog(
         "TEAM_UPDATE",
         hard ? `Permanently deleted team member: ${body.id}` : `Archived team member: ${body.id}`
