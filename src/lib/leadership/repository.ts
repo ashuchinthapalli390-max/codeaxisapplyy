@@ -43,6 +43,55 @@ export function extractMissingColumn(error: any): string | null {
   return null;
 }
 
+const VALID_PRODUCTION_TEAM_MEMBER_COLS = new Set([
+  "id",
+  "name",
+  "display_name",
+  "codename",
+  "designation",
+  "secondary_designation",
+  "role_type",
+  "department",
+  "tagline",
+  "bio",
+  "short_bio",
+  "quote",
+  "photo_url",
+  "profile_storage_path",
+  "profile_object_position_x",
+  "profile_object_position_y",
+  "profile_scale",
+  "skills",
+  "email",
+  "github_url",
+  "linkedin_url",
+  "instagram_url",
+  "website_url",
+  "display_order",
+  "is_featured",
+  "is_visible",
+  "created_at",
+  "updated_at",
+  // Columns if migrated:
+  "status",
+  "deleted_at",
+  "deleted_by",
+  "delete_reason",
+  "is_delete_protected",
+  "version",
+]);
+
+function cleanTeamMemberPayload(table: string, payload: Record<string, any>): Record<string, any> {
+  if (table !== "team_members") return { ...payload };
+  const cleaned: Record<string, any> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (VALID_PRODUCTION_TEAM_MEMBER_COLS.has(k)) {
+      cleaned[k] = v;
+    }
+  }
+  return cleaned;
+}
+
 /**
  * Adaptive Update helper: Retries database update by removing missing schema columns
  */
@@ -52,7 +101,7 @@ async function adaptiveUpdate(
   id: string,
   initialPayload: Record<string, any>
 ): Promise<{ data: any; error: any }> {
-  const payload = { ...initialPayload };
+  const payload = cleanTeamMemberPayload(table, initialPayload);
   for (let attempt = 0; attempt < 25; attempt++) {
     const res = await supabase.from(table).update(payload).eq("id", id);
     if (!res.error) {
@@ -80,7 +129,7 @@ async function adaptiveInsert(
   table: string,
   initialPayload: Record<string, any>
 ): Promise<{ data: any; error: any }> {
-  const payload = { ...initialPayload };
+  const payload = cleanTeamMemberPayload(table, initialPayload);
   for (let attempt = 0; attempt < 25; attempt++) {
     const res = await supabase.from(table).insert(payload);
     if (!res.error) {
