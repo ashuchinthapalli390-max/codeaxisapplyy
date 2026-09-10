@@ -152,12 +152,22 @@ export async function POST(req: NextRequest) {
     if (customSql) {
       migrationSql = customSql;
     } else {
+      const targetMigration = body.migrationName || "20260910150000_repair_leadership_summary_and_soft_delete.sql";
       const migrationPath = path.resolve(
         process.cwd(),
-        "supabase/migrations/20260910140000_applications_soft_delete_repair.sql"
+        "supabase/migrations",
+        targetMigration
       );
       if (fs.existsSync(migrationPath)) {
         migrationSql = fs.readFileSync(migrationPath, "utf-8");
+      } else {
+        const fallbackPath = path.resolve(
+          process.cwd(),
+          "supabase/migrations/20260910140000_applications_soft_delete_repair.sql"
+        );
+        if (fs.existsSync(fallbackPath)) {
+          migrationSql = fs.readFileSync(fallbackPath, "utf-8");
+        }
       }
     }
 

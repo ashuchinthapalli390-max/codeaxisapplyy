@@ -74,7 +74,7 @@ interface LeadershipEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   member: TeamMember;
-  onSave: (updated: TeamMember) => Promise<boolean>;
+  onSave: (updated: TeamMember) => Promise<TeamMember | boolean>;
   onOpenCropper: () => void;
   onPreview: (member: TeamMember) => void;
   triggerElement?: HTMLElement | null;
@@ -240,14 +240,20 @@ export default function LeadershipEditorModal({
       const completeness = calculateProfileCompleteness(formData);
       const payload: TeamMember = {
         ...formData,
+        expectedVersion: formData.version,
         designation: primaryDesig,
         primaryDesignation: primaryDesig,
         profileCompleteness: completeness,
         profile_completeness: completeness,
       };
 
-      const ok = await onSave(payload);
-      if (ok) {
+      const result = await onSave(payload);
+      if (result) {
+        if (typeof result === "object") {
+          // Update baseline and form with the returned row from Supabase (including fresh version)
+          setFormData(result);
+          initialMemberJsonRef.current = JSON.stringify(result);
+        }
         setIsDirty(false);
         setSaveProgressMsg(null);
         setSuccessMessage("Leadership profile saved successfully to Supabase!");

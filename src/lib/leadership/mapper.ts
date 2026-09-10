@@ -137,7 +137,13 @@ export function mapDbRowToPublicDto(
   const tagline = row.tagline || row.short_tagline || canonical?.tagline || canonical?.short_tagline || "";
   const shortBio = row.short_bio || row.bio || canonical?.short_bio || "";
   const fullBio = row.full_bio || canonical?.full_bio || shortBio;
-  const leadershipSummary = row.leadership_summary || canonical?.leadership_summary || "";
+  const leadershipSummary =
+    row.leadership_summary ||
+    row.full_bio ||
+    row.short_bio ||
+    row.bio ||
+    canonical?.leadership_summary ||
+    "";
   const quote = row.quote || canonical?.quote || "";
   const codename = row.code_name || row.codename || canonical?.code_name || "";
   const roleType = row.role_type || canonical?.role_type || "Core Team";
@@ -245,7 +251,13 @@ export function mapDbRowToAdminDto(
   const tagline = row.tagline || row.short_tagline || canonical?.tagline || canonical?.short_tagline || "";
   const shortBio = row.short_bio || row.bio || canonical?.short_bio || "";
   const fullBio = row.full_bio || canonical?.full_bio || shortBio;
-  const leadershipSummary = row.leadership_summary || canonical?.leadership_summary || "";
+  const leadershipSummary =
+    row.leadership_summary ||
+    row.full_bio ||
+    row.short_bio ||
+    row.bio ||
+    canonical?.leadership_summary ||
+    "";
   const quote = row.quote || canonical?.quote || "";
   const codename = row.code_name || row.codename || canonical?.code_name || "";
   const roleType = row.role_type || canonical?.role_type || "Core Team";
@@ -373,7 +385,7 @@ export function mapMutationInputToDbRow(
     tagline: input.tagline || null,
     short_tagline: input.tagline || null,
     short_bio: input.shortBio || null,
-    full_bio: input.fullBio || null,
+    full_bio: input.fullBio || input.shortBio || null,
     leadership_summary: input.leadershipSummary || null,
     quote: input.quote || null,
     responsibilities: input.responsibilities || input.roles || [],

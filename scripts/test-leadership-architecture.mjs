@@ -400,6 +400,58 @@ async function run() {
     }
   });
 
+  console.log("\n▶ [Test 13] Varun COO Role Protection & Deletability...");
+  test("Varun canonical role is COO and is NOT delete protected", () => {
+    const varunProfile = CANONICAL_INITIAL_PROFILES.find((p) => p.id === "e7b92f15-8c34-4b52-9c1a-6d8e2f3a4b5c");
+    assert(varunProfile, "Varun profile exists in canonical definitions");
+    assert.strictEqual(varunProfile.role_type, "COO", "Varun role is COO");
+    assert.strictEqual(
+      isDeleteProtected(varunProfile.role_type, varunProfile.primary_designation, varunProfile.secondary_designation),
+      false,
+      "Varun COO is not delete protected"
+    );
+
+    const adminDto = mapDbRowToAdminDto(varunProfile);
+    assert.strictEqual(adminDto.canDelete, true, "Varun admin DTO has canDelete: true");
+    assert.strictEqual(adminDto.is_delete_protected, false, "Varun admin DTO has is_delete_protected: false");
+  });
+
+  console.log("\n▶ [Test 14] Canonical Role Resolution (Founder, Co-Founder, CEO vs COO, CTO)...");
+  test("Strict canonical role discrimination", () => {
+    assert.strictEqual(isDeleteProtected("Founder", "Chief Executive Officer"), true);
+    assert.strictEqual(isDeleteProtected("Co-Founder", "Chief Technology Officer"), true);
+    assert.strictEqual(isDeleteProtected("CEO", "Director"), true);
+    assert.strictEqual(isDeleteProtected("COO", "Chief Operating Officer"), false);
+    assert.strictEqual(isDeleteProtected("CTO", "Chief Technology Officer"), false);
+    assert.strictEqual(isDeleteProtected("HR", "Head of HR"), false);
+    assert.strictEqual(isDeleteProtected("CFO", "Chief Financial Officer"), false);
+    assert.strictEqual(isDeleteProtected("CMO", "Chief Marketing Officer"), false);
+    assert.strictEqual(isDeleteProtected("Developer", "Senior Full-Stack Developer"), false);
+    assert.strictEqual(isDeleteProtected("Designer", "UI/UX Designer"), false);
+    assert.strictEqual(isDeleteProtected("Operations", "Operations Manager"), false);
+    assert.strictEqual(isDeleteProtected("Advisor", "Technical Advisor"), false);
+    assert.strictEqual(isDeleteProtected("Recruiter", "Lead Recruiter"), false);
+  });
+
+  console.log("\n▶ [Test 15] Leadership Summary Graceful Mapping & Coalescing...");
+  test("leadership_summary falls back across full_bio, short_bio, bio, canonical", () => {
+    const dtoWithSummary = mapDbRowToPublicDto({
+      id: "test-1",
+      full_name: "Test Leader",
+      primary_designation: "Lead",
+      leadership_summary: "Explicit leadership summary text",
+    });
+    assert.strictEqual(dtoWithSummary.leadershipSummary, "Explicit leadership summary text");
+
+    const dtoFallbackBio = mapDbRowToPublicDto({
+      id: "test-2",
+      full_name: "Test Leader",
+      primary_designation: "Lead",
+      full_bio: "Full bio text used as summary fallback",
+    });
+    assert.strictEqual(dtoFallbackBio.leadershipSummary, "Full bio text used as summary fallback");
+  });
+
   console.log("\n==================================================================");
   console.log(`  LEADERSHIP TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
   console.log("==================================================================\n");

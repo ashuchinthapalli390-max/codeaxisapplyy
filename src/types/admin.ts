@@ -92,6 +92,7 @@ export interface TeamMember {
   canRestore?: boolean;
   is_delete_protected?: boolean;
   version?: number;
+  expectedVersion?: number;
   deleted_at?: string | null;
   deleted_by?: string | null;
   delete_reason?: string | null;

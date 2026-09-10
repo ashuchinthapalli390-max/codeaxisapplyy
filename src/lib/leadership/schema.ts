@@ -291,17 +291,98 @@ export interface LeadershipMutationInput {
 }
 
 /**
- * Shared server-side canonical role normalization helper
+ * Canonical protected role set: strictly Founder, Co-Founder, and CEO.
+ * COO, CTO, HR, CFO, CMO, Developer, Designer, Operations, etc. are deletable.
  */
-export function normalizeRole(text?: string | null): string {
-  if (!text) return "";
-  return text
+export const PROTECTED_ROLE_TYPES = new Set([
+  "founder",
+  "co-founder",
+  "ceo",
+]);
+
+/**
+ * Normalizes role text into lowercase stripped format
+ */
+export function normalizeRoleType(value: unknown): string {
+  return String(value ?? "")
     .trim()
     .toLowerCase()
     .replace(/[–—_]/g, "-")
-    .replace(/[^\w\s&-]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/\s+/g, " ");
+}
+
+/**
+ * Shared server-side canonical role normalization helper (alias for backward compatibility)
+ */
+export function normalizeRole(text?: string | null): string {
+  return normalizeRoleType(text);
+}
+
+/**
+ * Resolves the canonical role type from member role and primary designation.
+ * Strictly distinguishes Founder, Co-Founder, and CEO from COO, CTO, HR, etc.
+ */
+export function getCanonicalRoleType(member: {
+  role_type?: string | null;
+  roleType?: string | null;
+  primary_designation?: string | null;
+  primaryDesignation?: string | null;
+  designation?: string | null;
+}): string {
+  const role = normalizeRoleType(member.role_type || member.roleType);
+
+  if (role === "founder" || role.includes("founder &") || role.includes("& founder")) {
+    return "founder";
+  }
+
+  if (role === "co-founder" || role === "cofounder" || role.includes("co-founder") || role.includes("cofounder")) {
+    return "co-founder";
+  }
+
+  if (
+    role === "ceo" ||
+    role === "chief executive officer" ||
+    role.includes("chief executive officer")
+  ) {
+    return "ceo";
+  }
+
+  const designation = normalizeRoleType(member.primary_designation || member.primaryDesignation || member.designation);
+
+  if (designation === "founder" || designation.includes("founder &") || designation.includes("& founder")) {
+    return "founder";
+  }
+
+  if (designation === "co-founder" || designation === "cofounder" || designation.includes("co-founder") || designation.includes("cofounder")) {
+    return "co-founder";
+  }
+
+  if (
+    designation === "ceo" ||
+    designation === "chief executive officer" ||
+    designation.includes("chief executive officer")
+  ) {
+    return "ceo";
+  }
+
+  return role || designation || "core team";
+}
+
+/**
+ * Checks whether a member is a protected leadership profile.
+ * Founder, Co-Founder, and CEO => true (never deletable)
+ * COO, CTO, HR, and other roles => false (always deletable)
+ */
+export function isProtectedLeadershipRole(member: {
+  role_type?: string | null;
+  roleType?: string | null;
+  primary_designation?: string | null;
+  primaryDesignation?: string | null;
+  designation?: string | null;
+  is_delete_protected?: boolean | null;
+}): boolean {
+  const canonicalRole = getCanonicalRoleType(member);
+  return PROTECTED_ROLE_TYPES.has(canonicalRole);
 }
 
 /**
@@ -311,7 +392,7 @@ export function normalizeRole(text?: string | null): string {
  * - CEO => protected
  *
  * Deletable roles:
- * - CTO, HR, COO, CFO, CMO, Developer, Designer, Operations, Intern, Advisor, Recruiter, etc.
+ * - COO, CTO, HR, CFO, CMO, Developer, Designer, Operations, Intern, Advisor, Recruiter, etc.
  */
 export function isDeleteProtected(
   roleType?: string | null,
@@ -319,39 +400,27 @@ export function isDeleteProtected(
   secondaryDesignation?: string | null,
   isExplicitlyProtected?: boolean | null
 ): boolean {
-  if (isExplicitlyProtected === true) return true;
+  const canonicalRole = getCanonicalRoleType({
+    role_type: roleType,
+    primary_designation: primaryDesignation,
+  });
 
-  const tokens = [
-    normalizeRole(roleType),
-    normalizeRole(primaryDesignation),
-    normalizeRole(secondaryDesignation),
-  ].filter(Boolean);
+  if (PROTECTED_ROLE_TYPES.has(canonicalRole)) {
+    return true;
+  }
 
-  for (const t of tokens) {
-    // Exact checks and tokenized checks
-    if (
-      t === "founder" ||
-      t.startsWith("founder ") ||
-      t.endsWith(" founder") ||
-      t.includes("founder &") ||
-      t.includes("& founder") ||
-      t === "co-founder" ||
-      t === "cofounder" ||
-      t.startsWith("co-founder") ||
-      t.startsWith("cofounder") ||
-      t.includes("co-founder &") ||
-      t.includes("& co-founder") ||
-      t === "ceo" ||
-      t.startsWith("ceo ") ||
-      t.endsWith(" ceo") ||
-      t.includes("ceo ") ||
-      t.includes("chief executive officer") ||
-      t === "chief executive"
-    ) {
+  // If secondary designation contains CEO or Founder (e.g. "Co-Founder & CTO")
+  if (secondaryDesignation) {
+    const secCanonical = getCanonicalRoleType({
+      role_type: secondaryDesignation,
+      primary_designation: secondaryDesignation,
+    });
+    if (PROTECTED_ROLE_TYPES.has(secCanonical)) {
       return true;
     }
   }
 
+  // Non-protected roles (including COO) must never be locked by stale isExplicitlyProtected
   return false;
 }
 

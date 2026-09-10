@@ -101,20 +101,27 @@ export default function AdminTeamPage() {
   // Form helpers
   const [newResponsibility, setNewResponsibility] = useState("");
   const [newSkill, setNewSkill] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // State
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [deleteModalMember, setDeleteModalMember] = useState<TeamMember | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteModalError, setDeleteModalError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const fetchTeam = async () => {
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/admin/team?archived=true", { credentials: "include" });
-      const json = await res.json();
-      if (json.success && json.data) {
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success && Array.isArray(json.data)) {
         setTeam(json.data);
+      } else {
+        setFetchError(json?.error || `Failed to load profiles (${res.status})`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch team error:", err);
+      setFetchError(err?.message || "Failed to connect to server.");
     } finally {
       setLoading(false);
     }
@@ -209,7 +216,7 @@ export default function AdminTeamPage() {
     setIsEditModalOpen(true);
   };
 
-  const handleSaveMemberAsync = async (updatedMember: TeamMember): Promise<boolean> => {
+  const handleSaveMemberAsync = async (updatedMember: TeamMember): Promise<TeamMember> => {
     const res = await fetch("/api/admin/team", {
       method: "POST",
       credentials: "include",
@@ -235,12 +242,10 @@ export default function AdminTeamPage() {
     });
 
     setEditingMember(savedMember);
-    setTimeout(() => {
-      setIsEditModalOpen(false);
-      fetchTeam();
-    }, 800);
+    setToastMessage(`Saved "${savedMember.displayName || savedMember.name}" successfully.`);
+    setTimeout(() => setToastMessage(null), 4000);
 
-    return true;
+    return savedMember;
   };
 
   const handleCroppedPhotoSave = async (blob: Blob, previewUrl: string) => {
@@ -325,32 +330,47 @@ export default function AdminTeamPage() {
     }
   };
 
-  const handleArchiveDelete = async (id: string, hardDelete: boolean = false) => {
-    const promptMsg = hardDelete
-      ? "Permanently delete this leadership profile? This cannot be undone."
-      : "Archive this leadership profile? It will be hidden from the website but can be restored anytime.";
-    if (!confirm(promptMsg)) return;
-
+  const openDeleteDialog = (member: TeamMember) => {
     playButtonClick();
+    setDeleteModalError(null);
+    setDeleteModalMember(member);
+  };
+
+  const confirmMoveToTrash = async () => {
+    if (!deleteModalMember || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteModalError(null);
+    playButtonClick();
+
     try {
       const res = await fetch("/api/admin/team", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "delete", id, hardDelete }),
+        body: JSON.stringify({
+          action: "delete",
+          id: deleteModalMember.id,
+          hardDelete: false,
+          delete_reason: "Moved to Trash by administrator",
+        }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
         playSuccessSound();
-        setIsEditModalOpen(false);
-        fetchTeam();
+        const deletedName = deleteModalMember.displayName || deleteModalMember.name;
+        setDeleteModalMember(null);
+        setToastMessage(`Profile "${deletedName}" was moved to Trash.`);
+        setTimeout(() => setToastMessage(null), 5000);
+        await fetchTeam();
       } else {
-        setErrorMessage(data?.error || "Failed to delete/archive member.");
+        setDeleteModalError(data?.error || "Failed to move profile to Trash.");
         playWarningTone();
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to delete/archive member.");
+      setDeleteModalError(err?.message || "Failed to move profile to Trash.");
       playWarningTone();
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -366,13 +386,15 @@ export default function AdminTeamPage() {
       const data = await res.json().catch(() => null);
       if (res.ok && data?.success) {
         playSuccessSound();
-        fetchTeam();
+        setToastMessage("Profile restored successfully from Trash.");
+        setTimeout(() => setToastMessage(null), 5000);
+        await fetchTeam();
       } else {
-        setErrorMessage(data?.error || "Failed to restore member.");
+        setToastMessage(data?.error || "Failed to restore member.");
         playWarningTone();
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || "Failed to restore member.");
+      setToastMessage(err?.message || "Failed to restore member.");
       playWarningTone();
     }
   };
@@ -444,25 +466,49 @@ export default function AdminTeamPage() {
     });
   };
 
+  const isMemberInTrash = (member: TeamMember) =>
+    Boolean(member.deleted_at || member.status === "archived" || member.isArchived);
+
+  const activeCount = team.filter((m) => !isMemberInTrash(m) && m.isVisible !== false).length;
+  const trashCount = team.filter((m) => isMemberInTrash(m)).length;
+
   // Filtered members list
   const filteredTeam = team.filter((member) => {
     const matchesSearch =
-      member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.roleType.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.displayName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.designation || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (member.roleType || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       (member.skills || []).some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
 
     if (!matchesSearch) return false;
 
-    if (activeFilter === "ACTIVE") return !member.isArchived && member.isVisible !== false;
-    if (activeFilter === "HIDDEN") return !member.isArchived && member.isVisible === false;
-    if (activeFilter === "ARCHIVED") return member.isArchived === true;
-    return activeFilter === "ALL" ? !member.isArchived : true;
+    if (activeFilter === "ACTIVE") return !isMemberInTrash(member) && member.isVisible !== false;
+    if (activeFilter === "HIDDEN") return !isMemberInTrash(member) && member.isVisible === false;
+    if (activeFilter === "ARCHIVED") return isMemberInTrash(member);
+    return activeFilter === "ALL" ? !isMemberInTrash(member) : true;
   });
 
   return (
     <div className="space-y-6 text-left font-mono">
       
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="p-3.5 rounded-2xl bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 text-xs flex items-center justify-between shadow-[0_0_15px_rgba(16,185,129,0.3)] animate-in fade-in duration-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="font-bold">{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="text-emerald-400 hover:text-white text-xs font-bold px-2 py-0.5 rounded cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-red-950 pb-4">
         <div>
@@ -502,26 +548,47 @@ export default function AdminTeamPage() {
 
         {/* Filter Tabs */}
         <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
-          {(["ALL", "ACTIVE", "HIDDEN", "ARCHIVED"] as const).map((filter) => (
+          {[
+            { id: "ALL", label: `ALL (${team.filter((m) => !isMemberInTrash(m)).length})` },
+            { id: "ACTIVE", label: `ACTIVE (${activeCount})` },
+            { id: "HIDDEN", label: "HIDDEN" },
+            { id: "ARCHIVED", label: `TRASH (${trashCount})` },
+          ].map((tab) => (
             <button
-              key={filter}
+              key={tab.id}
               type="button"
               onClick={() => {
                 playButtonClick();
-                setActiveFilter(filter);
+                setActiveFilter(tab.id as any);
               }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeFilter === filter
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                activeFilter === tab.id
                   ? "bg-red-950 border border-red-500/60 text-red-300 shadow-[0_0_10px_rgba(239,68,68,0.3)]"
                   : "border border-red-950/60 text-slate-500 hover:text-white"
               }`}
             >
-              {filter}
+              {tab.label}
             </button>
           ))}
         </div>
 
       </div>
+
+      {/* Fetch Error Display with Retry */}
+      {fetchError && !loading && (
+        <div className="p-8 text-center rounded-3xl red-glass border border-red-500/50 space-y-3">
+          <ShieldAlert className="w-8 h-8 mx-auto text-red-500" />
+          <p className="text-sm font-bold text-red-300">Unable to load leadership profiles.</p>
+          <p className="text-xs text-slate-400">{fetchError}</p>
+          <button
+            type="button"
+            onClick={fetchTeam}
+            className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Team Cards Grid */}
       {loading ? (
@@ -723,11 +790,11 @@ export default function AdminTeamPage() {
                   <span>DUPLICATE</span>
                 </button>
 
-                {member.isArchived ? (
+                {isMemberInTrash(member) ? (
                   <button
                     type="button"
                     onClick={() => handleRestore(member.id)}
-                    className="col-span-2 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-600/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer"
+                    className="col-span-2 py-1.5 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-600/40 text-emerald-300 text-xs font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>RESTORE PROFILE</span>
@@ -743,8 +810,8 @@ export default function AdminTeamPage() {
                 ) : (
                   <button
                     type="button"
-                    onClick={() => handleArchiveDelete(member.id, false)}
-                    className="col-span-2 py-1.5 rounded-xl bg-black/40 hover:bg-red-950/40 border border-red-950 text-slate-500 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer"
+                    onClick={() => openDeleteDialog(member)}
+                    className="col-span-2 py-1.5 rounded-xl bg-black/40 hover:bg-red-950/40 border border-red-950 text-slate-500 hover:text-red-400 text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                   >
                     <Archive className="w-3 h-3" />
                     <span>MOVE TO TRASH</span>
@@ -785,6 +852,71 @@ export default function AdminTeamPage() {
         member={previewMember}
         onClose={() => setPreviewMember(null)}
       />
+
+      {/* Move to Trash Confirmation Dialog */}
+      {deleteModalMember && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!isDeleting) setDeleteModalMember(null);
+          }}
+          title="Move profile to Trash?"
+        >
+          <div className="space-y-4 text-left font-mono">
+            <div className="p-4 rounded-2xl bg-black/60 border border-red-950/80 space-y-2">
+              <div className="text-xs text-slate-400">
+                <span className="font-bold text-slate-300">Name: </span>
+                <span className="text-white font-bold">{deleteModalMember.displayName || deleteModalMember.name}</span>
+              </div>
+              <div className="text-xs text-slate-400">
+                <span className="font-bold text-slate-300">Role: </span>
+                <span className="text-red-400 font-bold">{deleteModalMember.roleType || deleteModalMember.designation}</span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              This profile will be removed from the active leadership list and public website.
+              You can restore it later from Trash.
+            </p>
+
+            {deleteModalError && (
+              <div className="p-3 rounded-xl bg-red-950/80 border border-red-500/80 text-xs text-red-200 flex items-center gap-2">
+                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                <span>{deleteModalError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2 border-t border-red-950/80">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setDeleteModalMember(null)}
+                className="px-4 py-2 rounded-xl border border-red-950/80 text-xs font-bold text-slate-400 hover:text-white disabled:opacity-40 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={confirmMoveToTrash}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-2 disabled:opacity-40 cursor-pointer shadow-[0_0_15px_rgba(239,68,68,0.4)]"
+              >
+                {isDeleting ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Moving to Trash...</span>
+                  </>
+                ) : (
+                  <>
+                    <Archive className="w-3.5 h-3.5" />
+                    <span>Move to Trash</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
     </div>
   );

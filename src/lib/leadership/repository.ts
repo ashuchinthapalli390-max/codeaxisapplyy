@@ -32,8 +32,8 @@ export class LeadershipError extends Error {
  * Parses PostgREST / PostgreSQL missing column error message to dynamically strip unknown fields
  */
 export function extractMissingColumn(error: any): string | null {
-  if (!error || !error.message) return null;
-  const msg = String(error.message);
+  if (!error) return null;
+  const msg = typeof error === "string" ? error : String(error.message || error.details || error.hint || "");
   let match = msg.match(/Could not find the '([a-zA-Z0-9_]+)' column/i);
   if (match) return match[1];
   match = msg.match(/column "([a-zA-Z0-9_]+)" of relation/i);
@@ -289,8 +289,6 @@ export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
         const queryRes = await supabase
           .from("team_members")
           .select("*")
-          .or("status.eq.active,is_active.eq.true")
-          .is("archived_at", null)
           .order("sort_order", { ascending: true });
         data = queryRes.data;
         error = queryRes.error;
@@ -298,72 +296,54 @@ export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
         error = err;
       }
 
-      // Adaptive retry if column mismatch occurs
-      if (error && error.message?.includes("does not exist")) {
-        console.warn("[Leadership Repository] Column mismatch in team_members filter, retrying adaptive select:", error.message);
-        try {
-          const fallbackRes = await supabase.from("team_members").select("*");
-          if (!fallbackRes.error && fallbackRes.data) {
-            data = fallbackRes.data.filter((row: any) => {
-              if (row.archived_at) return false;
-              if (row.is_archived === true) return false;
-              if (row.status && row.status !== "active") return false;
-              if (row.is_active === false) return false;
-              if (row.is_public === false) return false;
-              if (row.verification_status && row.verification_status !== "published") return false;
-              return true;
-            });
-            data.sort((a: any, b: any) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0));
-            error = null;
-          }
-        } catch (fbErr) {
-          console.warn("[Leadership Repository] Adaptive select failed:", fbErr);
-        }
-      }
+      if (data && Array.isArray(data)) {
+        const allDbRows = data;
 
-      // If data is empty or contains unpopulated placeholders, trigger reconciliation
-      const needsReconcile =
-        !data ||
-        data.length === 0 ||
-        data.some(
-          (m: any) =>
-            !m.primary_designation ||
-            m.primary_designation === "Core Team" ||
-            !m.responsibilities ||
-            (Array.isArray(m.responsibilities) && m.responsibilities.length === 0)
-        );
+        // Filter for active, published, non-deleted rows
+        const activeRows = allDbRows.filter((row: any) => {
+          if (row.deleted_at) return false;
+          if (row.archived_at) return false;
+          if (row.is_archived === true) return false;
+          if (row.status && row.status !== "active") return false;
+          if (row.is_active === false) return false;
+          if (row.is_public === false) return false;
+          if (row.verification_status && row.verification_status !== "published") return false;
+          return true;
+        });
 
-      if (needsReconcile) {
-        try {
-          const rec = await reconcileLeadershipDatabase();
-          if (rec.inserted > 0 || rec.updated > 0) {
-            const { data: refetched } = await supabase
-              .from("team_members")
-              .select("*")
-              .order("sort_order", { ascending: true });
-
-            if (refetched && refetched.length > 0) {
-              data = refetched.filter((r: any) => !r.archived_at && r.status !== "archived" && r.is_active !== false && r.is_public !== false);
-            }
-          }
-        } catch (recErr) {
-          console.warn("[Leadership Repository] Reconciliation notice:", recErr);
-        }
-      }
-
-      if (data && data.length > 0) {
-        // Ensure all 5 canonical profiles are represented in public leadership
-        const combinedList: any[] = [...data];
+        // Overlay canonical profiles ONLY if they have not been deleted/archived in the database
+        const combinedList: any[] = [...activeRows];
         for (const canonical of CANONICAL_INITIAL_PROFILES) {
           const cName = (canonical.full_name || canonical.display_name || "").toLowerCase().trim();
-          const exists = combinedList.some(
+          const dbMatch = allDbRows.find(
             (r) =>
               r.id === canonical.id ||
               (canonical.slug && r.slug === canonical.slug) ||
               (r.full_name && r.full_name.toLowerCase().trim() === cName) ||
               (r.display_name && r.display_name.toLowerCase().trim() === cName)
           );
-          if (!exists) {
+
+          // If the profile was soft-deleted or archived in DB, NEVER show on the public website!
+          if (
+            dbMatch &&
+            (dbMatch.deleted_at ||
+              dbMatch.archived_at ||
+              dbMatch.is_archived === true ||
+              dbMatch.status === "archived" ||
+              dbMatch.is_active === false ||
+              dbMatch.is_public === false)
+          ) {
+            continue;
+          }
+
+          // If not already in combinedList, include it
+          const alreadyInList = combinedList.some(
+            (r) =>
+              r.id === canonical.id ||
+              (canonical.slug && r.slug === canonical.slug) ||
+              (r.full_name && r.full_name.toLowerCase().trim() === cName)
+          );
+          if (!alreadyInList) {
             combinedList.push(canonical);
           }
         }
@@ -600,7 +580,7 @@ export async function saveLeadershipMember(
   // Check if row already exists and inspect version/protection
   const { data: existingRow } = await supabase
     .from("team_members")
-    .select("id, version, role_type, primary_designation, secondary_designation, is_delete_protected")
+    .select("*")
     .eq("id", memberId)
     .maybeSingle();
 
@@ -620,17 +600,13 @@ export async function saveLeadershipMember(
   // Next monotonic version
   dbRow.version = (Number(existingRow?.version) || 1) + 1;
 
-  // Enforce server-side role delete protection for Founder, Co-Founder, CEO
-  if (
-    isDeleteProtected(
-      dbRow.role_type || input.roleType,
-      dbRow.primary_designation || input.primaryDesignation,
-      dbRow.secondary_designation || input.secondaryDesignation,
-      existingRow?.is_delete_protected || dbRow.is_delete_protected
-    )
-  ) {
-    dbRow.is_delete_protected = true;
-  }
+  // Enforce server-side role delete protection: strictly Founder, Co-Founder, CEO
+  const isProtectedRole = isDeleteProtected(
+    dbRow.role_type || input.roleType,
+    dbRow.primary_designation || input.primaryDesignation,
+    dbRow.secondary_designation || input.secondaryDesignation
+  );
+  dbRow.is_delete_protected = isProtectedRole;
 
   let data: any = null;
   let error: any = null;
@@ -735,8 +711,7 @@ export async function deleteLeadershipMember(
     isDeleteProtected(
       canonicalTarget.role_type,
       canonicalTarget.primary_designation,
-      canonicalTarget.secondary_designation,
-      true
+      canonicalTarget.secondary_designation
     )
   ) {
     throw new LeadershipError("Founder, Co-Founder and CEO profiles cannot be deleted.", 403);
@@ -775,8 +750,7 @@ export async function deleteLeadershipMember(
     isDeleteProtected(
       target.role_type || target.roleType,
       target.primary_designation || target.designation,
-      target.secondary_designation || target.secondaryDesignation,
-      target.is_delete_protected
+      target.secondary_designation || target.secondaryDesignation
     )
   ) {
     throw new LeadershipError("Founder, Co-Founder and CEO profiles cannot be deleted.", 403);
@@ -794,17 +768,39 @@ export async function deleteLeadershipMember(
       archived_by: adminUser?.email || adminUser?.id || "admin",
       deleted_at: now,
       deleted_by: adminUser?.email || adminUser?.id || "admin",
-      delete_reason: deleteReason || null,
+      delete_reason: deleteReason || "Moved to Trash by administrator",
       version: nextVersion,
       updated_at: now,
     };
 
-    const res = await adaptiveUpdate(supabase, "team_members", id, updatePayload);
-    if (res.error) {
-      throw new LeadershipError(`Failed to archive team member: ${res.error.message}`, 500);
-    }
-    if (!res.data) {
-      throw new LeadershipError("Archive failed: no matching team member found.", 404);
+    if (!existing && canonicalTarget) {
+      // Profile exists in canonical registry but was not yet persisted in DB.
+      // Insert it directly in archived/trash state.
+      const initialDbRow = mapMutationInputToDbRow(
+        {
+          ...canonicalTarget,
+          name: canonicalTarget.full_name || canonicalTarget.display_name || "Leader",
+          designation: canonicalTarget.primary_designation || "Core Team",
+        } as any,
+        canonicalTarget.id || id
+      );
+      const insertPayload = {
+        ...initialDbRow,
+        ...updatePayload,
+        created_at: now,
+      };
+      const res = await adaptiveInsert(supabase, "team_members", insertPayload);
+      if (res.error || !res.data) {
+        throw new LeadershipError(`Failed to archive team member: ${res.error?.message || "insert failed"}`, 500);
+      }
+    } else {
+      const res = await adaptiveUpdate(supabase, "team_members", id, updatePayload);
+      if (res.error) {
+        throw new LeadershipError(`Failed to archive team member: ${res.error.message}`, 500);
+      }
+      if (!res.data) {
+        throw new LeadershipError("Archive failed: no matching team member found.", 404);
+      }
     }
   } else {
     // Hard delete: delete contributions first

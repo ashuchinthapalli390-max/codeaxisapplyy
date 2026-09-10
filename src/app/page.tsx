@@ -82,7 +82,9 @@ export default function HomePage() {
       }
       if (json && json.success && Array.isArray(json.data)) {
         setTeamMembers(json.data);
-        const activeProfiles = json.data.filter((m: any) => m.isVisible !== false && !m.isArchived);
+        const activeProfiles = json.data.filter(
+          (m: any) => m.isVisible !== false && !m.isArchived && !m.deleted_at && m.status !== "archived"
+        );
         setLeadershipState({
           status: activeProfiles.length > 0 ? "ready" : "empty",
         });
@@ -1170,14 +1172,14 @@ agency.launchRecruitmentBatch("2026-SEP");`,
                 Retry
               </button>
             </div>
-          ) : teamMembers.filter((m) => m.isVisible !== false && !m.isArchived).length === 0 ? (
+          ) : teamMembers.filter((m) => m.isVisible !== false && !m.isArchived && !m.deleted_at && m.status !== "archived").length === 0 ? (
             <div className="p-8 rounded-2xl bg-red-950/20 border border-red-500/20 text-center font-mono text-xs text-slate-400">
               No published leadership profiles found.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {teamMembers
-                .filter((m) => (m.isVisible !== false && !m.isArchived && m.verificationStatus !== "draft"))
+                .filter((m) => m.isVisible !== false && !m.isArchived && !m.deleted_at && m.status !== "archived" && m.verificationStatus !== "draft")
                 .sort((a, b) => (a.sort_order ?? a.displayOrder ?? 0) - (b.sort_order ?? b.displayOrder ?? 0))
                 .map((member) => (
                 <article
