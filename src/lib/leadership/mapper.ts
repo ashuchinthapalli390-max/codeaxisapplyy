@@ -224,10 +224,10 @@ export function mapDbRowToAdminDto(
       : (canonical?.responsibilities || []);
 
   let status: LeadershipStatus = "active";
-  if (row.status) {
-    status = row.status;
-  } else if (row.is_archived || row.archived_at) {
+  if (row.deleted_at || row.archived_at || row.is_archived || row.is_visible === false) {
     status = "archived";
+  } else if (row.status) {
+    status = row.status;
   } else if (row.is_active === false) {
     status = "hidden";
   }
@@ -323,7 +323,7 @@ export function mapDbRowToAdminDto(
     sort_order: sortOrder,
     displayOrder: sortOrder,
     isFeatured: row.is_featured !== false,
-    isVisible: status === "active",
+    isVisible: row.is_visible !== false && status === "active",
     isArchived: status === "archived",
     status,
     canDelete: !isDeleteProtected(
@@ -333,7 +333,7 @@ export function mapDbRowToAdminDto(
       row.is_delete_protected
     ),
     canEdit: true,
-    canRestore: status === "archived",
+    canRestore: status === "archived" || row.is_visible === false,
     is_delete_protected: isDeleteProtected(
       roleType,
       primaryDesignation,
@@ -341,7 +341,7 @@ export function mapDbRowToAdminDto(
       row.is_delete_protected
     ),
     version: Number(row.version || 1),
-    deleted_at: row.deleted_at || row.archived_at || null,
+    deleted_at: row.deleted_at || row.archived_at || (status === "archived" ? (row.updated_at || new Date().toISOString()) : null),
     deleted_by: row.deleted_by || row.archived_by || null,
     delete_reason: row.delete_reason || null,
     createdAt: row.created_at || new Date().toISOString(),

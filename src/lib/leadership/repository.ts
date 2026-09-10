@@ -315,6 +315,7 @@ export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
           if (row.archived_at) return false;
           if (row.is_archived === true) return false;
           if (row.status && row.status !== "active") return false;
+          if (row.is_visible === false) return false;
           if (row.is_active === false) return false;
           if (row.is_public === false) return false;
           if (row.verification_status && row.verification_status !== "published") return false;
@@ -340,6 +341,7 @@ export async function getPublicLeadership(): Promise<PublicLeadershipDto[]> {
               dbMatch.archived_at ||
               dbMatch.is_archived === true ||
               dbMatch.status === "archived" ||
+              dbMatch.is_visible === false ||
               dbMatch.is_active === false ||
               dbMatch.is_public === false)
           ) {
@@ -760,6 +762,7 @@ export async function deleteLeadershipMember(
 
   if (softDelete) {
     const updatePayload: Record<string, any> = {
+      is_visible: false,
       status: "archived",
       deleted_at: now,
       deleted_by: adminUser?.email || adminUser?.id || "admin",
@@ -770,21 +773,35 @@ export async function deleteLeadershipMember(
 
     if (!existing && canonicalTarget) {
       // Profile exists in canonical registry but was not yet persisted in DB.
-      // Insert it directly in archived/trash state.
-      const initialDbRow = mapMutationInputToDbRow(
-        {
-          ...canonicalTarget,
-          name: canonicalTarget.full_name || canonicalTarget.display_name || "Leader",
-          designation: canonicalTarget.primary_designation || "Core Team",
-        } as any,
-        canonicalTarget.id || id
-      );
-      const insertPayload = {
-        ...initialDbRow,
-        ...updatePayload,
+      // Insert it directly in archived/trash state using canonical DB columns.
+      const initialDbRow: Record<string, any> = {
+        id: canonicalTarget.id || id,
+        name: canonicalTarget.full_name || canonicalTarget.display_name || "Parlapalli Varun",
+        display_name: canonicalTarget.display_name || canonicalTarget.full_name || "P. Varun",
+        codename: canonicalTarget.code_name || null,
+        designation: canonicalTarget.primary_designation || "Chief Operating Officer",
+        secondary_designation: canonicalTarget.secondary_designation || null,
+        role_type: canonicalTarget.role_type || "COO",
+        department: canonicalTarget.department || null,
+        tagline: canonicalTarget.tagline || null,
+        bio: canonicalTarget.short_bio || null,
+        short_bio: canonicalTarget.short_bio || null,
+        quote: canonicalTarget.quote || null,
+        photo_url: canonicalTarget.photo_url || "/assets/image-assests/hero.jpeg",
+        profile_storage_path: canonicalTarget.image_path || "/assets/image-assests/hero.jpeg",
+        profile_object_position_x: canonicalTarget.crop_x ?? 50,
+        profile_object_position_y: canonicalTarget.crop_y ?? 50,
+        profile_scale: canonicalTarget.crop_scale ?? 1,
+        skills: canonicalTarget.skills || [],
+        github_url: canonicalTarget.github_url || null,
+        linkedin_url: canonicalTarget.linkedin_url || null,
+        display_order: canonicalTarget.sort_order ?? 5,
+        is_featured: true,
+        is_visible: false,
         created_at: now,
+        updated_at: now,
       };
-      const res = await adaptiveInsert(supabase, "team_members", insertPayload);
+      const res = await adaptiveInsert(supabase, "team_members", initialDbRow);
       if (res.error || !res.data) {
         throw new LeadershipError(`Failed to archive team member: ${res.error?.message || "insert failed"}`, 500);
       }
@@ -844,6 +861,7 @@ export async function restoreLeadershipMember(
   const now = new Date().toISOString();
   const nextVersion = (Number(target.version) || 1) + 1;
   const updatePayload: Record<string, any> = {
+    is_visible: true,
     status: "active",
     deleted_at: null,
     deleted_by: null,
