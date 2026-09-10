@@ -473,28 +473,6 @@ export async function getAdminLeadership(): Promise<AdminLeadershipDto[]> {
         error = err;
       }
 
-      const needsReconcile =
-        !data ||
-        data.length === 0 ||
-        data.some((m: any) => !m.primary_designation || m.primary_designation === "Core Team");
-
-      if (needsReconcile) {
-        try {
-          const rec = await reconcileLeadershipDatabase();
-          if (rec.inserted > 0 || rec.updated > 0) {
-            const { data: refetched } = await supabase
-              .from("team_members")
-              .select("*")
-              .order("sort_order", { ascending: true });
-            if (refetched && refetched.length > 0) {
-              data = refetched;
-            }
-          }
-        } catch (recErr) {
-          console.warn("[Leadership Repository] Admin reconciliation notice:", recErr);
-        }
-      }
-
       if (data && data.length > 0) {
         // Ensure all 5 canonical profiles are represented in admin view
         const combinedList: any[] = [...data];
